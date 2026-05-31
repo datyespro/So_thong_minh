@@ -1,0 +1,40 @@
+# dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+
+# production
+build/
+dist/
+
+# build / type artifacts
+*.tsbuildinfo
+
+# test coverage
+coverage/
+
+# vercel
+.vercel/
+
+# env and secrets
+.env
+.env*.local
+key.txt
+
+# Supabase local runtime
+supabase/.branches/
+supabase/.temp/
+
+# logs
+*.log
+pnpm-debug.log*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.next-*.log*
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 48 100% 99%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 222 58% 33%;
+    --primary-foreground: 48 100% 99%;
+    --secondary: 45 53% 94%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 45 53% 94%;
+    --muted-foreground: 40 8% 38%;
+    --accent: 43 91% 46%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 74% 42%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 44 42% 85%;
+    --input: 44 42% 85%;
+    --ring: 222 58% 33%;
+    --radius: 0.75rem;
+
+    --paper: #fffef9;
+    --paper-warm: #faf5e6;
+    --paper-note: #fdf6df;
+    --surface: #ffffff;
+    --ink: #1e3a8a;
+    --ink-deep: #172554;
+    --ink-soft: #3b5bb5;
+    --ledger-border: #e8e1c9;
+    --border-strong: #d4cba7;
+    --text-main: #1a1a1a;
+    --text-mute: #6b6558;
+    --text-faint: #9a9485;
+    --stamp: #b45309;
+    --debt: #b91c1c;
+    --paid: #15803d;
+    --shadow-card: 0 1px 0 var(--ledger-border), 0 24px 48px -28px rgba(30, 58, 138, 0.18);
+    --shadow-press: inset 0 1px 2px rgba(23, 37, 84, 0.25);
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    background: var(--paper);
+  }
+
+  body {
+    @apply bg-paper text-foreground antialiased;
+    color: var(--text-main);
+    font-size: 18px;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: 3px;
+  }
+}
+
+@layer utilities {
+  .ledger-rules {
+    background-image: repeating-linear-gradient(
+      0deg,
+      transparent 0 47px,
+      rgba(30, 58, 138, 0.045) 47px 48px
+    );
+  }
+
+  .ledger-margin {
+    background-image: linear-gradient(
+      90deg,
+      transparent 0 79px,
+      rgba(180, 69, 9, 0.18) 79px 80px,
+      transparent 80px
+    );
+  }
+
+  .paper-grain::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.45 0 0 0 0 0.4 0 0 0 0 0.3 0 0 0 0.35 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    opacity: 0.35;
+    mix-blend-mode: multiply;
+  }
+}

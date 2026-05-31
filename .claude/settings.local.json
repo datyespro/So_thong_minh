@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Write-Output \"=== intent-schema.ts SHA256 \\(BASELINE\\) ===\"; \\(Get-FileHash -Algorithm SHA256 \"D:\\\\code\\\\Sotm_project\\\\src\\\\lib\\\\ai\\\\intent-schema.ts\"\\).Hash; Write-Output \"=== entity-resolver.ts SHA256 \\(BASELINE\\) ===\"; \\(Get-FileHash -Algorithm SHA256 \"D:\\\\code\\\\Sotm_project\\\\src\\\\lib\\\\ai\\\\entity-resolver.ts\"\\).Hash)",
+      "PowerShell(npm.cmd run test 2>&1)",
+      "PowerShell(Write-Output \"=== typecheck ===\"; npm.cmd run typecheck 2>&1 | Select-Object -Last 20; Write-Output \"EXIT_TYPECHECK=$LASTEXITCODE\")",
+      "PowerShell(\\(Get-FileHash -Algorithm SHA256 \"D:\\\\code\\\\Sotm_project\\\\src\\\\lib\\\\ai\\\\intent-schema.ts\"\\).Hash)",
+      "PowerShell(Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Select-Object ProcessId, @{n='Cmd';e={$_.CommandLine}} | Format-Table -AutoSize -Wrap)",
+      "PowerShell(pnpm typecheck; \"=== typecheck exit: $LASTEXITCODE ===\"; pnpm lint; \"=== lint exit: $LASTEXITCODE ===\"; pnpm test; \"=== test exit: $LASTEXITCODE ===\")"
+    ]
+  }
+}
