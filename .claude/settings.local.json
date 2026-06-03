@@ -6,7 +6,11 @@
       "PowerShell(Write-Output \"=== typecheck ===\"; npm.cmd run typecheck 2>&1 | Select-Object -Last 20; Write-Output \"EXIT_TYPECHECK=$LASTEXITCODE\")",
       "PowerShell(\\(Get-FileHash -Algorithm SHA256 \"D:\\\\code\\\\Sotm_project\\\\src\\\\lib\\\\ai\\\\intent-schema.ts\"\\).Hash)",
       "PowerShell(Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Select-Object ProcessId, @{n='Cmd';e={$_.CommandLine}} | Format-Table -AutoSize -Wrap)",
-      "PowerShell(pnpm typecheck; \"=== typecheck exit: $LASTEXITCODE ===\"; pnpm lint; \"=== lint exit: $LASTEXITCODE ===\"; pnpm test; \"=== test exit: $LASTEXITCODE ===\")"
+      "PowerShell(pnpm typecheck; \"=== typecheck exit: $LASTEXITCODE ===\"; pnpm lint; \"=== lint exit: $LASTEXITCODE ===\"; pnpm test; \"=== test exit: $LASTEXITCODE ===\")",
+      "Bash(docker exec -i supabase_db_Sotm_project psql -U postgres -d postgres -P pager=off -c ' *)",
+      "Bash(docker exec *)",
+      "Bash(supabase --version)",
+      "Bash(supabase status *)"
     ]
   }
 }

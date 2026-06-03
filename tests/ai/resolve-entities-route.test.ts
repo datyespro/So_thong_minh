@@ -37,6 +37,7 @@ const validIntent = {
     customer_name: null,
     supplier_name: null,
     product_name: "xi mang",
+    product_management: null,
     items: [],
     amount: null,
     payment_status: "unknown",

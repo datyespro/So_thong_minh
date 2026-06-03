@@ -6,11 +6,15 @@ import type {
 import type { ResolvedEntity } from "@/src/lib/ai/resolve-schema";
 import type {
   PreviewCardPatch,
+  PreviewAddedItemPatch,
   PreviewResolvedEntityPatch,
 } from "@/src/components/chat/preview-card/types";
 
+export const ADDED_ITEM_INDEX_BASE = 10000;
+
 export type PreviewDisplayItem = {
   index: number;
+  tempId?: string;
   item: ValidatedLineItem;
   resolution: ResolvedEntity;
   name: string;
@@ -53,6 +57,10 @@ function isPositiveNumber(value: number | null | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
+function isFiniteNumber(value: number | null | undefined): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
 function toResolvedEntity(
   entity: ResolvedEntity | null,
   patch: PreviewResolvedEntityPatch | null,
@@ -72,7 +80,86 @@ function toResolvedEntity(
   };
 }
 
+function resolvedAddedProduct(item: PreviewAddedItemPatch): ResolvedEntity {
+  return {
+    raw: item.product_name,
+    entity_type: "product",
+    status: "resolved",
+    resolved_id: item.product_id,
+    resolved_name: item.product_name,
+    confidence: 1,
+    candidates: [],
+  };
+}
+
+function addedPreviewDisplayItem(
+  addedItem: PreviewAddedItemPatch,
+  addedIndex: number,
+): PreviewDisplayItem {
+  const resolution = resolvedAddedProduct(addedItem);
+  const lineTotal = addedItem.quantity * addedItem.unit_price;
+  const item: ValidatedLineItem = {
+    raw: addedItem.product_name,
+    product_name: addedItem.product_name,
+    quantity: addedItem.quantity,
+    unit: addedItem.unit,
+    unit_price: addedItem.unit_price,
+    line_total: lineTotal,
+    confidence: 1,
+    resolution,
+    effective_quantity: addedItem.quantity,
+    effective_unit: addedItem.unit,
+    effective_unit_price: addedItem.unit_price,
+    issues: [],
+  };
+
+  return {
+    index: ADDED_ITEM_INDEX_BASE + addedIndex,
+    tempId: addedItem.tempId,
+    item,
+    resolution,
+    name: addedItem.product_name,
+    quantity: addedItem.quantity,
+    unit: addedItem.unit,
+    unitPrice: addedItem.unit_price,
+    lineTotal,
+    needsQuantityPatch: false,
+    needsPricePatch: false,
+  };
+}
+
+function noItemsIssueForIntent(validated: ValidatedIntent): VisibleIssue {
+  return {
+    code: "no_items",
+    severity: "blocking",
+    message:
+      validated.intent === "create_order"
+        ? "Chưa rõ bán hàng gì ạ."
+        : "Chưa rõ nhập hàng gì ạ.",
+    field_path: "items",
+    item_index: null,
+  };
+}
+
+function invalidAddedQuantityIssue(displayItem: PreviewDisplayItem): VisibleIssue {
+  return {
+    code: "invalid_quantity",
+    severity: "blocking",
+    message: `Số lượng của "${displayItem.name}" phải lớn hơn 0.`,
+    field_path: `items[${displayItem.index}].quantity`,
+    item_index: displayItem.index,
+    itemName: displayItem.name,
+  };
+}
+
 function shouldHideIssue(issue: ValidationIssue, patch: PreviewCardPatch) {
+  // The payment card recomputes overpayment live against the freshly-fetched
+  // current debt, so the validator's original-amount overpayment issue (which
+  // goes stale the moment the amount is edited) is hidden here.
+  if (issue.code === "overpayment") {
+    return true;
+  }
+
   if (
     (issue.code === "missing_customer" || issue.code === "customer_unresolved") &&
     patch.customer
@@ -135,7 +222,8 @@ export function getPatchedPreviewState(
 ): PatchedPreviewState {
   const customer = toResolvedEntity(validated.customer, patch.customer);
   const supplier = toResolvedEntity(validated.supplier, patch.supplier);
-  const items = validated.items.map((item, index): PreviewDisplayItem => {
+  const removedIndices = new Set(patch.removedIndices ?? []);
+  const baseItems = validated.items.map((item, index): PreviewDisplayItem => {
     const hasQuantityPatch = hasPatch(patch.itemQuantities, index);
     const hasPricePatch = hasPatch(patch.itemPrices, index);
     const resolution = toResolvedEntity(
@@ -170,11 +258,12 @@ export function getPatchedPreviewState(
         item.issues.some((issue) => issue.code === "missing_price"),
     };
   });
+  const items = [
+    ...baseItems.filter((displayItem) => !removedIndices.has(displayItem.index)),
+    ...(patch.itemsAdded ?? []).map(addedPreviewDisplayItem),
+  ];
 
   const amount = patch.amount ?? validated.effective_amount;
-  const hasItemPatch =
-    Object.keys(patch.itemPrices).length > 0 ||
-    Object.keys(patch.itemQuantities).length > 0;
   const itemTotal = items.reduce(
     (sum, item) => sum + (item.lineTotal ?? 0),
     0,
@@ -182,11 +271,9 @@ export function getPatchedPreviewState(
   const total =
     validated.intent === "record_payment"
       ? amount
-      : hasItemPatch || validated.effective_amount === null
-        ? itemTotal > 0
-          ? itemTotal
-          : validated.effective_amount
-        : validated.effective_amount;
+      : items.length === 0
+        ? validated.effective_amount
+        : itemTotal;
 
   const itemIssues = items.flatMap((displayItem) =>
     displayItem.item.issues.map((issue) => ({
@@ -194,9 +281,23 @@ export function getPatchedPreviewState(
       itemName: displayItem.name,
     })),
   );
-  const issues = [...validated.issues, ...itemIssues].filter(
-    (issue) => !shouldHideIssue(issue, patch),
-  );
+  const issues = [...validated.issues, ...itemIssues]
+    .filter((issue) => !shouldHideIssue(issue, patch))
+    // A purchase without a supplier is allowed (supplier_id is nullable); the
+    // validator marks it blocking, so the UI downgrades it to a warning here.
+    .map((issue) =>
+      validated.intent === "create_purchase" && issue.code === "missing_supplier"
+        ? { ...issue, severity: "warning" as const }
+        : issue,
+    );
+  if (validated.items.length > 0 && items.length === 0) {
+    issues.push(noItemsIssueForIntent(validated));
+  }
+  for (const displayItem of items) {
+    if (displayItem.tempId && !isPositiveNumber(displayItem.quantity)) {
+      issues.push(invalidAddedQuantityIssue(displayItem));
+    }
+  }
   const blockingCount = issues.filter(
     (issue) => issue.severity === "blocking",
   ).length;
@@ -286,6 +387,69 @@ export function updateItemQuantityPatch(
   return {
     ...patch,
     itemQuantities,
+  };
+}
+
+export function addItem(
+  patch: PreviewCardPatch,
+  newItem: PreviewAddedItemPatch,
+): PreviewCardPatch {
+  return {
+    ...patch,
+    itemsAdded: [...(patch.itemsAdded ?? []), newItem],
+  };
+}
+
+export function updateAddedItemQuantity(
+  patch: PreviewCardPatch,
+  tempId: string,
+  value: number | null,
+): PreviewCardPatch {
+  return {
+    ...patch,
+    itemsAdded: (patch.itemsAdded ?? []).map((item) =>
+      item.tempId === tempId
+        ? { ...item, quantity: isFiniteNumber(value) ? value : 0 }
+        : item,
+    ),
+  };
+}
+
+export function updateAddedItemPrice(
+  patch: PreviewCardPatch,
+  tempId: string,
+  value: number | null,
+): PreviewCardPatch {
+  return {
+    ...patch,
+    itemsAdded: (patch.itemsAdded ?? []).map((item) =>
+      item.tempId === tempId
+        ? { ...item, unit_price: isFiniteNumber(value) ? value : 0 }
+        : item,
+    ),
+  };
+}
+
+export function removeAddedItem(
+  patch: PreviewCardPatch,
+  tempId: string,
+): PreviewCardPatch {
+  return {
+    ...patch,
+    itemsAdded: (patch.itemsAdded ?? []).filter((item) => item.tempId !== tempId),
+  };
+}
+
+export function removeIndex(
+  patch: PreviewCardPatch,
+  originalIndex: number,
+): PreviewCardPatch {
+  const removedIndices = new Set(patch.removedIndices ?? []);
+  removedIndices.add(originalIndex);
+
+  return {
+    ...patch,
+    removedIndices: [...removedIndices],
   };
 }
 

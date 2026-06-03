@@ -23,6 +23,9 @@ coverage/
 .env*.local
 key.txt
 
+# local notes / handoff drafts
+/y tuong/
+
 # Supabase local runtime
 supabase/.branches/
 supabase/.temp/

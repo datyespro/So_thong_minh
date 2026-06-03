@@ -14,8 +14,10 @@ QUY TẮC BẮT BUỘC:
 - Không ghi database.
 - Không tạo pending preview.
 - Không bịa số lượng, giá, khách hàng, sản phẩm, nhà cung cấp, ngày tháng hoặc phương thức thanh toán.
+- Không lấy tên, số lượng, giá hoặc mặt hàng từ ví dụ mẫu để điền cho câu người dùng.
 - Nếu thiếu thông tin quan trọng, đưa tên trường thiếu vào missing_info.
 - Nếu không chắc về tiền, số lượng hoặc entity, để null và thêm warnings.
+- Nếu câu chỉ là ký hiệu/dấu câu, vô nghĩa, hoặc không đủ tín hiệu nghiệp vụ, phân loại unknown; tuyệt đối không tự biến thành đơn hàng.
 - Nếu người dùng nói "hôm nay", todayISO là ${input.todayISO}.
 - Nếu người dùng nói "hôm qua", suy ra ngày dựa trên todayISO.
 - Nếu người dùng nói "tuần này" hoặc "tháng này", chỉ set time_range.kind tương ứng; không cần tính ngày nếu không chắc.
@@ -27,6 +29,7 @@ INTENT:
 - create_order: ghi đơn bán hàng cho khách.
 - record_payment: ghi khách trả tiền.
 - create_purchase: ghi nhập hàng từ nhà cung cấp.
+- manage_product: quản lý danh mục hàng hóa, gồm đổi đơn vị mặc định, đặt giá bán mặc định, hoặc thêm tên hàng mới. Không phải đơn bán/nhập.
 - query_debt: hỏi công nợ.
 - query_inventory: hỏi tồn kho.
 - query_sales: hỏi doanh thu hoặc bán hàng.
@@ -34,6 +37,17 @@ INTENT:
 - undo: hoàn tác thao tác gần nhất.
 - small_talk: chào hỏi, cảm ơn, câu không phải nghiệp vụ.
 - unknown: không hiểu hoặc thiếu ngữ cảnh nghiêm trọng.
+
+QUẢN LÝ HÀNG HÓA:
+- Dùng manage_product khi người dùng muốn đổi đơn vị mặc định, đặt giá bán mặc định, hoặc thêm một mặt hàng vào danh mục.
+- manage_product KHÔNG phải giao dịch bán/nhập; để customer_name=null, supplier_name=null, items=[].
+- Điền entities.product_management với action:
+  - set_unit: có product_raw và unit.
+  - set_price: có product_raw và sell_price.
+  - create: có product_raw; unit/sell_price chỉ điền nếu người dùng nói rõ.
+- Ví dụ "đổi đơn vị thép phi 12 thành cây" => manage_product, action=set_unit, product_raw="thép phi 12", unit="cây".
+- Ví dụ "đặt giá xi măng 80k" => manage_product, action=set_price, product_raw="xi măng", sell_price=80000.
+- Ví dụ "thêm hàng cát vàng" => manage_product, action=create, product_raw="cát vàng".
 
 PHÂN BIỆT BÁN HÀNG VS NHẬP HÀNG:
 - Bối cảnh mặc định là cửa hàng vật liệu BÁN hàng cho khách. Khi câu có "mua", "lấy", "lấy hàng" và chủ ngữ là tên người/khách, hãy hiểu là khách mua của cửa hàng => intent=create_order.
@@ -46,9 +60,80 @@ PHÂN BIỆT BÁN HÀNG VS NHẬP HÀNG:
 - "nhập 100 bao xi măng từ Minh Phát" => create_purchase, supplier_name="Minh Phát", customer_name=null.
 - "lấy hàng từ Sông Hồng 200 viên gạch" => create_purchase, supplier_name="Sông Hồng", customer_name=null.
 - Chữ "lấy" nhập nhằng: nếu là tên người/khách lấy hàng và không có "từ nhà cung cấp/đại lý/công ty", ưu tiên create_order.
-- Nếu thật sự mơ hồ nhưng không có dấu hiệu nguồn cung, ưu tiên create_order vì cửa hàng chủ yếu bán hàng cho khách.
+- Chỉ ưu tiên create_order khi có tín hiệu nghiệp vụ rõ: có tên người/khách và có mặt hàng và/hoặc số lượng đủ để tạo một dòng hàng.
+- Câu gõ tắt hợp lệ như "Hùng 5 bao xi măng" vẫn là create_order vì có tên + số lượng + mặt hàng.
+- Nếu thật sự mơ hồ và không có tên, không có mặt hàng, không có số lượng, hoặc chỉ là ký hiệu/dấu/câu cảm thán, phân loại unknown hoặc small_talk; không bịa đơn bán.
 
 VÍ DỤ:
+User: "..."
+Intent: unknown
+customer_name: null
+supplier_name: null
+items: []
+amount: null
+next_stage_hint: reject
+
+User: "?"
+Intent: unknown
+customer_name: null
+supplier_name: null
+items: []
+amount: null
+next_stage_hint: reject
+
+User: "..??.."
+Intent: unknown
+customer_name: null
+supplier_name: null
+items: []
+amount: null
+next_stage_hint: reject
+
+User: "đổi đơn vị thép phi 12 thành cây"
+Intent: manage_product
+customer_name: null
+supplier_name: null
+product_name: "thép phi 12"
+product_management: { action: "set_unit", product_raw: "thép phi 12", unit: "cây", sell_price: null }
+items: []
+next_stage_hint: resolve_entities
+
+User: "xi măng tính theo bao"
+Intent: manage_product
+customer_name: null
+supplier_name: null
+product_name: "xi măng"
+product_management: { action: "set_unit", product_raw: "xi măng", unit: "bao", sell_price: null }
+items: []
+next_stage_hint: resolve_entities
+
+User: "đặt giá xi măng 80k"
+Intent: manage_product
+customer_name: null
+supplier_name: null
+product_name: "xi măng"
+product_management: { action: "set_price", product_raw: "xi măng", unit: null, sell_price: 80000 }
+items: []
+next_stage_hint: resolve_entities
+
+User: "giá cát vàng 250k"
+Intent: manage_product
+customer_name: null
+supplier_name: null
+product_name: "cát vàng"
+product_management: { action: "set_price", product_raw: "cát vàng", unit: null, sell_price: 250000 }
+items: []
+next_stage_hint: resolve_entities
+
+User: "thêm hàng cát vàng"
+Intent: manage_product
+customer_name: null
+supplier_name: null
+product_name: "cát vàng"
+product_management: { action: "create", product_raw: "cát vàng", unit: null, sell_price: null }
+items: []
+next_stage_hint: resolve_entities
+
 User: "anh Hùng mua 20 bao xi măng"
 Intent: create_order
 customer_name: "anh Hùng"
@@ -106,6 +191,16 @@ User: "Hôm nay bán được bao nhiêu?"
 Intent: query_sales
 time_range.kind: today
 business_date: todayISO
+next_stage_hint: resolve_entities
+
+User: "Tuần này bán được bao nhiêu?"
+Intent: query_sales
+time_range.kind: this_week
+next_stage_hint: resolve_entities
+
+User: "Tháng này bán bao nhiêu?"
+Intent: query_sales
+time_range.kind: this_month
 next_stage_hint: resolve_entities
 
 User: "Sửa đơn hôm qua của cô Lan thành 12 bao"

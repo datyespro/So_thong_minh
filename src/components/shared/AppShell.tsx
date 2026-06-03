@@ -1,15 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import * as React from "react";
 import { BarChart3, MessageCircle, Package, PanelLeftClose, PanelLeftOpen, Users } from "lucide-react";
 import { SignOutButton } from "@/src/components/shared/SignOutButton";
 
 const navItems = [
-  { href: "/chat", label: "Chat", icon: MessageCircle, active: true },
-  { href: "/customers", label: "Khách hàng", icon: Users, active: false },
-  { href: "/products", label: "Sản phẩm", icon: Package, active: false },
-  { href: "/reports", label: "Báo cáo", icon: BarChart3, active: false },
+  { href: "/chat", label: "Chat", icon: MessageCircle },
+  { href: "/customers", label: "Khách hàng", icon: Users },
+  { href: "/products", label: "Sản phẩm", icon: Package },
+  { href: "/reports", label: "Báo cáo", icon: BarChart3 },
 ];
 
 type AppShellProps = Readonly<{
@@ -21,6 +22,7 @@ type AppShellProps = Readonly<{
 
 export function AppShell({ children, displayName, email, avatarInitial }: AppShellProps) {
   const [collapsed, setCollapsed] = React.useState(false);
+  const pathname = usePathname();
 
   return (
     <div
@@ -78,6 +80,7 @@ export function AppShell({ children, displayName, email, avatarInitial }: AppShe
         <nav className={["flex flex-col gap-1 transition-[padding] duration-300", collapsed ? "pl-0" : "pl-2"].join(" ")}>
           {navItems.map((item) => {
             const Icon = item.icon;
+            const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
 
             return (
               <Link
@@ -87,12 +90,12 @@ export function AppShell({ children, displayName, email, avatarInitial }: AppShe
                 className={[
                   "relative flex h-12 items-center rounded text-[15px] transition-[background-color,color,gap,padding] duration-300",
                   collapsed ? "justify-center gap-0 px-0" : "gap-3.5 px-4",
-                  item.active
+                  active
                     ? "bg-ink font-medium text-paper shadow-[inset_0_1px_2px_rgba(0,0,0,0.15),0_1px_0_rgba(30,58,138,0.3)]"
                     : "text-textMain hover:bg-ink/5 hover:text-ink",
                 ].join(" ")}
               >
-                {item.active ? (
+                {active ? (
                   <span className="absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-full bg-stamp" />
                 ) : null}
                 <Icon className="h-5 w-5 shrink-0 opacity-80" aria-hidden="true" />
@@ -174,6 +177,7 @@ export function AppShell({ children, displayName, email, avatarInitial }: AppShe
           <nav className="grid grid-cols-4 gap-1">
             {navItems.map((item) => {
               const Icon = item.icon;
+              const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
 
               return (
                 <Link
@@ -181,7 +185,7 @@ export function AppShell({ children, displayName, email, avatarInitial }: AppShe
                   href={item.href}
                   className={[
                     "flex min-h-11 flex-col items-center justify-center gap-1 rounded text-xs font-semibold",
-                    item.active ? "bg-ink text-paper" : "text-textMute hover:bg-ink/5 hover:text-ink",
+                    active ? "bg-ink text-paper" : "text-textMute hover:bg-ink/5 hover:text-ink",
                   ].join(" ")}
                   aria-label={item.label}
                 >

@@ -121,6 +121,7 @@ export function ChatContainer({
           id: turnId,
           userMessageId: result.userMessage.id,
           validated: pipeline.validated,
+          answer: result.answer ?? null,
           patched: createEmptyPreviewCardPatch(),
         },
       ]);

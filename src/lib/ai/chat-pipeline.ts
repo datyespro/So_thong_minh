@@ -7,10 +7,18 @@ import {
   validateIntent,
   type ValidateSupabaseClient,
 } from "@/src/lib/ai/validate-intent";
+import type { ExtractedIntent } from "@/src/lib/ai/intent-schema";
 import type { ValidatedIntent } from "@/src/lib/ai/validate-schema";
 
+const WRITABLE_LEDGER_INTENTS = new Set<ExtractedIntent["intent"]>([
+  "create_order",
+  "record_payment",
+  "create_purchase",
+]);
+const LETTER_OR_NUMBER_RE = /[\p{L}\p{N}]/u;
+
 export type ChatPipelineResult =
-  | { ok: true; validated: ValidatedIntent }
+  | { ok: true; extracted: ExtractedIntent; validated: ValidatedIntent }
   | {
       ok: false;
       stage: "extract" | "resolve" | "validate";
@@ -24,18 +32,60 @@ export type RunChatPipelineInput = {
   supabase: EntitySupabaseClient & ValidateSupabaseClient;
 };
 
+export function guardSymbolOnlyWritableIntent(
+  extracted: ExtractedIntent,
+): ExtractedIntent {
+  const rawText = extracted.raw_text.trim();
+
+  if (
+    !WRITABLE_LEDGER_INTENTS.has(extracted.intent) ||
+    LETTER_OR_NUMBER_RE.test(rawText)
+  ) {
+    return extracted;
+  }
+
+  return {
+    ...extracted,
+    intent: "unknown",
+    confidence: 0,
+    entities: {
+      customer_name: null,
+      supplier_name: null,
+      product_name: null,
+      product_management: null,
+      items: [],
+      amount: null,
+      payment_status: "unknown",
+      payment_method: null,
+      order_reference: null,
+      business_date: null,
+      time_range: {
+        raw: null,
+        kind: "unknown",
+        start_date: null,
+        end_date: null,
+      },
+    },
+    missing_info: [],
+    warnings: [...extracted.warnings, "ignored_symbol_only_input"],
+    needs_confirmation: false,
+    next_stage_hint: "reject",
+  };
+}
+
 export async function runChatPipeline({
   rawText,
   ownerId,
   supabase,
 }: RunChatPipelineInput): Promise<ChatPipelineResult> {
-  let extracted;
+  let extracted: ExtractedIntent;
 
   try {
     extracted = await extractIntent({
       rawText,
       ownerId,
     });
+    extracted = guardSymbolOnlyWritableIntent(extracted);
   } catch (error) {
     console.error("Chat pipeline extract failed", {
       ownerId,
@@ -83,6 +133,7 @@ export async function runChatPipeline({
 
     return {
       ok: true,
+      extracted,
       validated,
     };
   } catch (error) {

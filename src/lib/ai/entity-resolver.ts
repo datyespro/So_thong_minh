@@ -10,6 +10,7 @@ export type EntityRow = {
   id: string;
   name: string;
   aliases: string[];
+  unit?: string | null;
 };
 
 export const RESOLVE_THRESHOLDS = {
@@ -111,13 +112,19 @@ function candidateFor(
   matchedOn: MatchKind,
   matchedValue: string,
 ): EntityCandidate {
-  return {
+  const candidate: EntityCandidate = {
     id: row.id,
     name: row.name,
     score,
     matched_on: matchedOn,
     matched_value: matchedValue,
   };
+
+  if (row.unit) {
+    candidate.unit = row.unit;
+  }
+
+  return candidate;
 }
 
 function resolvedEntity(

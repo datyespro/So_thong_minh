@@ -1,8 +1,24 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, Check, Info, Plus, TriangleAlert, X } from "lucide-react";
-import { createCustomer } from "@/app/(app)/chat/actions";
+import { createPortal } from "react-dom";
+import { AlertTriangle, Check, Info, Plus, Search, Trash2, TriangleAlert, X } from "lucide-react";
+import {
+  commitOrder,
+  commitPayment,
+  commitPurchase,
+  createCustomer,
+  createProduct,
+  getCustomerDebt,
+  recreateSaleOrder,
+  searchCustomersByName,
+  searchProductsByName,
+  undoCommit,
+  type CommitOrderItemInput,
+  type CommitPurchaseItemInput,
+  type CreatedProductView,
+  type UndoTarget,
+} from "@/app/(app)/chat/actions";
 import { cn } from "@/src/lib/utils";
 import { Button } from "@/src/components/ui/button";
 import { confirmAliasInBackground } from "@/src/components/chat/preview-card/alias-client";
@@ -11,16 +27,23 @@ import {
   parseVietnameseNumber,
 } from "@/src/components/chat/preview-card/number-utils";
 import {
+  addItem,
   getPatchedPreviewState,
+  removeAddedItem,
+  removeIndex,
   updateCustomerPatch,
   updateAmountPatch,
+  updateAddedItemPrice,
+  updateAddedItemQuantity,
   updateItemProductPatch,
   updateItemPricePatch,
   updateItemQuantityPatch,
   updateSupplierPatch,
+  type PreviewDisplayItem,
   type VisibleIssue,
 } from "@/src/components/chat/preview-card/preview-state";
 import type {
+  PreviewAddedItemPatch,
   PreviewCardPatch,
   PreviewResolvedEntityPatch,
 } from "@/src/components/chat/preview-card/types";
@@ -28,10 +51,14 @@ import type {
   EntityCandidate,
   ResolvedEntity,
 } from "@/src/lib/ai/resolve-schema";
+import type { QueryAnswer } from "@/src/lib/ai/answer-query";
 import type { ValidatedIntent } from "@/src/lib/ai/validate-schema";
+import { businessDateVN, dayjs } from "@/src/lib/dayjs";
+import { parseProductSellPriceInput } from "@/src/lib/products/update";
 
 type PreviewCardProps = Readonly<{
   validated: ValidatedIntent;
+  answer?: QueryAnswer | null;
   patched: PreviewCardPatch;
   isLive: boolean;
   onPatchChange: (patch: PreviewCardPatch) => void;
@@ -47,6 +74,203 @@ type EntityTarget =
   | { type: "customer"; entity: ResolvedEntity }
   | { type: "supplier"; entity: ResolvedEntity }
   | { type: "product"; entity: ResolvedEntity; itemIndex: number };
+
+type PreviewCardInteractionInput = Readonly<{
+  intent: ValidatedIntent["intent"];
+  isLive: boolean;
+  hasCommitted: boolean;
+  undone: boolean;
+  isEditing: boolean;
+  isResaving: boolean;
+  canConfirm: boolean;
+}>;
+
+type CommittedInfo = Readonly<{
+  id: string;
+  message: string;
+  business_date: string | null;
+}>;
+
+export function getPreviewCardInteractionFlags(input: PreviewCardInteractionInput) {
+  const isReopeningSaleOrder =
+    input.intent === "create_order" &&
+    input.isEditing &&
+    input.isLive &&
+    input.hasCommitted &&
+    !input.undone;
+  const interactive = input.isLive && (!input.hasCommitted || isReopeningSaleOrder);
+  const canEditCounterpartyAndProducts = interactive && !isReopeningSaleOrder;
+  const canChangeCustomerInEdit = isReopeningSaleOrder && !input.isResaving;
+  const canEditItemsInEdit = isReopeningSaleOrder && !input.isResaving;
+  const canShowEditOrderButton =
+    input.intent === "create_order" &&
+    input.hasCommitted &&
+    input.isLive &&
+    !input.undone &&
+    !input.isEditing;
+  const canShowUndoButton =
+    input.hasCommitted && input.isLive && !input.undone && !input.isEditing;
+  const canShowResaveControls =
+    input.intent === "create_order" &&
+    input.hasCommitted &&
+    input.isLive &&
+    !input.undone &&
+    input.isEditing;
+
+  return {
+    isReopeningSaleOrder,
+    interactive,
+    canEditCounterpartyAndProducts,
+    canChangeCustomerInEdit,
+    canEditItemsInEdit,
+    canShowEditOrderButton,
+    canShowUndoButton,
+    canShowResaveControls,
+    resaveDisabled: input.isResaving || !input.canConfirm,
+  };
+}
+
+export function getPreviewBusinessDate(
+  input: Readonly<{
+    intent: ValidatedIntent["intent"];
+    hasCommitted: boolean;
+    committedBusinessDate?: string | null;
+  }>,
+) {
+  if (input.intent !== "create_order" && input.intent !== "create_purchase") {
+    return null;
+  }
+
+  if (input.hasCommitted) {
+    return input.committedBusinessDate ?? null;
+  }
+
+  return businessDateVN();
+}
+
+export function formatPreviewBusinessDate(value: string) {
+  return dayjs(value).format("DD/MM/YYYY");
+}
+
+export function canRemoveOrderItem(itemCount: number) {
+  return itemCount > 1;
+}
+
+export type OrderItemRemoveMode =
+  | "disabled"
+  | "remove-item"
+  | "confirm-delete-order";
+
+export function getOrderItemRemoveMode(
+  input: Readonly<{
+    itemCount: number;
+    isReopeningSaleOrder: boolean;
+  }>,
+): OrderItemRemoveMode {
+  if (canRemoveOrderItem(input.itemCount)) {
+    return "remove-item";
+  }
+
+  if (input.itemCount === 1 && input.isReopeningSaleOrder) {
+    return "confirm-delete-order";
+  }
+
+  return "disabled";
+}
+
+export function shouldKeepDeleteOrderConfirmOpen(
+  input: Readonly<{
+    kind: ValidatedIntent["kind"];
+    intent: ValidatedIntent["intent"];
+    isEditing: boolean;
+    isLive: boolean;
+    hasCommitted: boolean;
+    undone: boolean;
+    itemCount: number;
+  }>,
+) {
+  const isReopeningSaleOrder =
+    input.intent === "create_order" &&
+    input.isEditing &&
+    input.isLive &&
+    input.hasCommitted &&
+    !input.undone;
+
+  return (
+    input.kind === "writable" &&
+    getOrderItemRemoveMode({
+      itemCount: input.itemCount,
+      isReopeningSaleOrder,
+    }) === "confirm-delete-order"
+  );
+}
+
+export function formatDeleteOrderSummary(
+  input: Readonly<{
+    customerName: string | null;
+    total: number | null;
+    firstItem?: Readonly<{
+      name: string;
+      quantity: number | null;
+      unit: string | null;
+    }> | null;
+  }>,
+) {
+  const parts = [input.customerName ? `Đơn ${input.customerName}` : "Đơn này"];
+
+  if (input.firstItem) {
+    const quantity =
+      input.firstItem.quantity === null
+        ? null
+        : `${input.firstItem.quantity}${input.firstItem.unit ? ` ${input.firstItem.unit}` : ""}`;
+
+    parts.push(
+      quantity
+        ? `${quantity} ${input.firstItem.name}`
+        : input.firstItem.name,
+    );
+  }
+
+  parts.push(
+    input.total === null ? "Chưa rõ tổng tiền" : formatVietnameseMoney(input.total),
+  );
+
+  return parts.join(" - ");
+}
+
+function makeAddedItemTempId() {
+  return `added-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
+}
+
+const PRODUCT_UNIT_SUGGESTIONS = ["bao", "cây", "cái", "m³"] as const;
+
+export function addedItemFromProductCandidate(
+  candidate: EntityCandidate,
+  tempId: string,
+): PreviewAddedItemPatch {
+  return {
+    tempId,
+    product_id: candidate.id,
+    product_name: candidate.name,
+    unit: candidate.unit ?? "cái",
+    quantity: 1,
+    unit_price: 0,
+  };
+}
+
+export function addedItemFromCreatedProduct(
+  product: CreatedProductView,
+  tempId: string,
+): PreviewAddedItemPatch {
+  return {
+    tempId,
+    product_id: product.id,
+    product_name: product.name,
+    unit: product.unit,
+    quantity: 1,
+    unit_price: product.sell_price ?? 0,
+  };
+}
 
 const TITLE_BY_INTENT: Record<string, string> = {
   create_order: "Đơn bán hàng",
@@ -69,7 +293,190 @@ function compactFeatureText(intent: ValidatedIntent["intent"]) {
 }
 
 function friendlyNoneMessage(intent: ValidatedIntent["intent"]) {
+  if (intent === "manage_product") {
+    // TEMPORARY TIP-#3-D-a: recognition only. Real product actions land in
+    // #3-D-b/#3-E; do not write product data from this branch.
+    return "Dạ, em đã hiểu ý bác. Tính năng quản lý hàng qua chat em đang hoàn thiện ạ.";
+  }
+
   return intent === "small_talk" ? "Dạ, em nghe ạ." : "Em chưa rõ ý câu này ạ.";
+}
+
+function formatAnswerDate(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "Asia/Ho_Chi_Minh",
+  }).format(date);
+}
+
+function formatInventoryStock(value: number) {
+  return new Intl.NumberFormat("vi-VN", {
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function QueryAnswerContent({
+  answer,
+}: Readonly<{
+  answer: QueryAnswer | null | undefined;
+}>) {
+  if (!answer) {
+    return null;
+  }
+
+  if (answer.state === "read_error") {
+    return <p className="mt-2 text-textMute">{answer.message}</p>;
+  }
+
+  if (answer.type === "debt") {
+    if (answer.state === "found") {
+      if (answer.debt <= 0) {
+        return (
+          <p className="mt-2 font-semibold text-inkDeep">
+            {answer.customerName} không còn nợ ạ.
+          </p>
+        );
+      }
+
+      const details = [
+        formatAnswerDate(answer.lastOrderAt)
+          ? `Đơn gần nhất ${formatAnswerDate(answer.lastOrderAt)}`
+          : null,
+        formatAnswerDate(answer.lastPaymentAt)
+          ? `Trả gần nhất ${formatAnswerDate(answer.lastPaymentAt)}`
+          : null,
+      ].filter((detail): detail is string => Boolean(detail));
+
+      return (
+        <div className="mt-2">
+          <p className="font-semibold text-inkDeep">
+            {answer.customerName} đang nợ{" "}
+            <span className="font-display text-2xl font-semibold tracking-normal text-debt">
+              {formatVietnameseMoney(answer.debt)}
+            </span>
+          </p>
+          {details.length > 0 ? (
+            <p className="mt-1 text-[14px] leading-5 text-textMute">
+              {details.join(" · ")}
+            </p>
+          ) : null}
+        </div>
+      );
+    }
+
+    if (answer.state === "ambiguous") {
+      const names =
+        answer.candidates.length > 0
+          ? answer.candidates.join(", ")
+          : "các tên gần giống trong sổ";
+
+      return (
+        <p className="mt-2 text-textMute">
+          Em chưa chắc bác hỏi ai: {names}. Bác nhắn rõ tên giúp em ạ.
+        </p>
+      );
+    }
+
+    return (
+      <p className="mt-2 text-textMute">
+        Em chưa thấy khách tên &quot;{answer.askedName}&quot; trong sổ ạ.
+      </p>
+    );
+  }
+
+  if (answer.type === "inventory") {
+    if (answer.state === "found") {
+      if (answer.stock === 0) {
+        return (
+          <p className="mt-2 font-semibold text-inkDeep">
+            {answer.productName} hết hàng rồi ạ.
+          </p>
+        );
+      }
+
+      if (answer.stock < 0) {
+        return (
+          <p className="mt-2 font-semibold text-inkDeep">
+            {answer.productName} đang âm {formatInventoryStock(Math.abs(answer.stock))}{" "}
+            {answer.unit} (đã bán quá tồn) ạ.
+          </p>
+        );
+      }
+
+      return (
+        <p className="mt-2 font-semibold text-inkDeep">
+          Còn{" "}
+          <span className="font-display text-2xl font-semibold tracking-normal text-paid">
+            {formatInventoryStock(answer.stock)} {answer.unit}
+          </span>{" "}
+          {answer.productName}
+        </p>
+      );
+    }
+
+    if (answer.state === "ambiguous") {
+      const names =
+        answer.candidates.length > 0
+          ? answer.candidates.join(", ")
+          : "các hàng gần giống trong sổ";
+
+      return (
+        <p className="mt-2 text-textMute">
+          Em chưa chắc bác hỏi hàng nào: {names}. Bác nói rõ tên giúp em ạ.
+        </p>
+      );
+    }
+
+    return (
+      <p className="mt-2 text-textMute">
+        Em chưa thấy hàng &quot;{answer.askedName}&quot; trong sổ ạ.
+      </p>
+    );
+  }
+
+  if (answer.state === "unsupported_range") {
+    return (
+      <p className="mt-2 text-textMute">
+        Khúc thời gian này em chưa tra được, bác hỏi giúp em theo{" "}
+        <em>hôm nay / hôm qua / tuần này / tháng này</em> nhé.
+      </p>
+    );
+  }
+
+  if (answer.orders <= 0) {
+    return (
+      <p className="mt-2 font-semibold text-inkDeep">
+        {answer.rangeLabel} chưa bán đơn nào ạ.
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-2">
+      <p className="font-semibold text-inkDeep">
+        {answer.rangeLabel}: {answer.orders} đơn ·{" "}
+        <span className="font-display text-2xl font-semibold tracking-normal text-paid">
+          {formatVietnameseMoney(answer.revenue)}
+        </span>
+      </p>
+      <p className="mt-1 text-[14px] leading-5 text-textMute">
+        Đã thu {formatVietnameseMoney(answer.paid)} · Nợ thêm{" "}
+        {formatVietnameseMoney(answer.debt)}
+      </p>
+    </div>
+  );
 }
 
 function counterpartyLabel(validated: ValidatedIntent) {
@@ -101,7 +508,7 @@ function counterpartyName(entity: ResolvedEntity | null) {
   return null;
 }
 
-function entityPatchFromCandidate(
+export function entityPatchFromCandidate(
   entity: ResolvedEntity,
   candidate: EntityCandidate,
 ): PreviewResolvedEntityPatch {
@@ -113,7 +520,7 @@ function entityPatchFromCandidate(
   };
 }
 
-function entityPatchFromCreatedCustomer(
+export function entityPatchFromCreatedCustomer(
   raw: string,
   customer: { id: string; name: string },
 ): PreviewResolvedEntityPatch {
@@ -131,6 +538,20 @@ function shouldLearnAlias(raw: string | null, resolvedName: string) {
   }
 
   return raw.trim().toLocaleLowerCase("vi-VN") !== resolvedName.trim().toLocaleLowerCase("vi-VN");
+}
+
+// One stable key per card instance. Re-clicking "Ghi đơn" reuses it, so a
+// double-submit hits the DB idempotency guard instead of writing twice.
+function makeIdempotencyKey() {
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+  } catch {
+    // Non-secure context — fall back below.
+  }
+
+  return `idem-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function issueGroups(issues: VisibleIssue[]) {
@@ -314,6 +735,146 @@ function CustomerCreatePanel({
   );
 }
 
+function ProductCreatePanel({
+  raw,
+  isSaving,
+  error,
+  onCreate,
+  onDismiss,
+  onDraftChange,
+}: Readonly<{
+  raw: string;
+  isSaving: boolean;
+  error: string | null;
+  onCreate: (draft: { unit: string; sell_price: number | null }) => void;
+  onDismiss: () => void;
+  onDraftChange: () => void;
+}>) {
+  const [unitDraft, setUnitDraft] = React.useState("cái");
+  const [sellPriceDraft, setSellPriceDraft] = React.useState("");
+  const [localError, setLocalError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    setUnitDraft("cái");
+    setSellPriceDraft("");
+    setLocalError(null);
+  }, [raw]);
+
+  function handleDraftChange() {
+    setLocalError(null);
+    onDraftChange();
+  }
+
+  function handleCreateClick() {
+    const unit = unitDraft.trim();
+
+    if (!unit) {
+      setLocalError("Chọn đơn vị");
+      onDraftChange();
+      return;
+    }
+
+    const parsedPrice = parseProductSellPriceInput(sellPriceDraft);
+
+    if (!parsedPrice.ok) {
+      setLocalError(parsedPrice.message);
+      onDraftChange();
+      return;
+    }
+
+    setLocalError(null);
+    onCreate({ unit, sell_price: parsedPrice.value });
+  }
+
+  const visibleError = localError ?? error;
+
+  return (
+    <div
+      className="mt-2 rounded border border-stamp/25 bg-paperNote px-3 py-3 text-[15px] leading-6"
+      data-testid="product-create-panel"
+    >
+      <p className="font-semibold text-inkDeep">
+        Chưa có mặt hàng &quot;{raw}&quot;. Thêm mới nhé?
+      </p>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <label className="min-w-0">
+          <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-stamp">
+            Đơn vị
+          </span>
+          <input
+            type="text"
+            value={unitDraft}
+            disabled={isSaving}
+            className="mt-1 h-11 w-full rounded border border-stamp/35 bg-surface px-3 text-[16px] leading-6 text-textMain outline-none placeholder:text-textFaint focus:border-ink disabled:cursor-not-allowed disabled:opacity-60"
+            onChange={(event) => {
+              setUnitDraft(event.target.value);
+              handleDraftChange();
+            }}
+          />
+        </label>
+        <label className="min-w-0">
+          <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-stamp">
+            Giá bán
+          </span>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={sellPriceDraft}
+            disabled={isSaving}
+            placeholder="Để trống nếu chưa có"
+            className="mt-1 h-11 w-full rounded border border-stamp/35 bg-surface px-3 text-[16px] leading-6 text-textMain outline-none placeholder:text-textFaint focus:border-ink disabled:cursor-not-allowed disabled:opacity-60"
+            onChange={(event) => {
+              setSellPriceDraft(event.target.value);
+              handleDraftChange();
+            }}
+          />
+        </label>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {PRODUCT_UNIT_SUGGESTIONS.map((unit) => (
+          <button
+            key={unit}
+            type="button"
+            disabled={isSaving}
+            className="h-9 rounded border border-stamp/30 bg-surface px-3 text-[15px] font-semibold text-ink hover:border-ink hover:bg-paperWarm disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={() => {
+              setUnitDraft(unit);
+              handleDraftChange();
+            }}
+          >
+            {unit}
+          </button>
+        ))}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <Button
+          type="button"
+          className="h-11 rounded bg-ink px-3 text-[16px] font-semibold text-paper hover:bg-inkDeep"
+          disabled={isSaving}
+          onClick={handleCreateClick}
+        >
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          {isSaving ? "Đang thêm..." : `Thêm ${raw}`}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-11 rounded border-ledgerBorder bg-surface px-3 text-[16px] font-semibold text-textMute hover:bg-paperWarm"
+          onClick={onDismiss}
+        >
+          <X className="h-4 w-4" aria-hidden="true" />
+          Để sau
+        </Button>
+      </div>
+      {visibleError ? (
+        <p className="mt-2 text-[15px] text-debt" role="alert">
+          {visibleError}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function ProductMissingNotice({ raw }: Readonly<{ raw: string }>) {
   return (
     <div
@@ -325,8 +886,126 @@ function ProductMissingNotice({ raw }: Readonly<{ raw: string }>) {
   );
 }
 
+function DeleteOrderConfirmModal({
+  open,
+  summary,
+  isUndoing,
+  undoError,
+  onConfirm,
+  onCancel,
+}: Readonly<{
+  open: boolean;
+  summary: string;
+  isUndoing: boolean;
+  undoError: string | null;
+  onConfirm: () => void | Promise<void>;
+  onCancel: () => void;
+}>) {
+  const titleId = React.useId();
+  const descriptionId = React.useId();
+  const cancelButtonRef = React.useRef<HTMLButtonElement>(null);
+
+  React.useEffect(() => {
+    if (!open || typeof document === "undefined") {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !isUndoing) {
+        event.preventDefault();
+        onCancel();
+      }
+    }
+
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", handleKeyDown);
+    cancelButtonRef.current?.focus();
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open, isUndoing, onCancel]);
+
+  if (!open || typeof document === "undefined") {
+    return null;
+  }
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-inkDeep/45 px-4 py-6 backdrop-blur-[1px]"
+      data-testid="delete-order-confirm-modal"
+      onClick={() => {
+        if (!isUndoing) {
+          onCancel();
+        }
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        className="w-full max-w-[460px] rounded border border-ledgerBorder bg-surface px-5 py-5 text-textMain shadow-[0_24px_80px_-28px_rgba(23,37,84,0.55),0_1px_0_var(--ledger-border)] sm:px-6 sm:py-6"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start gap-3">
+          <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-debt/10 text-debt">
+            <TriangleAlert className="h-5 w-5" aria-hidden="true" />
+          </div>
+          <div className="min-w-0">
+            <h3
+              id={titleId}
+              className="font-display text-2xl font-semibold leading-8 tracking-normal text-inkDeep"
+            >
+              Bỏ luôn cả đơn này?
+            </h3>
+            <p
+              id={descriptionId}
+              className="mt-2 text-[16px] leading-7 text-textMute"
+            >
+              {summary}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button
+            ref={cancelButtonRef}
+            type="button"
+            variant="outline"
+            disabled={isUndoing}
+            className="h-12 rounded border-ledgerBorder bg-surface px-5 text-[16px] font-semibold text-textMute hover:bg-paperWarm hover:text-ink disabled:cursor-not-allowed disabled:opacity-55"
+            onClick={onCancel}
+          >
+            Không
+          </Button>
+          <Button
+            type="button"
+            disabled={isUndoing}
+            className="h-12 rounded bg-debt px-5 text-[16px] font-semibold text-paper hover:bg-debt/90 disabled:cursor-not-allowed disabled:opacity-55"
+            onClick={() => void onConfirm()}
+          >
+            {isUndoing ? "Đang huỷ..." : "Bỏ đơn"}
+          </Button>
+        </div>
+
+        {undoError ? (
+          <p className="mt-3 text-[15px] leading-6 text-debt" role="alert">
+            {undoError}
+          </p>
+        ) : null}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 export function PreviewCard({
   validated,
+  answer = null,
   patched,
   isLive,
   onPatchChange,
@@ -336,6 +1015,39 @@ export function PreviewCard({
   const [dismissedCustomerCreate, setDismissedCustomerCreate] = React.useState(false);
   const [isCreatingCustomer, setIsCreatingCustomer] = React.useState(false);
   const [createCustomerError, setCreateCustomerError] = React.useState<string | null>(null);
+  const [customerSearchOpen, setCustomerSearchOpen] = React.useState(false);
+  const [customerSearchInput, setCustomerSearchInput] = React.useState("");
+  const [customerSearchResult, setCustomerSearchResult] =
+    React.useState<ResolvedEntity | null>(null);
+  const [customerSearchLoading, setCustomerSearchLoading] = React.useState(false);
+  const [customerSearchError, setCustomerSearchError] = React.useState<string | null>(null);
+  const [customerSearchCreateOpen, setCustomerSearchCreateOpen] = React.useState(false);
+  const [isCreatingProduct, setIsCreatingProduct] = React.useState(false);
+  const [createProductError, setCreateProductError] = React.useState<string | null>(null);
+  const [productSearchOpen, setProductSearchOpen] = React.useState(false);
+  const [productSearchInput, setProductSearchInput] = React.useState("");
+  const [productSearchResult, setProductSearchResult] =
+    React.useState<ResolvedEntity | null>(null);
+  const [productSearchLoading, setProductSearchLoading] = React.useState(false);
+  const [productSearchError, setProductSearchError] = React.useState<string | null>(null);
+  const [productSearchCreateOpen, setProductSearchCreateOpen] = React.useState(false);
+  const [idempotencyKey, setIdempotencyKey] = React.useState(makeIdempotencyKey);
+  const [isCommitting, setIsCommitting] = React.useState(false);
+  const [committedInfo, setCommittedInfo] = React.useState<CommittedInfo | null>(null);
+  const [commitError, setCommitError] = React.useState<string | null>(null);
+  const [isEditing, setIsEditing] = React.useState(false);
+  const [isResaving, setIsResaving] = React.useState(false);
+  const [resaveError, setResaveError] = React.useState<string | null>(null);
+  const [editPatchSnapshot, setEditPatchSnapshot] =
+    React.useState<PreviewCardPatch | null>(null);
+  const [isUndoing, setIsUndoing] = React.useState(false);
+  const [undone, setUndone] = React.useState(false);
+  const [undoError, setUndoError] = React.useState<string | null>(null);
+  const [confirmDeleteOrder, setConfirmDeleteOrder] = React.useState(false);
+  // Current debt of the resolved customer, for the live overpayment check on
+  // record_payment. null = unknown (loading/failed) -> client doesn't block; the
+  // DB function still defends.
+  const [customerDebt, setCustomerDebt] = React.useState<number | null>(null);
   const [drafts, setDrafts] = React.useState<DraftInputs>({
     prices: {},
     quantities: {},
@@ -343,10 +1055,67 @@ export function PreviewCard({
   });
   const latestPatchRef = React.useRef(patched);
   const state = getPatchedPreviewState(validated, patched);
+  const handleCloseDeleteOrderConfirm = React.useCallback(() => {
+    setConfirmDeleteOrder(false);
+  }, []);
+
+  React.useEffect(() => {
+    if (
+      !shouldKeepDeleteOrderConfirmOpen({
+        kind: validated.kind,
+        intent: validated.intent,
+        hasCommitted: committedInfo !== null,
+        itemCount: state.items.length,
+        undone,
+        isLive,
+        isEditing,
+      })
+    ) {
+      setConfirmDeleteOrder(false);
+    }
+  }, [
+    validated.kind,
+    validated.intent,
+    isEditing,
+    isLive,
+    committedInfo,
+    undone,
+    state.items.length,
+  ]);
 
   React.useEffect(() => {
     latestPatchRef.current = patched;
   }, [patched]);
+
+  const paymentCustomerId =
+    validated.intent === "record_payment"
+      ? state.customer?.resolved_id ?? null
+      : null;
+
+  React.useEffect(() => {
+    if (!paymentCustomerId) {
+      setCustomerDebt(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    getCustomerDebt(paymentCustomerId)
+      .then((result) => {
+        if (!cancelled) {
+          setCustomerDebt(result.ok ? result.data.debt_total : null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCustomerDebt(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [paymentCustomerId]);
 
   if (validated.kind === "none") {
     return (
@@ -374,7 +1143,10 @@ export function PreviewCard({
                 Câu hỏi
               </p>
               <p className="mt-2 font-semibold text-inkDeep">{validated.raw_text}</p>
-              <p className="mt-2 text-textMute">{compactFeatureText(validated.intent)}</p>
+              <QueryAnswerContent answer={answer} />
+              {!answer ? (
+                <p className="mt-2 text-textMute">{compactFeatureText(validated.intent)}</p>
+              ) : null}
             </>
           ) : (
             <p className="font-semibold text-inkDeep">
@@ -391,13 +1163,149 @@ export function PreviewCard({
   const groups = issueGroups(state.issues);
   const counterparty = counterpartyEntity(validated, state);
   const entityName = counterpartyName(counterparty);
-  const showAmountPatch =
-    isLive &&
+  const {
+    isReopeningSaleOrder,
+    interactive,
+    canEditCounterpartyAndProducts,
+    canChangeCustomerInEdit,
+    canEditItemsInEdit,
+    canShowEditOrderButton,
+    canShowUndoButton,
+    canShowResaveControls,
+    resaveDisabled,
+  } = getPreviewCardInteractionFlags({
+    intent: validated.intent,
+    isLive,
+    hasCommitted: committedInfo !== null,
+    undone,
+    isEditing,
+    isResaving,
+    canConfirm: state.canConfirm,
+  });
+  // Plan B: block paying more than the customer currently owes. Recomputed live
+  // against the patched amount + fetched debt; the DB function defends too.
+  const overpaymentBlocking =
     validated.intent === "record_payment" &&
-    validated.effective_amount === null &&
-    validated.issues.some(
-      (issue) => issue.code === "missing_amount" || issue.code === "invalid_amount",
+    customerDebt !== null &&
+    state.amount !== null &&
+    state.amount > customerDebt;
+  const showAmountPatch =
+    interactive &&
+    validated.intent === "record_payment" &&
+    (
+      (validated.effective_amount === null &&
+        validated.issues.some(
+          (issue) =>
+            issue.code === "missing_amount" || issue.code === "invalid_amount",
+        )) ||
+      overpaymentBlocking ||
+      // Keep the editor open once the amount has been touched, so it doesn't
+      // vanish the moment an overpayment is corrected mid-typing.
+      patched.amount !== null
     );
+  const commitDisabled =
+    !state.canConfirm || isCommitting || overpaymentBlocking;
+  // For a payment, the header "Tổng tiền" mirrors the amount. While that amount
+  // isn't valid-to-commit, show "—" instead of a number so a green total never
+  // contradicts the red overpayment warning. Reuses the 007b overpaymentBlocking
+  // flag (+ empty/<=0 amount); no new debt comparison.
+  const paymentTotalUnsettled =
+    validated.intent === "record_payment" &&
+    (state.amount === null || state.amount <= 0 || overpaymentBlocking);
+  const cardBusinessDate = getPreviewBusinessDate({
+    intent: validated.intent,
+    hasCommitted: committedInfo !== null,
+    committedBusinessDate: committedInfo?.business_date,
+  });
+  const deleteOrderConfirmOpen =
+    confirmDeleteOrder &&
+    shouldKeepDeleteOrderConfirmOpen({
+      kind: validated.kind,
+      intent: validated.intent,
+      hasCommitted: committedInfo !== null,
+      itemCount: state.items.length,
+      undone,
+      isLive,
+      isEditing,
+    });
+  const deleteOrderSummary = formatDeleteOrderSummary({
+    customerName: entityName,
+    total: state.total,
+    firstItem: state.items[0]
+      ? {
+          name: state.items[0].name,
+          quantity: state.items[0].quantity,
+          unit: state.items[0].unit,
+        }
+      : null,
+  });
+  const productCreateRaw = productSearchResult?.raw ?? productSearchInput.trim();
+  const canShowProductCreatePanel =
+    productCreateRaw.length > 0 &&
+    (productSearchCreateOpen || productSearchResult?.status === "not_found");
+  const canShowProductCreateToggle =
+    productSearchResult !== null &&
+    productSearchResult.status !== "not_found" &&
+    productCreateRaw.length > 0 &&
+    !productSearchCreateOpen;
+  const canShowProductSuggestions =
+    productSearchResult !== null && !productSearchCreateOpen;
+
+  function clearCustomerSearchState() {
+    setCustomerSearchOpen(false);
+    setCustomerSearchInput("");
+    setCustomerSearchResult(null);
+    setCustomerSearchError(null);
+    setCustomerSearchLoading(false);
+    setCustomerSearchCreateOpen(false);
+    setCreateCustomerError(null);
+  }
+
+  function handleOpenCustomerSearch() {
+    setCustomerSearchOpen(true);
+    setCustomerSearchInput(entityName ?? "");
+    setCustomerSearchResult(null);
+    setCustomerSearchError(null);
+    setCustomerSearchCreateOpen(false);
+    setCreateCustomerError(null);
+  }
+
+  async function handleSearchCustomer() {
+    const name = customerSearchInput.trim();
+
+    if (customerSearchLoading) {
+      return;
+    }
+
+    if (!name) {
+      setCustomerSearchResult(null);
+      setCustomerSearchError(null);
+      setCustomerSearchCreateOpen(false);
+      return;
+    }
+
+    setCustomerSearchLoading(true);
+    setCustomerSearchError(null);
+    setCustomerSearchCreateOpen(false);
+
+    try {
+      const result = await searchCustomersByName(name);
+
+      if (!result.ok) {
+        setCustomerSearchError(result.message);
+        setCustomerSearchResult(null);
+        return;
+      }
+
+      setCustomerSearchResult(result.data);
+    } catch (error) {
+      console.error("searchCustomersByName failed", error);
+      setCustomerSearchError("ChÆ°a tÃ¬m Ä‘Æ°á»£c khÃ¡ch, bÃ¡c thá»­ láº¡i áº¡.");
+      setCustomerSearchResult(null);
+    } finally {
+      setCustomerSearchLoading(false);
+    }
+  }
 
   function applyEntityPatch(target: EntityTarget, entity: PreviewResolvedEntityPatch) {
     const currentPatch = latestPatchRef.current;
@@ -419,6 +1327,7 @@ export function PreviewCard({
     const entityPatch = entityPatchFromCandidate(target.entity, candidate);
 
     applyEntityPatch(target, entityPatch);
+    clearCustomerSearchState();
 
     if (shouldLearnAlias(target.entity.raw, candidate.name)) {
       void confirmAliasInBackground(
@@ -455,11 +1364,510 @@ export function PreviewCard({
       );
       setForceCreateCustomer(false);
       setDismissedCustomerCreate(false);
+      clearCustomerSearchState();
     } catch (error) {
       console.error("createCustomer failed", error);
       setCreateCustomerError("Chưa thêm được khách, bác thử lại ạ.");
     } finally {
       setIsCreatingCustomer(false);
+    }
+  }
+
+  function clearProductSearchState() {
+    setProductSearchOpen(false);
+    setProductSearchInput("");
+    setProductSearchResult(null);
+    setProductSearchError(null);
+    setProductSearchLoading(false);
+    setProductSearchCreateOpen(false);
+    setCreateProductError(null);
+  }
+
+  function handleOpenProductSearch() {
+    setProductSearchOpen(true);
+    setProductSearchInput("");
+    setProductSearchResult(null);
+    setProductSearchError(null);
+    setProductSearchCreateOpen(false);
+    setCreateProductError(null);
+  }
+
+  async function handleSearchProduct() {
+    const name = productSearchInput.trim();
+
+    if (productSearchLoading) {
+      return;
+    }
+
+    if (!name) {
+      setProductSearchResult(null);
+      setProductSearchError(null);
+      setProductSearchCreateOpen(false);
+      return;
+    }
+
+    setProductSearchLoading(true);
+    setProductSearchError(null);
+    setProductSearchCreateOpen(false);
+    setCreateProductError(null);
+
+    try {
+      const result = await searchProductsByName(name);
+
+      if (!result.ok) {
+        setProductSearchError(result.message);
+        setProductSearchResult(null);
+        return;
+      }
+
+      setProductSearchResult(result.data);
+      setProductSearchCreateOpen(result.data.status === "not_found");
+    } catch (error) {
+      console.error("searchProductsByName failed", error);
+      setProductSearchError("Chưa tìm được hàng, bác thử lại ạ.");
+      setProductSearchResult(null);
+    } finally {
+      setProductSearchLoading(false);
+    }
+  }
+
+  function handleSelectProduct(candidate: EntityCandidate) {
+    onPatchChange(
+      addItem(
+        latestPatchRef.current,
+        addedItemFromProductCandidate(candidate, makeAddedItemTempId()),
+      ),
+    );
+    clearProductSearchState();
+
+    if (
+      productSearchResult &&
+      shouldLearnAlias(productSearchResult.raw, candidate.name)
+    ) {
+      void confirmAliasInBackground("product", candidate.id, productSearchResult.raw);
+    }
+  }
+
+  async function handleCreateProduct(
+    rawName: string,
+    draft: { unit: string; sell_price: number | null },
+  ) {
+    const name = rawName.trim();
+
+    if (!name || isCreatingProduct) {
+      return;
+    }
+
+    setIsCreatingProduct(true);
+    setCreateProductError(null);
+
+    try {
+      const result = await createProduct(name, draft.unit, draft.sell_price);
+
+      if (!result.ok) {
+        setCreateProductError(result.message);
+        return;
+      }
+
+      onPatchChange(
+        addItem(
+          latestPatchRef.current,
+          addedItemFromCreatedProduct(result.data, makeAddedItemTempId()),
+        ),
+      );
+      clearProductSearchState();
+    } catch (error) {
+      console.error("createProduct failed", error);
+      setCreateProductError("Chưa thêm được mặt hàng, bác thử lại ạ.");
+    } finally {
+      setIsCreatingProduct(false);
+    }
+  }
+
+  function collectOrderItems(setError: (message: string) => void) {
+    const items: CommitOrderItemInput[] = [];
+
+    for (const displayItem of state.items) {
+      const productId = displayItem.resolution.resolved_id;
+
+      if (
+        !productId ||
+        displayItem.quantity === null ||
+        displayItem.unitPrice === null
+      ) {
+        setError("Đơn còn món chưa đủ thông tin, bác kiểm lại giúp em ạ.");
+        return null;
+      }
+
+      items.push({
+        product_id: productId,
+        product_name_snapshot: displayItem.name,
+        unit_snapshot: displayItem.unit,
+        quantity: displayItem.quantity,
+        unit_price: displayItem.unitPrice,
+      });
+    }
+
+    return items;
+  }
+
+  async function handleCommitOrder() {
+    // 007a writes create_order only. record_payment / create_purchase stay
+    // on the placeholder toast until their own TIP.
+    if (validated.intent !== "create_order") {
+      setNotice("Phần ghi đơn thật sẽ có ở bước sau ạ.");
+      return;
+    }
+
+    if (!state.canConfirm || isCommitting || committedInfo) {
+      return;
+    }
+
+    const customerId = state.customer?.resolved_id ?? null;
+
+    if (!customerId) {
+      setCommitError("Chưa rõ khách, bác chọn khách giúp em ạ.");
+      return;
+    }
+
+    const items = collectOrderItems(setCommitError);
+
+    if (!items) {
+      return;
+    }
+
+    setIsCommitting(true);
+    setCommitError(null);
+    setNotice(null);
+
+    try {
+      const result = await commitOrder({
+        idempotency_key: idempotencyKey,
+        customer_id: customerId,
+        raw_input: validated.raw_text,
+        items,
+      });
+
+      if (!result.ok) {
+        setCommitError(result.message);
+        return;
+      }
+
+      setCommittedInfo({
+        id: result.data.order_id,
+        business_date: result.data.business_date,
+        message: `Đã ghi đơn cho ${entityName ?? "khách"}`,
+      });
+      setResaveError(null);
+    } catch (error) {
+      console.error("commitOrder failed", error);
+      setCommitError("Chưa ghi được đơn, bác thử lại ạ.");
+    } finally {
+      setIsCommitting(false);
+    }
+  }
+
+  async function handleCommitPayment() {
+    if (validated.intent !== "record_payment") {
+      return;
+    }
+
+    if (!state.canConfirm || overpaymentBlocking || isCommitting || committedInfo) {
+      return;
+    }
+
+    const customerId = state.customer?.resolved_id ?? null;
+    const amount = state.amount;
+
+    if (!customerId) {
+      setCommitError("Chưa rõ khách, bác chọn khách giúp em ạ.");
+      return;
+    }
+
+    if (amount === null || !(amount > 0)) {
+      setCommitError("Chưa rõ số tiền, bác nhập lại giúp em ạ.");
+      return;
+    }
+
+    setIsCommitting(true);
+    setCommitError(null);
+    setNotice(null);
+
+    try {
+      const result = await commitPayment({
+        idempotency_key: idempotencyKey,
+        customer_id: customerId,
+        amount,
+        raw_input: validated.raw_text,
+      });
+
+      if (!result.ok) {
+        setCommitError(result.message);
+        return;
+      }
+
+      setCommittedInfo({
+        id: result.data.payment_id,
+        business_date: null,
+        message: `Đã ghi thu nợ cho ${entityName ?? "khách"}`,
+      });
+    } catch (error) {
+      console.error("commitPayment failed", error);
+      setCommitError("Chưa ghi được, bác thử lại ạ.");
+    } finally {
+      setIsCommitting(false);
+    }
+  }
+
+  async function handleCommitPurchase() {
+    if (validated.intent !== "create_purchase") {
+      return;
+    }
+
+    if (!state.canConfirm || isCommitting || committedInfo) {
+      return;
+    }
+
+    const items: CommitPurchaseItemInput[] = [];
+
+    for (const displayItem of state.items) {
+      const productId = displayItem.resolution.resolved_id;
+
+      if (
+        !productId ||
+        displayItem.quantity === null ||
+        displayItem.unitPrice === null
+      ) {
+        setCommitError("Đơn nhập còn món chưa đủ thông tin, bác kiểm lại giúp em ạ.");
+        return;
+      }
+
+      items.push({
+        product_id: productId,
+        product_name_snapshot: displayItem.name,
+        unit_snapshot: displayItem.unit,
+        quantity: displayItem.quantity,
+        // For a purchase the "đơn giá" column is the purchase cost (unit_cost).
+        unit_cost: displayItem.unitPrice,
+      });
+    }
+
+    setIsCommitting(true);
+    setCommitError(null);
+    setNotice(null);
+
+    try {
+      const result = await commitPurchase({
+        idempotency_key: idempotencyKey,
+        supplier_id: state.supplier?.resolved_id ?? null,
+        raw_input: validated.raw_text,
+        items,
+      });
+
+      if (!result.ok) {
+        setCommitError(result.message);
+        return;
+      }
+
+      const supplierName = counterpartyName(state.supplier);
+
+      setCommittedInfo({
+        id: result.data.purchase_id,
+        business_date: result.data.business_date,
+        message: supplierName
+          ? `Đã ghi nhập hàng từ ${supplierName}`
+          : "Đã ghi nhập hàng",
+      });
+    } catch (error) {
+      console.error("commitPurchase failed", error);
+      setCommitError("Chưa ghi được đơn nhập, bác thử lại ạ.");
+    } finally {
+      setIsCommitting(false);
+    }
+  }
+
+  function handleConfirmClick() {
+    if (validated.intent === "create_order") {
+      void handleCommitOrder();
+      return;
+    }
+
+    if (validated.intent === "record_payment") {
+      void handleCommitPayment();
+      return;
+    }
+
+    if (validated.intent === "create_purchase") {
+      void handleCommitPurchase();
+      return;
+    }
+
+    setNotice("Phần ghi đơn thật sẽ có ở bước sau ạ.");
+  }
+
+  function handleStartEditOrder() {
+    if (
+      validated.intent !== "create_order" ||
+      !committedInfo ||
+      !isLive ||
+      undone ||
+      isEditing
+    ) {
+      return;
+    }
+
+    setIdempotencyKey(makeIdempotencyKey());
+    setEditPatchSnapshot(latestPatchRef.current);
+    setIsEditing(true);
+    setResaveError(null);
+    setCommitError(null);
+    setUndoError(null);
+    setConfirmDeleteOrder(false);
+  }
+
+  function handleCancelEditOrder() {
+    if (isResaving) {
+      return;
+    }
+
+    if (editPatchSnapshot) {
+      onPatchChange(editPatchSnapshot);
+    }
+
+    setIsEditing(false);
+    setEditPatchSnapshot(null);
+    setResaveError(null);
+    setConfirmDeleteOrder(false);
+    clearCustomerSearchState();
+    clearProductSearchState();
+  }
+
+  async function handleResaveOrder() {
+    if (
+      validated.intent !== "create_order" ||
+      !committedInfo ||
+      !isEditing ||
+      isResaving ||
+      !state.canConfirm
+    ) {
+      return;
+    }
+
+    const customerId = state.customer?.resolved_id ?? null;
+
+    if (!customerId) {
+      setResaveError("Chưa rõ khách, bác kiểm lại giúp em ạ.");
+      return;
+    }
+
+    const items = collectOrderItems(setResaveError);
+
+    if (!items) {
+      return;
+    }
+
+    setIsResaving(true);
+    setResaveError(null);
+
+    try {
+      const result = await recreateSaleOrder({
+        oldOrderId: committedInfo.id,
+        idempotencyKey,
+        customer_id: customerId,
+        raw_input: validated.raw_text,
+        items,
+      });
+
+      if (!result.ok) {
+        const message =
+          result.code === "recommit_failed" || result.oldVoided
+            ? "Đơn cũ đã huỷ, ghi lại không thành công. Bác tạo lại đơn giúp em ạ."
+            : result.message || "Đơn này không sửa được nữa ạ.";
+
+        setResaveError(message);
+        setIsEditing(false);
+        setEditPatchSnapshot(null);
+        setConfirmDeleteOrder(false);
+        clearCustomerSearchState();
+        clearProductSearchState();
+
+        if (result.code === "recommit_failed" || result.oldVoided) {
+          setUndone(true);
+        }
+
+        return;
+      }
+
+      setCommittedInfo({
+        id: result.data.newOrderId,
+        business_date: result.data.business_date,
+        message: "Đã sửa đơn",
+      });
+      setIsEditing(false);
+      setEditPatchSnapshot(null);
+      setResaveError(null);
+      setUndoError(null);
+      setConfirmDeleteOrder(false);
+      setCommitError(null);
+      setIdempotencyKey(makeIdempotencyKey());
+      clearCustomerSearchState();
+      clearProductSearchState();
+    } catch (error) {
+      console.error("recreateSaleOrder failed", error);
+      setResaveError("Chưa ghi lại được đơn, bác thử lại ạ.");
+      setIsEditing(false);
+      setEditPatchSnapshot(null);
+      clearCustomerSearchState();
+      clearProductSearchState();
+    } finally {
+      setIsResaving(false);
+    }
+  }
+
+  async function handleUndo() {
+    if (!committedInfo || isUndoing || undone) {
+      return;
+    }
+
+    if (committedInfo.id.length === 0) {
+      console.error("undoCommit skipped: missing committed order id");
+      return;
+    }
+
+    const target: UndoTarget | null =
+      validated.intent === "create_order"
+        ? "order"
+        : validated.intent === "record_payment"
+          ? "payment"
+          : validated.intent === "create_purchase"
+            ? "purchase"
+            : null;
+
+    if (!target) {
+      return;
+    }
+
+    setIsUndoing(true);
+    setUndoError(null);
+    setResaveError(null);
+
+    try {
+      const result = await undoCommit(target, committedInfo.id);
+
+      if (!result.ok) {
+        setUndoError(result.message);
+        return;
+      }
+
+      setUndone(true);
+      setIsEditing(false);
+      setEditPatchSnapshot(null);
+      setConfirmDeleteOrder(false);
+    } catch (error) {
+      console.error("undoCommit failed", error);
+      setUndoError("Chưa huỷ được, bác thử lại ạ.");
+    } finally {
+      setIsUndoing(false);
     }
   }
 
@@ -487,6 +1895,96 @@ export function PreviewCard({
     );
   }
 
+  function clearItemDraft(itemIndex: number) {
+    setDrafts((current) => {
+      const prices = { ...current.prices };
+      const quantities = { ...current.quantities };
+      delete prices[itemIndex];
+      delete quantities[itemIndex];
+
+      return {
+        ...current,
+        prices,
+        quantities,
+      };
+    });
+  }
+
+  function handleAddedPriceChange(tempId: string, itemIndex: number, value: string) {
+    setDrafts((current) => ({
+      ...current,
+      prices: {
+        ...current.prices,
+        [itemIndex]: value,
+      },
+    }));
+    onPatchChange(
+      updateAddedItemPrice(latestPatchRef.current, tempId, parseVietnameseNumber(value)),
+    );
+  }
+
+  function handleAddedQuantityChange(tempId: string, itemIndex: number, value: string) {
+    setDrafts((current) => ({
+      ...current,
+      quantities: {
+        ...current.quantities,
+        [itemIndex]: value,
+      },
+    }));
+    onPatchChange(
+      updateAddedItemQuantity(
+        latestPatchRef.current,
+        tempId,
+        parseVietnameseNumber(value),
+      ),
+    );
+  }
+
+  function handleDisplayPriceChange(displayItem: PreviewDisplayItem, value: string) {
+    if (displayItem.tempId) {
+      handleAddedPriceChange(displayItem.tempId, displayItem.index, value);
+      return;
+    }
+
+    handlePriceChange(displayItem.index, value);
+  }
+
+  function handleDisplayQuantityChange(displayItem: PreviewDisplayItem, value: string) {
+    if (displayItem.tempId) {
+      handleAddedQuantityChange(displayItem.tempId, displayItem.index, value);
+      return;
+    }
+
+    handleQuantityChange(displayItem.index, value);
+  }
+
+  function handleRemoveDisplayItem(displayItem: PreviewDisplayItem) {
+    const removeMode = getOrderItemRemoveMode({
+      itemCount: state.items.length,
+      isReopeningSaleOrder,
+    });
+
+    if (removeMode === "disabled") {
+      return;
+    }
+
+    if (removeMode === "confirm-delete-order") {
+      setUndoError(null);
+      setConfirmDeleteOrder(true);
+      return;
+    }
+
+    setConfirmDeleteOrder(false);
+    clearItemDraft(displayItem.index);
+
+    if (displayItem.tempId) {
+      onPatchChange(removeAddedItem(latestPatchRef.current, displayItem.tempId));
+      return;
+    }
+
+    onPatchChange(removeIndex(latestPatchRef.current, displayItem.index));
+  }
+
   function handleAmountChange(value: string) {
     setDrafts((current) => ({
       ...current,
@@ -504,15 +2002,15 @@ export function PreviewCard({
   }
 
   return (
-    <div className={cn("flex w-full justify-start", !isLive && "opacity-70")}>
+    <div className={cn("flex w-full justify-start", !interactive && "opacity-70")}>
       <article
         className={cn(
           "w-full max-w-[94%] rounded border px-4 py-4 text-textMain shadow-[var(--shadow-card)] sm:max-w-[88%]",
-          isLive
+          interactive
             ? "border-ledgerBorder bg-surface"
             : "border-ledgerBorder bg-paperWarm shadow-none",
         )}
-        data-testid={isLive ? "preview-card-live" : "preview-card-frozen"}
+        data-testid={interactive ? "preview-card-live" : "preview-card-frozen"}
       >
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-ledgerBorder pb-3">
           <div>
@@ -522,11 +2020,21 @@ export function PreviewCard({
             <h2 className="mt-1 font-display text-2xl font-semibold tracking-normal text-inkDeep">
               {title}
             </h2>
+            {cardBusinessDate ? (
+              <p className="mt-1 text-[14px] leading-5 text-textMute">
+                Ngày: {formatPreviewBusinessDate(cardBusinessDate)}
+              </p>
+            ) : null}
           </div>
           <div className="text-right">
             <p className="text-[14px] leading-5 text-textMute">Tổng tiền</p>
-            <p className="font-display text-2xl font-semibold tracking-normal text-paid">
-              {formatVietnameseMoney(state.total)}
+            <p
+              className={cn(
+                "font-display text-2xl font-semibold tracking-normal",
+                paymentTotalUnsettled ? "text-textMute" : "text-paid",
+              )}
+            >
+              {paymentTotalUnsettled ? "—" : formatVietnameseMoney(state.total)}
             </p>
           </div>
         </div>
@@ -534,14 +2042,107 @@ export function PreviewCard({
         <div className="mt-3 grid gap-3 text-[16px] leading-7 sm:grid-cols-[140px_1fr]">
           <p className="font-semibold text-textMute">{counterpartyLabel(validated)}</p>
           <div>
-            {entityName ? (
-              <p className="font-semibold text-inkDeep">{entityName}</p>
-            ) : (
-              <p className="font-semibold text-debt">
-                {unresolvedCounterpartyText(validated)}
-              </p>
-            )}
-            {isLive &&
+            <div className="flex flex-wrap items-center gap-2">
+              {entityName ? (
+                <p className="font-semibold text-inkDeep">{entityName}</p>
+              ) : (
+                <p className="font-semibold text-debt">
+                  {unresolvedCounterpartyText(validated)}
+                </p>
+              )}
+              {canChangeCustomerInEdit ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-9 rounded border-ledgerBorder bg-surface px-3 text-[14px] font-semibold text-ink hover:bg-paperWarm"
+                  onClick={
+                    customerSearchOpen
+                      ? clearCustomerSearchState
+                      : handleOpenCustomerSearch
+                  }
+                >
+                  {customerSearchOpen ? (
+                    <X className="h-4 w-4" aria-hidden="true" />
+                  ) : (
+                    <Search className="h-4 w-4" aria-hidden="true" />
+                  )}
+                  {customerSearchOpen ? "Đóng" : "Đổi khách"}
+                </Button>
+              ) : null}
+            </div>
+            {canChangeCustomerInEdit && customerSearchOpen ? (
+              <div
+                className="mt-2 rounded border border-stamp/25 bg-paperNote px-3 py-3"
+                data-testid="edit-customer-search"
+              >
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <label className="min-w-0 flex-1">
+                    <span className="sr-only">Tìm khách</span>
+                    <input
+                      type="text"
+                      value={customerSearchInput}
+                      placeholder="Nhập tên khách"
+                      className="h-11 w-full rounded border border-stamp/35 bg-surface px-3 text-[16px] leading-6 text-textMain outline-none placeholder:text-textFaint focus:border-ink"
+                      onChange={(event) => {
+                        setCustomerSearchInput(event.target.value);
+                        setCustomerSearchResult(null);
+                        setCustomerSearchError(null);
+                        setCustomerSearchCreateOpen(false);
+                      }}
+                    />
+                  </label>
+                  <Button
+                    type="button"
+                    className="h-11 rounded bg-ink px-4 text-[16px] font-semibold text-paper hover:bg-inkDeep disabled:cursor-not-allowed disabled:opacity-55"
+                    disabled={customerSearchLoading}
+                    onClick={() => void handleSearchCustomer()}
+                  >
+                    <Search className="h-4 w-4" aria-hidden="true" />
+                    {customerSearchLoading ? "Đang tìm..." : "Tìm"}
+                  </Button>
+                </div>
+                {customerSearchError ? (
+                  <p className="mt-2 text-[15px] leading-6 text-debt" role="alert">
+                    {customerSearchError}
+                  </p>
+                ) : null}
+                {customerSearchResult ? (
+                  <EntityChoicePanel
+                    entity={customerSearchResult}
+                    label="Khách"
+                    allowCreate
+                    onSelect={(candidate) =>
+                      handleSelectCandidate(
+                        { type: "customer", entity: customerSearchResult },
+                        candidate,
+                      )
+                    }
+                    onCreate={() => {
+                      setCustomerSearchCreateOpen(true);
+                      setCreateCustomerError(null);
+                    }}
+                  />
+                ) : null}
+                {customerSearchCreateOpen &&
+                (customerSearchResult?.raw ?? customerSearchInput.trim()) ? (
+                  <CustomerCreatePanel
+                    raw={customerSearchResult?.raw ?? customerSearchInput.trim()}
+                    isSaving={isCreatingCustomer}
+                    error={createCustomerError}
+                    onCreate={() =>
+                      handleCreateCustomer(
+                        customerSearchResult?.raw ?? customerSearchInput.trim(),
+                      )
+                    }
+                    onDismiss={() => {
+                      setCustomerSearchCreateOpen(false);
+                      setCreateCustomerError(null);
+                    }}
+                  />
+                ) : null}
+              </div>
+            ) : null}
+            {canEditCounterpartyAndProducts &&
             counterparty?.entity_type === "customer" &&
             (counterparty.status === "needs_confirmation" ||
               counterparty.status === "ambiguous") &&
@@ -560,7 +2161,7 @@ export function PreviewCard({
                 }}
               />
             ) : null}
-            {isLive &&
+            {canEditCounterpartyAndProducts &&
             counterparty?.entity_type === "supplier" &&
             (counterparty.status === "needs_confirmation" ||
               counterparty.status === "ambiguous") ? (
@@ -573,7 +2174,7 @@ export function PreviewCard({
                 }
               />
             ) : null}
-            {isLive &&
+            {canEditCounterpartyAndProducts &&
             counterparty?.entity_type === "customer" &&
             counterparty.raw &&
             !entityName &&
@@ -611,14 +2212,33 @@ export function PreviewCard({
                 </p>
               )}
             </div>
+            {overpaymentBlocking ? (
+              <p
+                className="mt-2 text-[15px] leading-6 text-debt"
+                role="alert"
+                data-testid="overpayment-blocking"
+              >
+                Số tiền trả {formatVietnameseMoney(state.amount)} lớn hơn số nợ hiện
+                tại ({formatVietnameseMoney(customerDebt)}). Bác sửa xuống cho khớp ạ.
+              </p>
+            ) : null}
           </div>
         ) : (
           <div className="mt-4 overflow-hidden rounded border border-ledgerBorder">
-            <div className="grid grid-cols-[1.4fr_1fr] gap-2 bg-paperWarm px-3 py-2 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-stamp sm:grid-cols-[1.5fr_0.8fr_1fr_1fr]">
+            <div
+              className={cn(
+                "hidden gap-2 bg-paperWarm px-3 py-2 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-stamp sm:grid",
+                canEditItemsInEdit
+                  ? "sm:grid-cols-[1.4fr_0.65fr_0.45fr_0.9fr_0.9fr_auto]"
+                  : "sm:grid-cols-[1.5fr_0.75fr_0.55fr_1fr_1fr]",
+              )}
+            >
               <span>Mặt hàng</span>
               <span>Số lượng</span>
+              <span>Đơn vị</span>
               <span className="hidden sm:block">Đơn giá</span>
               <span className="hidden sm:block">Thành tiền</span>
+              {canEditItemsInEdit ? <span className="text-right">Thao tác</span> : null}
             </div>
             <div className="divide-y divide-ledgerBorder">
               {state.items.map((displayItem) => {
@@ -630,30 +2250,37 @@ export function PreviewCard({
                   displayItem.index,
                   displayItem.unitPrice,
                 );
-                const showQuantityInput = isLive;
-                const showPriceInput = isLive;
+                const showQuantityInput = interactive;
+                const showPriceInput = interactive;
                 const productNeedsChoice =
-                  isLive &&
+                  canEditCounterpartyAndProducts &&
                   (displayItem.resolution.status === "needs_confirmation" ||
                     displayItem.resolution.status === "ambiguous");
                 const productNotFound =
-                  isLive && displayItem.resolution.status === "not_found";
+                  canEditCounterpartyAndProducts &&
+                  displayItem.resolution.status === "not_found";
+                const removeMode = getOrderItemRemoveMode({
+                  itemCount: state.items.length,
+                  isReopeningSaleOrder,
+                });
+                const removeDisabled = removeMode === "disabled";
+                const removeTitle =
+                  removeMode === "confirm-delete-order"
+                    ? "Bỏ đơn này"
+                    : `Xóa dòng ${displayItem.name}`;
 
                 return (
                   <div
                     key={`${displayItem.item.raw}-${displayItem.index}`}
-                    className="grid grid-cols-[1.4fr_1fr] gap-2 px-3 py-3 text-[16px] leading-7 sm:grid-cols-[1.5fr_0.8fr_1fr_1fr]"
+                    className={cn(
+                      "block px-3 py-3 text-[16px] leading-7 sm:grid sm:gap-2",
+                      canEditItemsInEdit
+                        ? "sm:grid-cols-[1.4fr_0.65fr_0.45fr_0.9fr_0.9fr_auto]"
+                        : "sm:grid-cols-[1.5fr_0.75fr_0.55fr_1fr_1fr]",
+                    )}
                   >
-                    <div>
+                    <div className="min-w-0">
                       <p className="font-semibold text-inkDeep">{displayItem.name}</p>
-                      {!showPriceInput ? (
-                        <p className="text-[14px] leading-5 text-textMute sm:hidden">
-                          Đơn giá: {formatVietnameseMoney(displayItem.unitPrice)}
-                        </p>
-                      ) : null}
-                      <p className="text-[14px] leading-5 text-textMute sm:hidden">
-                        Thành tiền: {formatVietnameseMoney(displayItem.lineTotal)}
-                      </p>
                       {productNeedsChoice ? (
                         <EntityChoicePanel
                           entity={displayItem.resolution}
@@ -681,58 +2308,184 @@ export function PreviewCard({
                         />
                       ) : null}
                     </div>
-                    <div>
-                      {showQuantityInput ? (
-                        <PatchInput
-                          label={`Sửa số lượng ${displayItem.name}`}
-                          placeholder="Nhập SL"
-                          value={quantityDraft}
-                          onChange={(value) =>
-                            handleQuantityChange(displayItem.index, value)
-                          }
-                        />
-                      ) : (
-                        <p className="font-semibold">
-                          {displayItem.quantity ?? "Chưa có"}{" "}
+                    <div className="mt-3 grid grid-cols-[92px_minmax(0,1fr)] items-center gap-2 sm:mt-0 sm:block">
+                      <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-stamp sm:hidden">
+                        Số lượng
+                      </p>
+                      <div>
+                        {showQuantityInput ? (
+                          <PatchInput
+                            label={`Sửa số lượng ${displayItem.name}`}
+                            placeholder="Nhập SL"
+                            value={quantityDraft}
+                            onChange={(value) =>
+                              handleDisplayQuantityChange(displayItem, value)
+                            }
+                          />
+                        ) : (
+                          <p className="font-semibold">
+                            {displayItem.quantity ?? "Chưa có"}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-2 grid grid-cols-[92px_minmax(0,1fr)] items-center gap-2 sm:mt-0 sm:block">
+                      <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-stamp sm:hidden">
+                        Đơn vị
+                      </p>
+                      <div>
+                        <p className="font-semibold text-textMute">
                           {displayItem.unit ?? ""}
                         </p>
-                      )}
+                      </div>
                     </div>
-                    <div className="hidden sm:block">
-                      {showPriceInput ? (
-                        <PatchInput
-                          label={`Sửa giá ${displayItem.name}`}
-                          placeholder={`Nhập giá ${displayItem.unit ?? "1 đơn vị"}`}
-                          value={priceDraft}
-                          onChange={(value) =>
-                            handlePriceChange(displayItem.index, value)
-                          }
-                        />
-                      ) : (
-                        <p className="font-semibold">
-                          {formatVietnameseMoney(displayItem.unitPrice)}
+                    <div className="mt-2 grid grid-cols-[92px_minmax(0,1fr)] items-center gap-2 sm:mt-0 sm:block">
+                      <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-stamp sm:hidden">
+                        Đơn giá
+                      </p>
+                      <div>
+                        {showPriceInput ? (
+                          <PatchInput
+                            label={`Sửa giá ${displayItem.name}`}
+                            placeholder={`Nhập giá ${displayItem.unit ?? "1 đơn vị"}`}
+                            value={priceDraft}
+                            onChange={(value) =>
+                              handleDisplayPriceChange(displayItem, value)
+                            }
+                          />
+                        ) : (
+                          <p className="font-semibold">
+                            {formatVietnameseMoney(displayItem.unitPrice)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-2 grid grid-cols-[92px_minmax(0,1fr)] items-center gap-2 sm:mt-0 sm:block">
+                      <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-stamp sm:hidden">
+                        Thành tiền
+                      </p>
+                      <div>
+                        <p className="font-semibold text-inkDeep">
+                          {formatVietnameseMoney(displayItem.lineTotal)}
                         </p>
-                      )}
+                      </div>
                     </div>
-                    <p className="hidden font-semibold text-inkDeep sm:block">
-                      {formatVietnameseMoney(displayItem.lineTotal)}
-                    </p>
-                    {showPriceInput ? (
-                      <div className="col-span-2 sm:hidden">
-                        <PatchInput
-                          label={`Sửa giá ${displayItem.name}`}
-                          placeholder={`Nhập giá ${displayItem.unit ?? "1 đơn vị"}`}
-                          value={priceDraft}
-                          onChange={(value) =>
-                            handlePriceChange(displayItem.index, value)
-                          }
-                        />
+                    {canEditItemsInEdit ? (
+                      <div className="mt-3 flex justify-end sm:mt-0 sm:block sm:text-right">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={removeDisabled}
+                          title={removeTitle}
+                          aria-label={removeTitle}
+                          className="h-11 rounded border-ledgerBorder bg-surface px-3 text-textMute hover:bg-paperWarm hover:text-debt disabled:cursor-not-allowed disabled:opacity-55 sm:h-9 sm:px-2"
+                          onClick={() => handleRemoveDisplayItem(displayItem)}
+                        >
+                          <Trash2 className="h-4 w-4" aria-hidden="true" />
+                        </Button>
                       </div>
                     ) : null}
                   </div>
                 );
               })}
             </div>
+            {canEditItemsInEdit ? (
+              <div className="border-t border-ledgerBorder bg-surface px-3 py-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 rounded border-ledgerBorder bg-surface px-3 text-[15px] font-semibold text-ink hover:bg-paperWarm"
+                  onClick={
+                    productSearchOpen
+                      ? clearProductSearchState
+                      : handleOpenProductSearch
+                  }
+                >
+                  {productSearchOpen ? (
+                    <X className="h-4 w-4" aria-hidden="true" />
+                  ) : (
+                    <Plus className="h-4 w-4" aria-hidden="true" />
+                  )}
+                  {productSearchOpen ? "Đóng" : "Thêm hàng"}
+                </Button>
+                {productSearchOpen ? (
+                  <div
+                    className="mt-2 rounded border border-stamp/25 bg-paperNote px-3 py-3"
+                    data-testid="edit-product-search"
+                  >
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <label className="min-w-0 flex-1">
+                        <span className="sr-only">Tìm mặt hàng</span>
+                        <input
+                          type="text"
+                          value={productSearchInput}
+                          placeholder="Nhập tên mặt hàng"
+                          className="h-11 w-full rounded border border-stamp/35 bg-surface px-3 text-[16px] leading-6 text-textMain outline-none placeholder:text-textFaint focus:border-ink"
+                          onChange={(event) => {
+                            setProductSearchInput(event.target.value);
+                            setProductSearchResult(null);
+                            setProductSearchError(null);
+                            setProductSearchCreateOpen(false);
+                            setCreateProductError(null);
+                          }}
+                        />
+                      </label>
+                      <Button
+                        type="button"
+                        className="h-11 rounded bg-ink px-4 text-[16px] font-semibold text-paper hover:bg-inkDeep disabled:cursor-not-allowed disabled:opacity-55"
+                        disabled={productSearchLoading}
+                        onClick={() => void handleSearchProduct()}
+                      >
+                        <Search className="h-4 w-4" aria-hidden="true" />
+                        {productSearchLoading ? "Đang tìm..." : "Tìm"}
+                      </Button>
+                    </div>
+                    {productSearchError ? (
+                      <p className="mt-2 text-[15px] leading-6 text-debt" role="alert">
+                        {productSearchError}
+                      </p>
+                    ) : null}
+                    {canShowProductSuggestions ? (
+                      <EntityChoicePanel
+                        entity={productSearchResult}
+                        label="Hàng"
+                        allowCreate={false}
+                        onSelect={handleSelectProduct}
+                      />
+                    ) : null}
+                    {canShowProductCreateToggle ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="mt-2 h-auto min-h-10 justify-start px-0 text-[15px] font-semibold text-stamp hover:bg-transparent hover:text-ink"
+                        onClick={() => {
+                          setProductSearchCreateOpen(true);
+                          setCreateProductError(null);
+                        }}
+                      >
+                        <Plus className="h-4 w-4" aria-hidden="true" />
+                        Thêm mặt hàng mới: &quot;{productCreateRaw}&quot;
+                      </Button>
+                    ) : null}
+                    {canShowProductCreatePanel ? (
+                      <ProductCreatePanel
+                        raw={productCreateRaw}
+                        isSaving={isCreatingProduct}
+                        error={createProductError}
+                        onCreate={(draft) =>
+                          void handleCreateProduct(productCreateRaw, draft)
+                        }
+                        onDismiss={() => {
+                          setProductSearchCreateOpen(false);
+                          setCreateProductError(null);
+                        }}
+                        onDraftChange={() => setCreateProductError(null)}
+                      />
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         )}
 
@@ -742,24 +2495,121 @@ export function PreviewCard({
           <IssuePanel title="Ghi chú" tone="info" issues={groups.info} />
         </div>
 
-        {isLive ? (
+        {undone ? (
+          <div
+            className="mt-4 border-t border-ledgerBorder pt-3"
+            data-testid="order-undone"
+          >
+            <p className="flex items-center gap-2 text-[16px] font-semibold leading-6 text-textMute">
+              <X className="h-5 w-5 shrink-0" aria-hidden="true" />
+              <span className="line-through">Đã huỷ đơn</span>
+            </p>
+            {resaveError ? (
+              <p className="mt-2 text-[15px] leading-6 text-debt" role="alert">
+                {resaveError}
+              </p>
+            ) : null}
+          </div>
+        ) : committedInfo ? (
+          <div
+            className="mt-4 border-t border-ledgerBorder pt-3"
+            data-testid="order-committed"
+          >
+            <p className="flex items-center gap-2 text-[16px] font-semibold leading-6 text-paid">
+              <Check className="h-5 w-5 shrink-0" aria-hidden="true" />
+              {committedInfo.message}
+            </p>
+            {/* Undo is only offered on the most recent turn; sending a new
+                message makes this card no longer live and locks it for good. */}
+            {canShowResaveControls ? (
+              <div className="mt-3">
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    disabled={resaveDisabled}
+                    className="h-10 rounded bg-ink px-4 text-[15px] font-semibold text-paper hover:bg-inkDeep disabled:cursor-not-allowed disabled:opacity-55"
+                    onClick={() => void handleResaveOrder()}
+                  >
+                    {isResaving ? "Đang ghi lại..." : "Ghi lại"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isResaving}
+                    className="h-10 rounded border-ledgerBorder bg-surface px-4 text-[15px] font-semibold text-textMute hover:bg-paperWarm hover:text-ink disabled:cursor-not-allowed disabled:opacity-55"
+                    onClick={handleCancelEditOrder}
+                  >
+                    Huỷ sửa
+                  </Button>
+                </div>
+                {!state.canConfirm ? (
+                  <p className="mt-2 text-[15px] leading-6 text-textMute">
+                    Còn thiếu thông tin, bác bổ sung giúp em ạ.
+                  </p>
+                ) : null}
+                {resaveError ? (
+                  <p className="mt-2 text-[15px] leading-6 text-debt" role="alert">
+                    {resaveError}
+                  </p>
+                ) : null}
+              </div>
+            ) : canShowUndoButton ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {canShowEditOrderButton ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-10 rounded border-ledgerBorder bg-surface px-4 text-[15px] font-semibold text-ink hover:bg-paperWarm disabled:cursor-not-allowed disabled:opacity-55"
+                    onClick={handleStartEditOrder}
+                  >
+                    Sửa Đơn
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isUndoing}
+                  className="h-10 rounded border-ledgerBorder bg-surface px-4 text-[15px] font-semibold text-textMute hover:bg-paperWarm hover:text-ink disabled:cursor-not-allowed disabled:opacity-55"
+                  onClick={() => void handleUndo()}
+                >
+                  {isUndoing ? "Đang huỷ..." : "Hoàn tác"}
+                </Button>
+                {undoError ? (
+                  <p className="mt-2 text-[15px] leading-6 text-debt" role="alert">
+                    {undoError}
+                  </p>
+                ) : null}
+                {resaveError ? (
+                  <p className="basis-full text-[15px] leading-6 text-debt" role="alert">
+                    {resaveError}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : interactive ? (
           <div className="mt-4 border-t border-ledgerBorder pt-3">
             <Button
               type="button"
-              disabled={!state.canConfirm}
+              disabled={commitDisabled}
               title={
                 state.canConfirm
-                  ? "Phần ghi đơn thật sẽ có ở bước sau ạ."
+                  ? "Ghi vào sổ ạ"
                   : "Còn thiếu thông tin, bác bổ sung giúp em ạ."
               }
               className="h-12 rounded bg-ink px-5 text-[16px] font-semibold text-paper hover:bg-inkDeep disabled:cursor-not-allowed disabled:opacity-55"
-              onClick={() => setNotice("Phần ghi đơn thật sẽ có ở bước sau ạ.")}
+              onClick={handleConfirmClick}
             >
-              {buttonLabel}
+              {isCommitting ? "Đang ghi đơn..." : buttonLabel}
             </Button>
             {!state.canConfirm ? (
               <p className="mt-2 text-[15px] leading-6 text-textMute">
                 Còn thiếu thông tin, bác bổ sung giúp em ạ.
+              </p>
+            ) : null}
+            {commitError ? (
+              <p className="mt-2 text-[15px] leading-6 text-debt" role="alert">
+                {commitError}
               </p>
             ) : null}
             {notice ? (
@@ -769,6 +2619,14 @@ export function PreviewCard({
             ) : null}
           </div>
         ) : null}
+        <DeleteOrderConfirmModal
+          open={deleteOrderConfirmOpen}
+          summary={deleteOrderSummary}
+          isUndoing={isUndoing}
+          undoError={undoError}
+          onConfirm={handleUndo}
+          onCancel={handleCloseDeleteOrderConfirm}
+        />
       </article>
     </div>
   );

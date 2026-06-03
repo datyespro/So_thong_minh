@@ -21,7 +21,9 @@ vi.mock("@/src/lib/ai/validate-intent", () => ({
   validateIntent: mocks.validateIntent,
 }));
 
-const { runChatPipeline } = await import("@/src/lib/ai/chat-pipeline");
+const { guardSymbolOnlyWritableIntent, runChatPipeline } = await import(
+  "@/src/lib/ai/chat-pipeline"
+);
 
 const extractedIntent: ExtractedIntent = {
   intent: "create_order",
@@ -33,6 +35,7 @@ const extractedIntent: ExtractedIntent = {
     customer_name: "anh Hùng",
     supplier_name: null,
     product_name: "xi măng",
+    product_management: null,
     items: [
       {
         raw: "20 bao xi măng",
@@ -133,6 +136,51 @@ const validatedIntent: ValidatedIntent = {
   warning_count: 0,
 };
 
+describe("guardSymbolOnlyWritableIntent", () => {
+  function extractedWithRaw(
+    rawText: string,
+    intent: ExtractedIntent["intent"] = "create_order",
+  ): ExtractedIntent {
+    return {
+      ...extractedIntent,
+      intent,
+      raw_text: rawText,
+      normalized_text: rawText,
+    };
+  }
+
+  it.each(["...", "?", "..??..", "---", "!!!"])(
+    "overrides symbol-only writable input %s to unknown",
+    (rawText) => {
+      const guarded = guardSymbolOnlyWritableIntent(extractedWithRaw(rawText));
+
+      expect(guarded.intent).toBe("unknown");
+      expect(guarded.raw_text).toBe(rawText);
+      expect(guarded.entities.customer_name).toBeNull();
+      expect(guarded.entities.items).toEqual([]);
+      expect(guarded.next_stage_hint).toBe("reject");
+    },
+  );
+
+  it("keeps shorthand sale orders with Vietnamese letters and numbers", () => {
+    const extracted = extractedWithRaw("Hùng 5 bao xi măng");
+
+    expect(guardSymbolOnlyWritableIntent(extracted)).toBe(extracted);
+  });
+
+  it("keeps alphabetic gibberish for the model and validator to handle", () => {
+    const extracted = extractedWithRaw("abc");
+
+    expect(guardSymbolOnlyWritableIntent(extracted)).toBe(extracted);
+  });
+
+  it("does not touch non-writable intents even when the raw text is symbol-only", () => {
+    const extracted = extractedWithRaw("...", "small_talk");
+
+    expect(guardSymbolOnlyWritableIntent(extracted)).toBe(extracted);
+  });
+});
+
 describe("runChatPipeline", () => {
   const supabase = {
     from: vi.fn(),
@@ -174,7 +222,11 @@ describe("runChatPipeline", () => {
       supabase,
     });
 
-    expect(result).toEqual({ ok: true, validated: validatedIntent });
+    expect(result).toEqual({
+      ok: true,
+      extracted: extractedIntent,
+      validated: validatedIntent,
+    });
     expect(order).toEqual(["extract", "resolve", "validate"]);
     expect(mocks.extractIntent).toHaveBeenCalledWith({
       rawText: "anh Hùng mua 20 bao xi măng",
@@ -187,6 +239,64 @@ describe("runChatPipeline", () => {
     });
     expect(mocks.validateIntent).toHaveBeenCalledWith({
       resolved: resolvedIntent,
+      ownerId: "owner-1",
+      supabase,
+    });
+  });
+
+  it("guards symbol-only writable extraction before resolve", async () => {
+    const hallucinatedExtracted: ExtractedIntent = {
+      ...extractedIntent,
+      raw_text: "...",
+      normalized_text: "...",
+    };
+    const unknownResolved: ResolvedIntent = {
+      ...resolvedIntent,
+      intent: "unknown",
+      raw_text: "...",
+      amount: null,
+      customer: null,
+      supplier: null,
+      items: [],
+      overall_status: "all_resolved",
+      needs_confirmation: false,
+    };
+    const unknownValidated: ValidatedIntent = {
+      ...validatedIntent,
+      intent: "unknown",
+      kind: "none",
+      raw_text: "...",
+      customer: null,
+      supplier: null,
+      items: [],
+      effective_amount: null,
+      issues: [],
+      ready_for_preview: false,
+      blocking_count: 0,
+      warning_count: 0,
+    };
+    mocks.extractIntent.mockResolvedValue(hallucinatedExtracted);
+    mocks.resolveEntities.mockResolvedValue(unknownResolved);
+    mocks.validateIntent.mockResolvedValue(unknownValidated);
+
+    const result = await runChatPipeline({
+      rawText: "...",
+      ownerId: "owner-1",
+      supabase,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.extracted.intent).toBe("unknown");
+      expect(result.extracted.entities.items).toEqual([]);
+      expect(result.validated.kind).toBe("none");
+    }
+    expect(mocks.resolveEntities).toHaveBeenCalledWith({
+      intent: expect.objectContaining({
+        intent: "unknown",
+        raw_text: "...",
+        entities: expect.objectContaining({ items: [] }),
+      }),
       ownerId: "owner-1",
       supabase,
     });
@@ -269,7 +379,11 @@ describe("runChatPipeline", () => {
       supabase,
     });
 
-    expect(result).toEqual({ ok: true, validated: blockedValidated });
+    expect(result).toEqual({
+      ok: true,
+      extracted: extractedIntent,
+      validated: blockedValidated,
+    });
   });
 
   it("returns ok=true for small talk intents", async () => {
@@ -318,6 +432,10 @@ describe("runChatPipeline", () => {
       supabase,
     });
 
-    expect(result).toEqual({ ok: true, validated: smallTalkValidated });
+    expect(result).toEqual({
+      ok: true,
+      extracted: smallTalkExtracted,
+      validated: smallTalkValidated,
+    });
   });
 });

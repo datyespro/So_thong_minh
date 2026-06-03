@@ -71,6 +71,7 @@ export function MessageList({
               {turn ? (
                 <PreviewCard
                   validated={turn.validated}
+                  answer={turn.answer ?? null}
                   patched={turn.patched}
                   isLive={turn.id === activeTurnId}
                   onPatchChange={(patch) => onPatchTurn(turn.id, patch)}

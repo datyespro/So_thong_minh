@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ExtractedIntentSchema,
+  ExtractedIntentOutputSchema,
   IntentNameSchema,
   type ExtractedIntent,
 } from "@/src/lib/ai/intent-schema";
@@ -18,6 +19,7 @@ function baseIntent(
       customer_name: "cô Lan",
       supplier_name: null,
       product_name: "xi măng",
+      product_management: null,
       items: [
         {
           raw: "10 bao xi măng 85k",
@@ -55,6 +57,7 @@ describe("IntentNameSchema", () => {
       "create_order",
       "record_payment",
       "create_purchase",
+      "manage_product",
       "query_debt",
       "query_inventory",
       "query_sales",
@@ -110,6 +113,133 @@ describe("ExtractedIntentSchema", () => {
     );
 
     expect(parsed.intent).toBe("query_inventory");
+  });
+
+  it("accepts manage_product set_unit, set_price, and create outputs", () => {
+    const setUnit = ExtractedIntentSchema.parse(
+      baseIntent({
+        intent: "manage_product",
+        raw_text: "đổi đơn vị thép phi 12 thành cây",
+        normalized_text: "đổi đơn vị thép phi 12 thành cây",
+        entities: {
+          ...baseIntent().entities,
+          customer_name: null,
+          product_name: "thép phi 12",
+          product_management: {
+            action: "set_unit",
+            product_raw: "thép phi 12",
+            unit: "cây",
+            sell_price: null,
+          },
+          items: [],
+          amount: null,
+          payment_status: "unknown",
+        },
+        needs_confirmation: false,
+      }),
+    );
+
+    expect(setUnit.entities.product_management).toEqual({
+      action: "set_unit",
+      product_raw: "thép phi 12",
+      unit: "cây",
+      sell_price: null,
+    });
+
+    const setPrice = ExtractedIntentSchema.parse(
+      baseIntent({
+        intent: "manage_product",
+        raw_text: "đặt giá xi măng 80k",
+        normalized_text: "đặt giá xi măng 80000",
+        entities: {
+          ...baseIntent().entities,
+          customer_name: null,
+          product_name: "xi măng",
+          product_management: {
+            action: "set_price",
+            product_raw: "xi măng",
+            unit: null,
+            sell_price: 80000,
+          },
+          items: [],
+          amount: null,
+          payment_status: "unknown",
+        },
+        needs_confirmation: false,
+      }),
+    );
+
+    expect(setPrice.entities.product_management?.sell_price).toBe(80000);
+
+    const create = ExtractedIntentSchema.parse(
+      baseIntent({
+        intent: "manage_product",
+        raw_text: "thêm hàng cát vàng",
+        normalized_text: "thêm hàng cát vàng",
+        entities: {
+          ...baseIntent().entities,
+          customer_name: null,
+          product_name: "cát vàng",
+          product_management: {
+            action: "create",
+            product_raw: "cát vàng",
+            unit: null,
+            sell_price: null,
+          },
+          items: [],
+          amount: null,
+          payment_status: "unknown",
+        },
+        needs_confirmation: false,
+      }),
+    );
+
+    expect(create.entities.product_management?.action).toBe("create");
+  });
+
+  it("defaults missing internal product_management to null", () => {
+    const withoutProductManagement = {
+      ...baseIntent(),
+      entities: {
+        ...baseIntent().entities,
+      } as Partial<ExtractedIntent["entities"]>,
+    };
+    delete withoutProductManagement.entities.product_management;
+
+    const parsed = ExtractedIntentSchema.parse(withoutProductManagement);
+
+    expect(parsed.entities.product_management).toBeNull();
+  });
+
+  it("requires output product_management to be explicitly null or populated", () => {
+    const output = {
+      ...baseIntent(),
+      entities: {
+        ...baseIntent().entities,
+        product_management: null,
+        items: baseIntent().entities.items,
+        payment_status: "debt",
+        time_range: {
+          raw: null,
+          kind: "unknown",
+          start_date: null,
+          end_date: null,
+        },
+      },
+    };
+
+    expect(ExtractedIntentOutputSchema.parse(output).entities.product_management).toBeNull();
+
+    const missingOutput = {
+      ...output,
+      entities: {
+        ...output.entities,
+      },
+    };
+    delete (missingOutput.entities as Partial<typeof output.entities>)
+      .product_management;
+
+    expect(() => ExtractedIntentOutputSchema.parse(missingOutput)).toThrow();
   });
 
   it("rejects confidence below 0", () => {

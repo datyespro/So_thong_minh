@@ -4,6 +4,7 @@ export const IntentNameSchema = z.enum([
   "create_order",
   "record_payment",
   "create_purchase",
+  "manage_product",
   "query_debt",
   "query_inventory",
   "query_sales",
@@ -53,6 +54,19 @@ export const ExtractedItemSchema = z.object({
   confidence: z.number().min(0).max(1),
 });
 
+export const ProductManagementActionSchema = z.enum([
+  "set_unit",
+  "set_price",
+  "create",
+]);
+
+export const ProductManagementSchema = z.object({
+  action: ProductManagementActionSchema,
+  product_raw: z.string(),
+  unit: z.string().nullable(),
+  sell_price: z.number().nullable(),
+});
+
 export const ExtractedIntentSchema = z.object({
   intent: IntentNameSchema,
   confidence: z.number().min(0).max(1),
@@ -64,6 +78,7 @@ export const ExtractedIntentSchema = z.object({
     customer_name: z.string().nullable(),
     supplier_name: z.string().nullable(),
     product_name: z.string().nullable(),
+    product_management: ProductManagementSchema.nullable().default(null),
     items: z.array(ExtractedItemSchema).default([]),
     amount: z.number().nullable(),
     payment_status: PaymentStatusSchema.default("unknown"),
@@ -95,6 +110,7 @@ export const ExtractedIntentOutputSchema = z.object({
     customer_name: z.string().nullable(),
     supplier_name: z.string().nullable(),
     product_name: z.string().nullable(),
+    product_management: ProductManagementSchema.nullable(),
     items: z.array(ExtractedItemSchema),
     amount: z.number().nullable(),
     payment_status: PaymentStatusSchema,
@@ -117,4 +133,5 @@ export const ExtractedIntentOutputSchema = z.object({
 
 export type IntentName = z.infer<typeof IntentNameSchema>;
 export type ExtractedItem = z.infer<typeof ExtractedItemSchema>;
+export type ProductManagement = z.infer<typeof ProductManagementSchema>;
 export type ExtractedIntent = z.infer<typeof ExtractedIntentSchema>;

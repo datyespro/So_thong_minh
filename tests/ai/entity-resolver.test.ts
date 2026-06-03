@@ -66,6 +66,7 @@ function baseIntent(overrides: Partial<ExtractedIntent> = {}): ExtractedIntent {
       customer_name: null,
       supplier_name: null,
       product_name: null,
+      product_management: null,
       items: [],
       amount: null,
       payment_status: "unknown",
@@ -103,6 +104,25 @@ describe("resolveOne", () => {
     expect(resolved.resolved_id).toBe("customer-lan");
     expect(resolved.confidence).toBe(1);
     expect(resolved.candidates[0].matched_on).toBe("name_exact");
+  });
+
+  it("carries an optional product unit on candidates without changing matching", () => {
+    const resolved = resolveOne("xi mang", "product", [
+      {
+        id: "product-xi-mang",
+        name: "Xi m\u0103ng",
+        unit: "bao",
+        aliases: ["xm"],
+      },
+    ]);
+
+    expect(resolved.status).toBe("resolved");
+    expect(resolved.confidence).toBe(1);
+    expect(resolved.candidates[0]).toMatchObject({
+      id: "product-xi-mang",
+      matched_on: "name_exact",
+      unit: "bao",
+    });
   });
 
   it("resolves exact normalized aliases", () => {
@@ -346,6 +366,34 @@ describe("resolveOne — TIP-004-FIX-2 gendered honorific guard", () => {
 });
 
 describe("resolveEntities", () => {
+  it("passes manage_product through Stage 2 without special write handling", async () => {
+    const resolved = await resolveEntities({
+      ownerId: "owner-1",
+      entityRows: ownerRows,
+      intent: baseIntent({
+        intent: "manage_product",
+        raw_text: "đổi đơn vị thép phi 10 thành cây",
+        normalized_text: "đổi đơn vị thép phi 10 thành cây",
+        entities: {
+          ...baseIntent().entities,
+          product_name: "Thép phi 10",
+          product_management: {
+            action: "set_unit",
+            product_raw: "thép phi 10",
+            unit: "cây",
+            sell_price: null,
+          },
+          items: [],
+        },
+      }),
+    });
+
+    expect(resolved.intent).toBe("manage_product");
+    expect(resolved.items[0].resolution.resolved_id).toBe("product-thep-10");
+    expect(resolved.customer?.raw).toBeNull();
+    expect(resolved.supplier?.raw).toBeNull();
+  });
+
   it("resolves each item independently", async () => {
     const resolved = await resolveEntities({
       ownerId: "owner-1",

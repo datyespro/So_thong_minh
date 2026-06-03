@@ -57,6 +57,7 @@ function baseIntent(overrides: Partial<ExtractedIntent> = {}): ExtractedIntent {
       customer_name: null,
       supplier_name: null,
       product_name: null,
+      product_management: null,
       items: [],
       amount: null,
       payment_status: "unknown",

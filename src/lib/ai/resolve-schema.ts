@@ -23,6 +23,7 @@ export const MatchKindSchema = z.enum([
 export const EntityCandidateSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
+  unit: z.string().min(1).nullable().optional(),
   score: z.number().min(0).max(1),
   matched_on: MatchKindSchema,
   matched_value: z.string().min(1),
