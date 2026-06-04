@@ -1,0 +1,408 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { ArrowLeft, CircleDollarSign, Phone } from "lucide-react";
+import { Button } from "@/src/components/ui/button";
+import {
+  flattenCustomerPurchaseHistory,
+  sumCustomerPurchaseHistoryTotal,
+  type CustomerHistoryItem,
+  type CustomerHistoryOrder,
+  type CustomerPurchaseHistoryRow,
+  type CustomerPurchaseHistorySortDirection,
+} from "@/src/lib/customers/purchase-history";
+import { dayjs } from "@/src/lib/dayjs";
+import { formatVietnameseMoney } from "@/src/lib/format/money";
+import { createClient } from "@/src/lib/supabase/server";
+import { getAuthenticatedUser } from "@/src/components/shared/AuthGuard";
+
+type PageProps = {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ sort?: string | string[] }>;
+};
+
+type CustomerDetailRow = {
+  id: string;
+  name: string;
+  debt_total: number | string | null;
+  phone: string | null;
+};
+
+const HISTORY_COLUMNS = [
+  "Ngày",
+  "Mặt hàng",
+  "Số lượng",
+  "Đơn vị",
+  "Đơn giá",
+  "Thành tiền",
+] as const;
+
+function normalizeSortDirection(
+  value: string | string[] | undefined,
+): CustomerPurchaseHistorySortDirection {
+  return value === "date_desc" ? "date_desc" : "date_asc";
+}
+
+function formatMoneyValue(value: number | string | null | undefined) {
+  const numeric = Number(value ?? 0);
+
+  return formatVietnameseMoney(Number.isFinite(numeric) ? numeric : 0);
+}
+
+function formatBusinessDate(value: string | null) {
+  if (!value) {
+    return "—";
+  }
+
+  const parsed = dayjs(value);
+
+  return parsed.isValid() ? parsed.format("DD/MM/YYYY") : "—";
+}
+
+function formatQuantity(value: number | string) {
+  return String(value);
+}
+
+function normalizedPhoneHref(phone: string) {
+  const trimmed = phone.trim();
+
+  return trimmed.length > 0 ? `tel:${trimmed.replace(/\s+/g, "")}` : null;
+}
+
+function PurchaseHistoryEmptyState() {
+  return (
+    <div className="rounded border border-ledgerBorder bg-surface px-4 py-10 text-center">
+      <p className="font-display text-xl font-semibold text-inkDeep">
+        Khách này chưa có lịch sử mua.
+      </p>
+    </div>
+  );
+}
+
+function MobileHistoryCard({ row }: Readonly<{ row: CustomerPurchaseHistoryRow }>) {
+  const fields = [
+    ["Ngày", formatBusinessDate(row.business_date)],
+    ["Mặt hàng", row.product_name_snapshot],
+    ["Số lượng", formatQuantity(row.quantity)],
+    ["Đơn vị", row.unit_snapshot || "—"],
+    ["Đơn giá", formatMoneyValue(row.unit_price)],
+    ["Thành tiền", formatMoneyValue(row.line_total)],
+  ] as const;
+
+  return (
+    <div className="rounded border border-ledgerBorder bg-surface px-3 py-3 text-[16px] leading-7 shadow-[var(--shadow-card)]">
+      <div className="mb-2 border-b border-ledgerBorder pb-2">
+        <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-stamp">
+          {formatBusinessDate(row.business_date)}
+        </p>
+        <p className="mt-1 font-semibold text-inkDeep">
+          {row.product_name_snapshot}
+        </p>
+      </div>
+      <div className="space-y-2">
+        {fields.map(([label, value]) => (
+          <div
+            key={label}
+            className="grid grid-cols-[92px_minmax(0,1fr)] items-start gap-2"
+          >
+            <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-stamp">
+              {label}
+            </p>
+            <p
+              className={
+                label === "Thành tiền"
+                  ? "font-semibold text-inkDeep"
+                  : "font-semibold text-textMain"
+              }
+            >
+              {value}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MobileHistoryTotal({ total }: Readonly<{ total: number }>) {
+  return (
+    <div className="rounded border border-ledgerBorder bg-paperWarm px-3 py-4 shadow-[var(--shadow-card)]">
+      <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-stamp">
+        Tổng cộng
+      </p>
+      <p className="mt-1 break-words text-right font-mono text-[22px] font-bold leading-tight text-inkDeep">
+        {formatMoneyValue(total)}
+      </p>
+    </div>
+  );
+}
+
+function PurchaseHistoryTable({
+  rows,
+  total,
+  customerId,
+  sort,
+  nextSort,
+}: Readonly<{
+  rows: CustomerPurchaseHistoryRow[];
+  total: number;
+  customerId: string;
+  sort: CustomerPurchaseHistorySortDirection;
+  nextSort: CustomerPurchaseHistorySortDirection;
+}>) {
+  if (rows.length === 0) {
+    return <PurchaseHistoryEmptyState />;
+  }
+
+  return (
+    <>
+      <div className="hidden overflow-hidden rounded border border-ledgerBorder bg-surface sm:block">
+        <table className="w-full table-fixed border-collapse text-left text-[16px] leading-7">
+          <thead className="bg-paperWarm font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-stamp">
+            <tr>
+              {HISTORY_COLUMNS.map((column) => (
+                <th
+                  key={column}
+                  scope="col"
+                  className="px-3 py-2 first:w-[112px] last:text-right"
+                >
+                  {column === "Ngày" ? (
+                    <Link
+                      href={`/customers/${customerId}?sort=${nextSort}`}
+                      className="inline-flex items-center gap-1 hover:underline"
+                      aria-label={
+                        sort === "date_asc"
+                          ? "Sắp xếp ngày mới nhất trước"
+                          : "Sắp xếp ngày cũ nhất trước"
+                      }
+                    >
+                      Ngày
+                      <span aria-hidden="true">
+                        {sort === "date_asc" ? "↑" : "↓"}
+                      </span>
+                    </Link>
+                  ) : (
+                    column
+                  )}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-ledgerBorder">
+            {rows.map((row, index) => (
+              <tr key={`${row.order_id}-${row.sort_order ?? "null"}-${index}`}>
+                <td className="px-3 py-3 font-semibold text-textMute">
+                  {formatBusinessDate(row.business_date)}
+                </td>
+                <td className="px-3 py-3 font-semibold text-inkDeep">
+                  {row.product_name_snapshot}
+                </td>
+                <td className="px-3 py-3 font-semibold">
+                  {formatQuantity(row.quantity)}
+                </td>
+                <td className="px-3 py-3 font-semibold text-textMute">
+                  {row.unit_snapshot || "—"}
+                </td>
+                <td className="px-3 py-3 font-semibold">
+                  {formatMoneyValue(row.unit_price)}
+                </td>
+                <td className="px-3 py-3 text-right font-semibold text-inkDeep">
+                  {formatMoneyValue(row.line_total)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot className="border-t-2 border-ledgerBorder bg-paperWarm">
+            <tr>
+              <td
+                colSpan={5}
+                className="px-3 py-3 text-right font-display text-[18px] font-semibold text-inkDeep"
+              >
+                Tổng cộng
+              </td>
+              <td className="px-3 py-3 text-right font-mono text-[18px] font-bold text-inkDeep">
+                {formatMoneyValue(total)}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <div className="space-y-3 sm:hidden">
+        {rows.map((row, index) => (
+          <MobileHistoryCard
+            key={`${row.order_id}-${row.sort_order ?? "null"}-${index}`}
+            row={row}
+          />
+        ))}
+        <MobileHistoryTotal total={total} />
+      </div>
+    </>
+  );
+}
+
+export default async function CustomerDetailPage({
+  params,
+  searchParams,
+}: PageProps) {
+  const { id: customerId } = await params;
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const sort = normalizeSortDirection(resolvedSearchParams.sort);
+  const nextSort: CustomerPurchaseHistorySortDirection =
+    sort === "date_asc" ? "date_desc" : "date_asc";
+
+  if (!customerId) {
+    notFound();
+  }
+
+  const user = await getAuthenticatedUser();
+  const supabase = await createClient();
+
+  const { data: customerData, error: customerError } = await supabase
+    .from("customers")
+    .select("id,name,debt_total,phone")
+    .eq("owner_id", user.id)
+    .eq("id", customerId)
+    .eq("is_active", true)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (customerError || !customerData) {
+    notFound();
+  }
+
+  const customer = customerData as CustomerDetailRow;
+  const { data: orderData, error: ordersError } = await supabase
+    .from("orders")
+    .select("id,business_date")
+    .eq("owner_id", user.id)
+    .eq("customer_id", customerId)
+    .eq("status", "confirmed")
+    .is("deleted_at", null)
+    .order("business_date", { ascending: false });
+
+  if (ordersError) {
+    throw new Error("Không tải được lịch sử đơn của khách.");
+  }
+
+  const orders = (orderData ?? []) as CustomerHistoryOrder[];
+  const orderIds = orders.map((order) => order.id);
+  let items: CustomerHistoryItem[] = [];
+
+  if (orderIds.length > 0) {
+    const { data: itemData, error: itemsError } = await supabase
+      .from("order_items")
+      .select(
+        "order_id,product_name_snapshot,quantity,unit_snapshot,unit_price,line_total,sort_order",
+      )
+      .eq("owner_id", user.id)
+      .in("order_id", orderIds)
+      .is("deleted_at", null)
+      .order("sort_order", { ascending: true });
+
+    if (itemsError) {
+      throw new Error("Không tải được lịch sử mua của khách.");
+    }
+
+    items = (itemData ?? []) as CustomerHistoryItem[];
+  }
+
+  const historyRows = flattenCustomerPurchaseHistory(orders, items, sort);
+  const historyTotal = sumCustomerPurchaseHistoryTotal(historyRows);
+  const phoneHref = customer.phone ? normalizedPhoneHref(customer.phone) : null;
+
+  return (
+    <section className="h-full overflow-y-auto bg-paper px-4 py-5 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-6xl">
+        <div className="mb-5 border-b border-ledgerBorder pb-4">
+          <Link
+            href="/customers"
+            className="inline-flex h-10 items-center gap-2 rounded border border-ledgerBorder bg-surface px-3 text-[15px] font-semibold text-textMute hover:bg-paperWarm hover:text-ink"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            Quay lại
+          </Link>
+          <h1 className="mt-3 font-display text-3xl font-semibold tracking-normal text-inkDeep">
+            {customer.name}
+          </h1>
+        </div>
+
+        <div className="mb-6 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+          <div className="rounded border border-ledgerBorder bg-surface px-4 py-4">
+            <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-stamp">
+              Số nợ hiện tại
+            </p>
+            <p className="mt-2 font-mono text-[34px] font-bold leading-none text-debt sm:text-[40px]">
+              {formatMoneyValue(customer.debt_total)}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2 md:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              disabled
+              title="Sẽ làm sau"
+              className="h-11 rounded border-ledgerBorder bg-surface px-4 text-[16px] font-semibold text-textMute"
+            >
+              <CircleDollarSign className="h-4 w-4" aria-hidden="true" />
+              Ghi trả
+            </Button>
+            {phoneHref ? (
+              <Button
+                asChild
+                className="h-11 rounded bg-ink px-4 text-[16px] font-semibold text-paper hover:bg-inkDeep"
+              >
+                <a href={phoneHref}>
+                  <Phone className="h-4 w-4" aria-hidden="true" />
+                  Gọi
+                </a>
+              </Button>
+            ) : null}
+          </div>
+        </div>
+
+        <section aria-labelledby="purchase-history-heading">
+          <div className="mb-3 flex items-end justify-between gap-3 border-b border-ledgerBorder pb-3">
+            <div>
+              <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-stamp">
+                Giao dịch bán
+              </p>
+              <h2
+                id="purchase-history-heading"
+                className="mt-1 font-display text-2xl font-semibold text-inkDeep"
+              >
+                Lịch sử mua
+              </h2>
+            </div>
+            {historyRows.length > 0 ? (
+              <div className="text-right">
+                <Link
+                  href={`/customers/${customer.id}?sort=${nextSort}`}
+                  className="font-mono text-[12px] font-semibold text-stamp underline-offset-4 hover:underline sm:hidden"
+                  aria-label={
+                    sort === "date_asc"
+                      ? "Sắp xếp ngày mới nhất trước"
+                      : "Sắp xếp ngày cũ nhất trước"
+                  }
+                >
+                  Sắp xếp: {sort === "date_asc" ? "Cũ → mới" : "Mới → cũ"}
+                </Link>
+                <p className="hidden font-mono text-[12px] font-semibold text-textMute sm:block">
+                  {historyRows.length} dòng
+                </p>
+              </div>
+            ) : null}
+          </div>
+
+          <PurchaseHistoryTable
+            rows={historyRows}
+            total={historyTotal}
+            customerId={customer.id}
+            sort={sort}
+            nextSort={nextSort}
+          />
+        </section>
+      </div>
+    </section>
+  );
+}
