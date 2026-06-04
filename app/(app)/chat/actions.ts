@@ -62,6 +62,7 @@ type ProductSearchRow = {
   id: string;
   name: string;
   unit: string | null;
+  sell_price: number | string | null;
   aliases: string[] | null;
 };
 
@@ -145,6 +146,7 @@ function normalizeProductSearchRows(rows: ProductSearchRow[] | null): EntityRow[
   return (rows ?? []).map((row) => ({
     id: row.id,
     name: row.name,
+    sell_price: nullableProductMoney(row.sell_price),
     unit:
       typeof row.unit === "string" && row.unit.trim().length > 0
         ? row.unit
@@ -974,7 +976,7 @@ export async function searchProductsByName(
 
   const { data, error } = await supabase
     .from("products")
-    .select("id,name,aliases,unit")
+    .select("id,name,aliases,unit,sell_price")
     .eq("owner_id", user.id)
     .eq("is_active", true)
     .is("deleted_at", null);

@@ -218,6 +218,50 @@ describe("PreviewCard edit-order interaction flags", () => {
       unit_price: 0,
     });
 
+    expect(
+      addedItemFromProductCandidate(
+        {
+          id: "product-priced",
+          name: "Xi măng",
+          unit: "bao",
+          sell_price: 80000,
+          score: 1,
+          matched_on: "name_exact",
+          matched_value: "Xi măng",
+        },
+        "temp-priced",
+      ).unit_price,
+    ).toBe(80000);
+
+    expect(
+      addedItemFromProductCandidate(
+        {
+          id: "product-null-price",
+          name: "Cát vàng",
+          unit: "khối",
+          sell_price: null,
+          score: 1,
+          matched_on: "name_exact",
+          matched_value: "Cát vàng",
+        },
+        "temp-null-price",
+      ).unit_price,
+    ).toBe(0);
+
+    expect(
+      addedItemFromProductCandidate(
+        {
+          id: "product-undefined-price",
+          name: "Gạch",
+          unit: "viên",
+          score: 1,
+          matched_on: "name_exact",
+          matched_value: "Gạch",
+        },
+        "temp-undefined-price",
+      ).unit_price,
+    ).toBe(0);
+
     for (const { unit, tempId } of [
       { unit: "bao", tempId: "temp-bao" },
       { unit: "cây", tempId: "temp-cay" },

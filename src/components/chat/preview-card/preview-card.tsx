@@ -262,7 +262,7 @@ export function addedItemFromProductCandidate(
     product_name: candidate.name,
     unit: candidate.unit ?? "cái",
     quantity: 1,
-    unit_price: 0,
+    unit_price: candidate.sell_price ?? 0,
   };
 }
 

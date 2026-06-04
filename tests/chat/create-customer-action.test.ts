@@ -621,8 +621,20 @@ describe("searchProductsByName", () => {
   it("searches products by normalized exact name without writing", async () => {
     mocks.readIs.mockResolvedValue({
       data: [
-        { id: "product-xi-mang", name: "Xi măng", unit: "bao", aliases: [] },
-        { id: "product-cat", name: "Cát", unit: "khối", aliases: [] },
+        {
+          id: "product-xi-mang",
+          name: "Xi măng",
+          unit: "bao",
+          sell_price: 80000,
+          aliases: [],
+        },
+        {
+          id: "product-cat",
+          name: "Cát",
+          unit: "khối",
+          sell_price: null,
+          aliases: [],
+        },
       ],
       error: null,
     });
@@ -642,6 +654,7 @@ describe("searchProductsByName", () => {
             id: "product-xi-mang",
             name: "Xi măng",
             unit: "bao",
+            sell_price: 80000,
             matched_on: "name_exact",
           },
         ],
@@ -649,7 +662,9 @@ describe("searchProductsByName", () => {
     }
     expect(mocks.from).toHaveBeenCalledTimes(1);
     expect(mocks.from).toHaveBeenCalledWith("products");
-    expect(mocks.readSelect).toHaveBeenCalledWith("id,name,aliases,unit");
+    expect(mocks.readSelect).toHaveBeenCalledWith(
+      "id,name,aliases,unit,sell_price",
+    );
     expect(mocks.insert).not.toHaveBeenCalled();
   });
 

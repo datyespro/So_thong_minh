@@ -11,6 +11,7 @@ export type EntityRow = {
   name: string;
   aliases: string[];
   unit?: string | null;
+  sell_price?: number | null;
 };
 
 export const RESOLVE_THRESHOLDS = {
@@ -122,6 +123,10 @@ function candidateFor(
 
   if (row.unit) {
     candidate.unit = row.unit;
+  }
+
+  if (row.sell_price !== undefined) {
+    candidate.sell_price = row.sell_price;
   }
 
   return candidate;
