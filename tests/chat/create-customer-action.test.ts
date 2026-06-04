@@ -49,6 +49,7 @@ vi.mock("@/src/lib/supabase/server", () => ({
 const {
   createCustomer,
   createProduct,
+  createProductFromChat,
   searchCustomersByName,
   searchProductsByName,
   updateProduct,
@@ -258,10 +259,13 @@ describe("createProduct", () => {
       },
       error: null,
     });
-    mocks.from.mockReturnValueOnce(readChain).mockReturnValueOnce(insertChain);
+    mocks.from
+      .mockReturnValueOnce(readChain)
+      .mockReturnValueOnce(insertChain)
+      .mockReturnValueOnce(insertChain);
   });
 
-  it("creates a product scoped to the authenticated owner", async () => {
+  it("creates a product scoped to the authenticated owner and writes audit", async () => {
     const result = await createProduct("  Xi măng Hoàng Thạch  ", "bao");
 
     expect(result).toEqual({
@@ -275,6 +279,7 @@ describe("createProduct", () => {
     });
     expect(mocks.from).toHaveBeenNthCalledWith(1, "products");
     expect(mocks.from).toHaveBeenNthCalledWith(2, "products");
+    expect(mocks.from).toHaveBeenNthCalledWith(3, "audit_log");
     expect(mocks.insert).toHaveBeenCalledWith({
       owner_id: "user-a",
       name: "Xi măng Hoàng Thạch",
@@ -283,6 +288,23 @@ describe("createProduct", () => {
     });
     expect(mocks.insert.mock.calls[0][0]).not.toHaveProperty("sell_price");
     expect(mocks.insert.mock.calls[0][0]).not.toHaveProperty("cost_price");
+    expect(mocks.insert).toHaveBeenCalledWith({
+      owner_id: "user-a",
+      actor_id: "user-a",
+      entity_type: "product",
+      entity_id: "product-xi-mang-hoang-thach",
+      action: "create",
+      before_data: null,
+      after_data: {
+        name: "Xi măng Hoàng Thạch",
+        unit: "bao",
+        sell_price: null,
+      },
+      metadata: {
+        source: "createProduct",
+        fields: ["name", "unit", "sell_price"],
+      },
+    });
     expect(mocks.insertSelect).toHaveBeenCalledWith("id,name,unit,sell_price");
   });
 
@@ -305,6 +327,7 @@ describe("createProduct", () => {
       sell_price: null,
       is_active: true,
     });
+    expect(mocks.from).toHaveBeenNthCalledWith(3, "audit_log");
   });
 
   it("creates a product with unit and parsed sell price", async () => {
@@ -337,6 +360,23 @@ describe("createProduct", () => {
       is_active: true,
     });
     expect(mocks.insert.mock.calls[0][0]).not.toHaveProperty("cost_price");
+    expect(mocks.insert).toHaveBeenCalledWith({
+      owner_id: "user-a",
+      actor_id: "user-a",
+      entity_type: "product",
+      entity_id: "product-thep",
+      action: "create",
+      before_data: null,
+      after_data: {
+        name: "Thép phi 12",
+        unit: "cây",
+        sell_price: 80000,
+      },
+      metadata: {
+        source: "createProduct",
+        fields: ["name", "unit", "sell_price"],
+      },
+    });
   });
 
   it("returns an existing product on duplicate name without inserting", async () => {
@@ -438,6 +478,122 @@ describe("createProduct", () => {
     });
     expect(mocks.from).toHaveBeenCalledTimes(3);
     expect(mocks.insert).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("createProductFromChat", () => {
+  beforeEach(() => {
+    mocks.getUser.mockReset();
+    mocks.from.mockReset();
+    mocks.readSelect.mockReset();
+    mocks.readEq.mockReset();
+    mocks.readIs.mockReset();
+    mocks.insert.mockReset();
+    mocks.insertSelect.mockReset();
+    mocks.single.mockReset();
+
+    mocks.getUser.mockResolvedValue({
+      data: { user: { id: "user-a" } },
+      error: null,
+    });
+    mocks.readSelect.mockReturnValue(readChain);
+    mocks.readEq.mockReturnValue(readChain);
+    mocks.readIs.mockResolvedValue({ data: [], error: null });
+    mocks.insert.mockReturnValue({ select: mocks.insertSelect });
+    mocks.insertSelect.mockReturnValue({ single: mocks.single });
+    mocks.single.mockResolvedValue({
+      data: {
+        id: "product-gach-do",
+        name: "gạch đỏ",
+        unit: "bao",
+        sell_price: 85000,
+      },
+      error: null,
+    });
+  });
+
+  it("returns a duplicate error before createProduct can insert", async () => {
+    mocks.from.mockReturnValueOnce(readChain);
+    mocks.readIs.mockResolvedValue({
+      data: [
+        {
+          id: "product-existing",
+          name: "Gạch đỏ",
+          unit: "viên",
+          sell_price: null,
+        },
+      ],
+      error: null,
+    });
+
+    const result = await createProductFromChat({
+      name: "gạch đỏ",
+      unit: "bao",
+      sell_price: null,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      code: "validation_failed",
+      message: "Hàng này có thể đã tồn tại. Bác kiểm tra lại danh sách hàng nhé.",
+    });
+    expect(mocks.from).toHaveBeenCalledTimes(1);
+    expect(mocks.from).toHaveBeenCalledWith("products");
+    expect(mocks.readEq).toHaveBeenCalledWith("owner_id", "user-a");
+    expect(mocks.readEq).toHaveBeenCalledWith("is_active", true);
+    expect(mocks.readIs).toHaveBeenCalledWith("deleted_at", null);
+    expect(mocks.insert).not.toHaveBeenCalled();
+  });
+
+  it("delegates to createProduct when the chat duplicate guard passes", async () => {
+    mocks.from
+      .mockReturnValueOnce(readChain)
+      .mockReturnValueOnce(readChain)
+      .mockReturnValueOnce(insertChain)
+      .mockReturnValueOnce(insertChain);
+    mocks.readIs.mockResolvedValue({ data: [], error: null });
+
+    const result = await createProductFromChat({
+      name: "  gạch đỏ  ",
+      unit: "bao",
+      sell_price: 85000,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        id: "product-gach-do",
+        name: "gạch đỏ",
+        unit: "bao",
+        sell_price: 85000,
+      },
+    });
+    expect(mocks.getUser).toHaveBeenCalledTimes(2);
+    expect(mocks.from).toHaveBeenCalledTimes(4);
+    expect(mocks.insert).toHaveBeenCalledWith({
+      owner_id: "user-a",
+      name: "gạch đỏ",
+      unit: "bao",
+      sell_price: 85000,
+      is_active: true,
+    });
+    expect(mocks.insert).toHaveBeenCalledWith({
+      owner_id: "user-a",
+      actor_id: "user-a",
+      entity_type: "product",
+      entity_id: "product-gach-do",
+      action: "create",
+      before_data: null,
+      after_data: {
+        name: "gạch đỏ",
+        unit: "bao",
+        sell_price: 85000,
+      },
+      metadata: {
+        source: "createProduct",
+        fields: ["name", "unit", "sell_price"],
+      },
+    });
   });
 });
 

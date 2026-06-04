@@ -3,7 +3,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PreviewCard } from "@/src/components/chat/preview-card/preview-card";
 import { createEmptyPreviewCardPatch } from "@/src/components/chat/preview-card";
-import type { PreviewCardPatch } from "@/src/components/chat/preview-card";
+import type {
+  PreviewCardPatch,
+  ProductManagementPreview,
+} from "@/src/components/chat/preview-card";
 import type { QueryAnswer } from "@/src/lib/ai/answer-query";
 import type { ValidatedIntent } from "@/src/lib/ai/validate-schema";
 import {
@@ -27,12 +30,14 @@ function renderCard(
     patched?: PreviewCardPatch;
     isLive?: boolean;
     answer?: QueryAnswer | null;
+    productManagementPreview?: ProductManagementPreview | null;
   } = {},
 ) {
   return renderToStaticMarkup(
     createElement(PreviewCard, {
       validated,
       answer: options.answer ?? null,
+      productManagementPreview: options.productManagementPreview ?? null,
       patched: options.patched ?? createEmptyPreviewCardPatch(),
       isLive: options.isLive ?? true,
       onPatchChange: () => undefined,
@@ -138,6 +143,246 @@ describe("PreviewCard", () => {
     expect(manageProductHtml).not.toContain("Em chưa rõ ý câu này");
     expect(editHtml).toContain("Tính năng này sẽ có ở bước sau ạ.");
     expect(editHtml).not.toContain("Ghi đơn");
+  });
+
+  it("renders product-management not_found without save controls", () => {
+    const html = renderCard(
+      baseValidated({
+        intent: "manage_product",
+        kind: "none",
+        items: [],
+        effective_amount: null,
+        ready_for_preview: false,
+      }),
+      {
+        productManagementPreview: {
+          status: "not_found",
+          action: "set_unit",
+          product_raw: "gạch siêu lạ",
+        },
+      },
+    );
+
+    expect(html).toContain('data-testid="product-management-not-found"');
+    expect(html).toContain("chưa tìm thấy hàng");
+    expect(html).toContain("gạch siêu lạ");
+    expect(html).not.toContain(">Lưu<");
+    expect(html).not.toContain("Thêm mặt hàng");
+  });
+
+  it("renders a set_unit product-management preview with save and cancel", () => {
+    const html = renderCard(
+      baseValidated({
+        intent: "manage_product",
+        kind: "none",
+        items: [],
+        effective_amount: null,
+        ready_for_preview: false,
+      }),
+      {
+        productManagementPreview: {
+          status: "ready",
+          action: "set_unit",
+          product: {
+            id: "product-xi-mang",
+            name: "Xi măng",
+            unit: "cái",
+            sell_price: null,
+          },
+          target: { unit: "bao" },
+        },
+      },
+    );
+
+    expect(html).toContain('data-testid="product-management-ready"');
+    expect(html).toContain("Đổi đơn vị hàng");
+    expect(html).toContain("Xi măng");
+    expect(html).toContain("cái");
+    expect(html).toContain("bao");
+    expect(html).toContain(">Lưu</button>");
+    expect(html).toContain("Hủy");
+  });
+
+  it("renders a set_price product-management preview with VND formatting", () => {
+    const html = renderCard(
+      baseValidated({
+        intent: "manage_product",
+        kind: "none",
+        items: [],
+        effective_amount: null,
+        ready_for_preview: false,
+      }),
+      {
+        productManagementPreview: {
+          status: "ready",
+          action: "set_price",
+          product: {
+            id: "product-xi-mang",
+            name: "Xi măng",
+            unit: "bao",
+            sell_price: null,
+          },
+          target: { sell_price: 85000 },
+        },
+      },
+    );
+
+    expect(html).toContain("Đặt giá bán");
+    expect(html).toContain("—");
+    expect(html).toContain("85.000");
+    expect(html).toContain("Lưu");
+  });
+
+  it("renders product-management candidate picker without create controls", () => {
+    const html = renderCard(
+      baseValidated({
+        intent: "manage_product",
+        kind: "none",
+        items: [],
+        effective_amount: null,
+        ready_for_preview: false,
+      }),
+      {
+        productManagementPreview: {
+          status: "needs_choice",
+          action: "set_unit",
+          product_raw: "xi măng",
+          target: { unit: "bao" },
+          candidates: [
+            {
+              id: "product-a",
+              name: "Xi măng A",
+              unit: "cái",
+              sell_price: null,
+              score: 0.95,
+              matched_on: "alias_exact",
+              matched_value: "xi măng",
+            },
+            {
+              id: "product-b",
+              name: "Xi măng B",
+              unit: "bao",
+              sell_price: 90000,
+              score: 0.95,
+              matched_on: "alias_exact",
+              matched_value: "xi măng",
+            },
+          ],
+        },
+      },
+    );
+
+    expect(html).toContain('data-testid="product-management-needs_choice"');
+    expect(html).toContain('data-testid="product-confirm-panel"');
+    expect(html).toContain("Xi măng A");
+    expect(html).toContain("Xi măng B");
+    expect(html).not.toContain("Thêm mặt hàng");
+    expect(html).not.toContain("thêm khách");
+  });
+
+  it("renders a create_draft product-management form before the manage_product placeholder", () => {
+    const html = renderCard(
+      baseValidated({
+        intent: "manage_product",
+        kind: "none",
+        items: [],
+        effective_amount: null,
+        ready_for_preview: false,
+      }),
+      {
+        productManagementPreview: {
+          status: "create_draft",
+          action: "create",
+          product_raw: "gạch đỏ",
+          draft: {
+            name: "gạch đỏ",
+            unit: "cái",
+            sell_price: null,
+          },
+        },
+      },
+    );
+
+    expect(html).toContain('data-testid="product-management-create_draft"');
+    expect(html).toContain("Thêm hàng mới");
+    expect(html).toContain("Tên hàng");
+    expect(html).toContain('value="gạch đỏ"');
+    expect(html).toContain("Đơn vị");
+    expect(html).toContain('value="cái"');
+    expect(html).toContain("Giá bán");
+    expect(html).toContain("bao");
+    expect(html).toContain("cây");
+    expect(html).toContain("m³");
+    expect(html).toContain("Tạo hàng");
+    expect(html).toContain("Hủy");
+    expect(html).not.toContain("Tính năng quản lý hàng qua chat em đang hoàn thiện");
+  });
+
+  it("renders a create_duplicate product-management notice without create controls", () => {
+    const html = renderCard(
+      baseValidated({
+        intent: "manage_product",
+        kind: "none",
+        items: [],
+        effective_amount: null,
+        ready_for_preview: false,
+      }),
+      {
+        productManagementPreview: {
+          status: "create_duplicate",
+          action: "create",
+          product_raw: "gạch đỏ",
+          product: {
+            id: "product-gach-do",
+            name: "gạch đỏ",
+            unit: "viên",
+            sell_price: 2000,
+          },
+        },
+      },
+    );
+
+    expect(html).toContain('data-testid="product-management-create-duplicate"');
+    expect(html).toContain("Hàng");
+    expect(html).toContain("gạch đỏ");
+    expect(html).toContain("đã có trong danh sách");
+    expect(html).toContain("đổi đơn vị/giá");
+    expect(html).not.toContain("Tạo hàng");
+    expect(html).not.toContain("Tên hàng");
+    expect(html).not.toContain('value="gạch đỏ"');
+    expect(html).not.toContain("Giá bán");
+  });
+
+  it("renders a created product-management success state", () => {
+    const html = renderCard(
+      baseValidated({
+        intent: "manage_product",
+        kind: "none",
+        items: [],
+        effective_amount: null,
+        ready_for_preview: false,
+      }),
+      {
+        productManagementPreview: {
+          status: "created",
+          action: "create",
+          product: {
+            id: "product-gach-do",
+            name: "gạch đỏ",
+            unit: "bao",
+            sell_price: 85000,
+          },
+        },
+      },
+    );
+
+    expect(html).toContain('data-testid="product-management-created"');
+    expect(html).toContain("Đã thêm hàng gạch đỏ.");
+    expect(html).toContain("Đơn vị");
+    expect(html).toContain("bao");
+    expect(html).toContain("Giá bán");
+    expect(html).toContain("85.000");
+    expect(html).not.toContain("Tạo hàng");
   });
 
   it("renders a debt answer on a query card", () => {

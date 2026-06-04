@@ -1,7 +1,15 @@
 "use server";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ActionResult } from "@/src/types/action-result";
 import type { ChatMessageView } from "@/src/components/chat/types";
+import type {
+  ProductManagementCandidate,
+  ProductManagementPreview,
+  ProductManagementProduct,
+  ProductManagementTarget,
+  ProductManagementUpdateAction,
+} from "@/src/components/chat/preview-card/types";
 import { getAuthenticatedUser } from "@/src/components/shared/AuthGuard";
 import {
   runChatPipeline,
@@ -13,6 +21,7 @@ import {
 } from "@/src/lib/ai/answer-query";
 import { resolveOne, type EntityRow } from "@/src/lib/ai/entity-resolver";
 import type { ResolvedEntity } from "@/src/lib/ai/resolve-schema";
+import type { ProductManagement } from "@/src/lib/ai/intent-schema";
 import {
   parseProductSellPriceInput,
   validateProductUpdatePatch,
@@ -23,6 +32,8 @@ import { createClient } from "@/src/lib/supabase/server";
 import { businessDateVN } from "@/src/lib/dayjs";
 
 const MAX_MESSAGE_LENGTH = 2000;
+
+type ProductManagementSupabaseClient = Pick<SupabaseClient, "from">;
 
 type InsertedChatRow = {
   id: string;
@@ -54,6 +65,10 @@ type ProductSearchRow = {
   aliases: string[] | null;
 };
 
+type ProductManagementSearchRow = ProductSearchRow & {
+  sell_price: number | string | null;
+};
+
 type ProductUpdateRow = {
   id: string;
   unit: string;
@@ -79,6 +94,7 @@ export type ProcessMessageResult =
       userMessage: ChatMessageView;
       pipeline: ChatPipelineResult;
       answer?: QueryAnswer | null;
+      productManagementPreview?: ProductManagementPreview | null;
     }
   | { ok: false; code: string; message: string };
 
@@ -139,6 +155,43 @@ function normalizeProductSearchRows(rows: ProductSearchRow[] | null): EntityRow[
   }));
 }
 
+function productManagementProductFromRow(
+  row: ProductManagementSearchRow,
+): ProductManagementProduct {
+  return {
+    id: row.id,
+    name: row.name,
+    unit:
+      typeof row.unit === "string" && row.unit.trim().length > 0
+        ? row.unit
+        : null,
+    sell_price: nullableProductMoney(row.sell_price),
+  };
+}
+
+function normalizeProductManagementRows(
+  rows: ProductManagementSearchRow[] | null,
+) {
+  const entityRows: EntityRow[] = [];
+  const productsById = new Map<string, ProductManagementProduct>();
+
+  for (const row of rows ?? []) {
+    const product = productManagementProductFromRow(row);
+
+    productsById.set(row.id, product);
+    entityRows.push({
+      id: row.id,
+      name: row.name,
+      unit: product.unit,
+      aliases: Array.isArray(row.aliases)
+        ? row.aliases.filter((alias): alias is string => typeof alias === "string")
+        : [],
+    });
+  }
+
+  return { entityRows, productsById };
+}
+
 function nullableProductMoney(value: number | string | null | undefined) {
   if (value === null || value === undefined) {
     return null;
@@ -147,6 +200,229 @@ function nullableProductMoney(value: number | string | null | undefined) {
   const numeric = typeof value === "number" ? value : Number(value);
 
   return Number.isFinite(numeric) ? Math.round(numeric) : null;
+}
+
+function productManagementTarget(
+  productManagement: ProductManagement | null,
+): {
+  action: ProductManagementUpdateAction;
+  productRaw: string;
+  target: ProductManagementTarget;
+} | null {
+  const productRaw = productManagement?.product_raw.trim() ?? "";
+
+  if (!productManagement || productRaw.length === 0) {
+    return null;
+  }
+
+  if (productManagement.action === "set_unit") {
+    const unit = productManagement.unit?.trim() ?? "";
+
+    return unit.length > 0
+      ? {
+          action: "set_unit",
+          productRaw,
+          target: { unit },
+        }
+      : null;
+  }
+
+  if (productManagement.action === "set_price") {
+    const sellPrice = productManagement.sell_price;
+
+    return typeof sellPrice === "number" && Number.isFinite(sellPrice) && sellPrice >= 0
+      ? {
+          action: "set_price",
+          productRaw,
+          target: { sell_price: Math.round(sellPrice) },
+        }
+      : null;
+  }
+
+  return null;
+}
+
+function productManagementCreatePreview(
+  productManagement: ProductManagement | null,
+): Extract<ProductManagementPreview, { status: "create_draft" }> | null {
+  if (!productManagement || productManagement.action !== "create") {
+    return null;
+  }
+
+  const productRaw = productManagement.product_raw.trim();
+
+  if (productRaw.length === 0) {
+    return null;
+  }
+
+  const unit = productManagement.unit?.trim() || "cái";
+  const sellPrice = productManagement.sell_price;
+
+  return {
+    status: "create_draft",
+    action: "create",
+    product_raw: productRaw,
+    draft: {
+      name: productRaw,
+      unit,
+      sell_price:
+        typeof sellPrice === "number" && Number.isFinite(sellPrice)
+          ? Math.round(sellPrice)
+          : null,
+    },
+  };
+}
+
+function productManagementDuplicatePreview(
+  productRaw: string,
+  product: ProductRow,
+): Extract<ProductManagementPreview, { status: "create_duplicate" }> {
+  const productView = createdProductView(product);
+
+  return {
+    status: "create_duplicate",
+    action: "create",
+    product_raw: productRaw,
+    product: productView,
+  };
+}
+
+function productManagementCandidate(
+  candidate: ResolvedEntity["candidates"][number],
+  productsById: Map<string, ProductManagementProduct>,
+): ProductManagementCandidate {
+  const product = productsById.get(candidate.id);
+
+  return {
+    ...candidate,
+    unit: product?.unit ?? candidate.unit ?? null,
+    sell_price: product?.sell_price ?? null,
+  };
+}
+
+async function resolveProductManagementPreview({
+  productManagement,
+  ownerId,
+  supabase,
+}: {
+  productManagement: ProductManagement | null;
+  ownerId: string;
+  supabase: ProductManagementSupabaseClient;
+}): Promise<ActionResult<ProductManagementPreview | null>> {
+  const createPreview = productManagementCreatePreview(productManagement);
+
+  if (createPreview) {
+    const { data, error } = await supabase
+      .from("products")
+      .select("id,name,unit,sell_price")
+      .eq("owner_id", ownerId)
+      .eq("is_active", true)
+      .is("deleted_at", null);
+
+    if (error) {
+      return {
+        ok: false,
+        code: "db_error",
+        message: "Chưa kiểm được hàng, bác thử lại ạ.",
+      };
+    }
+
+    const existing = findProductByName(
+      data as ProductRow[] | null,
+      createPreview.product_raw,
+    );
+
+    if (existing) {
+      return {
+        ok: true,
+        data: productManagementDuplicatePreview(
+          createPreview.product_raw,
+          existing,
+        ),
+      };
+    }
+
+    return { ok: true, data: createPreview };
+  }
+
+  const target = productManagementTarget(productManagement);
+
+  if (!target) {
+    return { ok: true, data: null };
+  }
+
+  const { data, error } = await supabase
+    .from("products")
+    .select("id,name,aliases,unit,sell_price")
+    .eq("owner_id", ownerId)
+    .eq("is_active", true)
+    .is("deleted_at", null);
+
+  if (error) {
+    return {
+      ok: false,
+      code: "db_error",
+      message: "Chưa tìm được hàng, bác thử lại ạ.",
+    };
+  }
+
+  const { entityRows, productsById } = normalizeProductManagementRows(
+    data as ProductManagementSearchRow[] | null,
+  );
+  const resolution = resolveOne(target.productRaw, "product", entityRows);
+
+  if (resolution.status === "not_found") {
+    return {
+      ok: true,
+      data: {
+        status: "not_found",
+        action: target.action,
+        product_raw: target.productRaw,
+      },
+    };
+  }
+
+  if (resolution.status === "resolved" && resolution.resolved_id) {
+    const product = productsById.get(resolution.resolved_id);
+
+    if (product) {
+      return {
+        ok: true,
+        data: {
+          status: "ready",
+          action: target.action,
+          product,
+          target: target.target,
+        },
+      };
+    }
+  }
+
+  const candidates = resolution.candidates.map((candidate) =>
+    productManagementCandidate(candidate, productsById),
+  );
+
+  if (candidates.length === 0) {
+    return {
+      ok: true,
+      data: {
+        status: "not_found",
+        action: target.action,
+        product_raw: target.productRaw,
+      },
+    };
+  }
+
+  return {
+    ok: true,
+    data: {
+      status: "needs_choice",
+      action: target.action,
+      product_raw: target.productRaw,
+      candidates,
+      target: target.target,
+    },
+  };
 }
 
 function createdProductView(row: ProductRow): CreatedProductView {
@@ -559,10 +835,107 @@ export async function createProduct(
     };
   }
 
+  const created = createdProductView(data as ProductRow);
+  const { error: auditError } = await supabase.from("audit_log").insert({
+    owner_id: user.id,
+    actor_id: user.id,
+    entity_type: "product",
+    entity_id: created.id,
+    action: "create",
+    before_data: null,
+    after_data: {
+      name: created.name,
+      unit: created.unit,
+      sell_price: created.sell_price,
+    },
+    metadata: {
+      source: "createProduct",
+      fields: ["name", "unit", "sell_price"],
+    },
+  });
+
+  if (auditError) {
+    console.error("audit_log insert failed for createProduct", auditError);
+
+    return {
+      ok: false,
+      code: "db_error",
+      message: "Đã thêm hàng nhưng chưa ghi được nhật ký, bác tải lại kiểm tra giúp em ạ.",
+    };
+  }
+
   return {
     ok: true,
-    data: createdProductView(data as ProductRow),
+    data: created,
   };
+}
+
+export async function createProductFromChat(input: {
+  name: string;
+  unit: string;
+  sell_price: ProductSellPriceInput;
+}): Promise<ActionResult<CreatedProductView>> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return {
+      ok: false,
+      code: "unauthorized",
+      message: "Vui lòng đăng nhập lại ạ.",
+    };
+  }
+
+  if (!input || typeof input.name !== "string") {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Tên hàng chưa hợp lệ ạ.",
+    };
+  }
+
+  const trimmed = input.name.trim();
+
+  if (trimmed.length === 0) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Tên hàng chưa hợp lệ ạ.",
+    };
+  }
+
+  const existingRead = await supabase
+    .from("products")
+    .select("id,name,unit,sell_price")
+    .eq("owner_id", user.id)
+    .eq("is_active", true)
+    .is("deleted_at", null);
+
+  if (existingRead.error) {
+    return {
+      ok: false,
+      code: "db_error",
+      message: "Chưa kiểm được hàng, bác thử lại ạ.",
+    };
+  }
+
+  const existing = findProductByName(
+    existingRead.data as ProductRow[] | null,
+    trimmed,
+  );
+
+  if (existing) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Hàng này có thể đã tồn tại. Bác kiểm tra lại danh sách hàng nhé.",
+    };
+  }
+
+  return createProduct(trimmed, input.unit, input.sell_price);
 }
 
 export async function searchProductsByName(
@@ -1458,11 +1831,25 @@ export async function processMessage(
           supabase,
         })
       : null;
+  const productManagementPreviewResult = pipeline.ok
+    ? await resolveProductManagementPreview({
+        productManagement: pipeline.extracted.entities.product_management,
+        ownerId: user.id,
+        supabase,
+      })
+    : { ok: true as const, data: null };
+
+  if (!productManagementPreviewResult.ok) {
+    return productManagementPreviewResult;
+  }
 
   return {
     ok: true,
     userMessage: saved.data,
     pipeline,
     ...(answer ? { answer } : {}),
+    ...(productManagementPreviewResult.data
+      ? { productManagementPreview: productManagementPreviewResult.data }
+      : {}),
   };
 }

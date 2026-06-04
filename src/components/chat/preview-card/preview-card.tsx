@@ -9,11 +9,13 @@ import {
   commitPurchase,
   createCustomer,
   createProduct,
+  createProductFromChat,
   getCustomerDebt,
   recreateSaleOrder,
   searchCustomersByName,
   searchProductsByName,
   undoCommit,
+  updateProduct,
   type CommitOrderItemInput,
   type CommitPurchaseItemInput,
   type CreatedProductView,
@@ -46,6 +48,11 @@ import type {
   PreviewAddedItemPatch,
   PreviewCardPatch,
   PreviewResolvedEntityPatch,
+  ProductManagementCandidate,
+  ProductManagementPreview,
+  ProductManagementProduct,
+  ProductManagementTarget,
+  ProductManagementUpdateAction,
 } from "@/src/components/chat/preview-card/types";
 import type {
   EntityCandidate,
@@ -59,6 +66,7 @@ import { parseProductSellPriceInput } from "@/src/lib/products/update";
 type PreviewCardProps = Readonly<{
   validated: ValidatedIntent;
   answer?: QueryAnswer | null;
+  productManagementPreview?: ProductManagementPreview | null;
   patched: PreviewCardPatch;
   isLive: boolean;
   onPatchChange: (patch: PreviewCardPatch) => void;
@@ -269,6 +277,194 @@ export function addedItemFromCreatedProduct(
     unit: product.unit,
     quantity: 1,
     unit_price: product.sell_price ?? 0,
+  };
+}
+
+type ProductManagementReadyPreview = Extract<
+  ProductManagementPreview,
+  { status: "ready" }
+>;
+type ProductManagementSavedPreview = Extract<
+  ProductManagementPreview,
+  { status: "saved" }
+>;
+type ProductManagementCreateDraftPreview = Extract<
+  ProductManagementPreview,
+  { status: "create_draft" }
+>;
+type ProductManagementCreatedPreview = Extract<
+  ProductManagementPreview,
+  { status: "created" }
+>;
+type ProductManagementCreateDuplicatePreview = Extract<
+  ProductManagementPreview,
+  { status: "create_duplicate" }
+>;
+type ProductManagementUpdatePreview = Extract<
+  ProductManagementPreview,
+  { action: ProductManagementUpdateAction }
+>;
+type ProductManagementCreateFormState = {
+  name: string;
+  unit: string;
+  sellPriceInput: string;
+};
+type ProductManagementCreatePayload = {
+  name: string;
+  unit: string;
+  sell_price: number | null;
+};
+
+function productManagementTitle(action: ProductManagementUpdateAction) {
+  return action === "set_unit" ? "Đổi đơn vị hàng" : "Đặt giá bán";
+}
+
+function formatProductManagementPrice(value: number | null) {
+  return value === null ? "—" : formatVietnameseMoney(value);
+}
+
+function targetUnit(preview: { target: ProductManagementTarget }) {
+  return "unit" in preview.target && typeof preview.target.unit === "string"
+    ? preview.target.unit
+    : null;
+}
+
+function targetSellPrice(preview: { target: ProductManagementTarget }) {
+  return "sell_price" in preview.target &&
+    typeof preview.target.sell_price === "number"
+    ? preview.target.sell_price
+    : null;
+}
+
+export function productManagementProductFromCandidate(
+  candidate: ProductManagementCandidate,
+): ProductManagementProduct {
+  return {
+    id: candidate.id,
+    name: candidate.name,
+    unit: candidate.unit ?? null,
+    sell_price: candidate.sell_price ?? null,
+  };
+}
+
+export function productManagementChoiceEntity(
+  preview: Extract<ProductManagementPreview, { status: "needs_choice" }>,
+): ResolvedEntity {
+  return {
+    raw: preview.product_raw,
+    entity_type: "product",
+    status: "ambiguous",
+    resolved_id: null,
+    resolved_name: null,
+    confidence: preview.candidates[0]?.score ?? 0,
+    candidates: preview.candidates,
+  };
+}
+
+export async function saveProductManagementPreview(
+  preview: ProductManagementReadyPreview,
+): Promise<
+  | { ok: true; data: ProductManagementSavedPreview }
+  | { ok: false; message: string }
+> {
+  const result =
+    preview.action === "set_unit"
+      ? await updateProduct(preview.product.id, {
+          unit: targetUnit(preview) ?? "",
+        })
+      : await updateProduct(preview.product.id, {
+          sell_price: targetSellPrice(preview),
+        });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message };
+  }
+
+  return {
+    ok: true,
+    data: {
+      status: "saved",
+      action: preview.action,
+      product: preview.product,
+      target: preview.target,
+    },
+  };
+}
+
+export function productManagementCreateFormFromPreview(
+  preview: ProductManagementCreateDraftPreview,
+): ProductManagementCreateFormState {
+  return {
+    name: preview.draft.name,
+    unit: preview.draft.unit || "cái",
+    sellPriceInput:
+      preview.draft.sell_price === null ? "" : String(preview.draft.sell_price),
+  };
+}
+
+export function validateProductManagementCreateForm(
+  input: ProductManagementCreateFormState,
+):
+  | { ok: true; data: ProductManagementCreatePayload }
+  | { ok: false; message: string } {
+  const name = input.name.trim();
+
+  if (!name) {
+    return { ok: false, message: "Tên hàng bắt buộc" };
+  }
+
+  const unit = input.unit.trim();
+
+  if (!unit) {
+    return { ok: false, message: "Đơn vị bắt buộc" };
+  }
+
+  const parsedPrice = parseProductSellPriceInput(input.sellPriceInput);
+
+  if (!parsedPrice.ok) {
+    return { ok: false, message: parsedPrice.message };
+  }
+
+  return {
+    ok: true,
+    data: {
+      name,
+      unit,
+      sell_price: parsedPrice.value,
+    },
+  };
+}
+
+export async function saveProductManagementCreatePreview(
+  input: ProductManagementCreateFormState,
+): Promise<
+  | { ok: true; data: ProductManagementCreatedPreview }
+  | { ok: false; message: string }
+> {
+  const validated = validateProductManagementCreateForm(input);
+
+  if (!validated.ok) {
+    return { ok: false, message: validated.message };
+  }
+
+  const result = await createProductFromChat(validated.data);
+
+  if (!result.ok) {
+    return { ok: false, message: result.message };
+  }
+
+  return {
+    ok: true,
+    data: {
+      status: "created",
+      action: "create",
+      product: {
+        id: result.data.id,
+        name: result.data.name,
+        unit: result.data.unit,
+        sell_price: result.data.sell_price,
+      },
+    },
   };
 }
 
@@ -886,6 +1082,349 @@ function ProductMissingNotice({ raw }: Readonly<{ raw: string }>) {
   );
 }
 
+function ProductManagementCreatePreviewContent({
+  preview,
+  isLive,
+  isSaving,
+  error,
+  draft,
+  onDraftChange,
+  onSave,
+  onCancel,
+}: Readonly<{
+  preview:
+    | ProductManagementCreateDraftPreview
+    | ProductManagementCreateDuplicatePreview
+    | ProductManagementCreatedPreview;
+  isLive: boolean;
+  isSaving: boolean;
+  error: string | null;
+  draft: ProductManagementCreateFormState;
+  onDraftChange: (
+    field: keyof ProductManagementCreateFormState,
+    value: string,
+  ) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}>) {
+  const interactive = isLive && preview.status === "create_draft";
+
+  return (
+    <div className={cn("flex w-full justify-start", !interactive && "opacity-70")}>
+      <article
+        className={cn(
+          "w-full max-w-[94%] rounded border px-4 py-4 text-textMain shadow-[var(--shadow-card)] sm:max-w-[88%]",
+          interactive
+            ? "border-ledgerBorder bg-surface"
+            : "border-ledgerBorder bg-paperWarm shadow-none",
+        )}
+        data-testid={`product-management-${preview.status}`}
+      >
+        <div className="border-b border-ledgerBorder pb-3">
+          <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-stamp">
+            manage_product
+          </p>
+          <h2 className="mt-1 font-display text-2xl font-semibold tracking-normal text-inkDeep">
+            {preview.status === "created"
+              ? "Đã thêm hàng"
+              : preview.status === "create_duplicate"
+                ? "Hàng đã có"
+                : "Thêm hàng mới"}
+          </h2>
+        </div>
+
+        {preview.status === "create_duplicate" ? (
+          <div
+            className="mt-4 rounded border border-ledgerBorder bg-paper px-3 py-3 text-[16px] leading-7"
+            data-testid="product-management-create-duplicate"
+          >
+            <p className="font-semibold text-inkDeep">
+              Hàng “{preview.product.name}” đã có trong danh sách.
+            </p>
+            <p className="mt-1 text-textMute">
+              Bác có thể đổi đơn vị/giá của hàng này nếu cần.
+            </p>
+          </div>
+        ) : preview.status === "created" ? (
+          <div className="mt-4 rounded border border-ledgerBorder bg-paper px-3 py-3">
+            <p
+              className="flex items-center gap-2 text-[16px] font-semibold leading-6 text-paid"
+              data-testid="product-management-created"
+            >
+              <Check className="h-5 w-5 shrink-0" aria-hidden="true" />
+              Đã thêm hàng {preview.product.name}.
+            </p>
+            <div className="mt-3 grid gap-2 text-[16px] leading-7 sm:grid-cols-[140px_1fr]">
+              <p className="font-semibold text-textMute">Đơn vị</p>
+              <p className="font-semibold text-inkDeep">
+                {preview.product.unit ?? "—"}
+              </p>
+              <p className="font-semibold text-textMute">Giá bán</p>
+              <p className="font-semibold text-inkDeep">
+                {formatProductManagementPrice(preview.product.sell_price)}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="mt-4 grid gap-3">
+              <label className="min-w-0">
+                <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-stamp">
+                  Tên hàng
+                </span>
+                <input
+                  type="text"
+                  value={draft.name}
+                  disabled={!interactive || isSaving}
+                  className="mt-1 h-11 w-full rounded border border-stamp/35 bg-surface px-3 text-[16px] leading-6 text-textMain outline-none placeholder:text-textFaint focus:border-ink disabled:cursor-not-allowed disabled:opacity-60"
+                  onChange={(event) => onDraftChange("name", event.target.value)}
+                />
+              </label>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="min-w-0">
+                  <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-stamp">
+                    Đơn vị
+                  </span>
+                  <input
+                    type="text"
+                    value={draft.unit}
+                    disabled={!interactive || isSaving}
+                    className="mt-1 h-11 w-full rounded border border-stamp/35 bg-surface px-3 text-[16px] leading-6 text-textMain outline-none placeholder:text-textFaint focus:border-ink disabled:cursor-not-allowed disabled:opacity-60"
+                    onChange={(event) => onDraftChange("unit", event.target.value)}
+                  />
+                </label>
+                <label className="min-w-0">
+                  <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-stamp">
+                    Giá bán
+                  </span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={draft.sellPriceInput}
+                    disabled={!interactive || isSaving}
+                    placeholder="Để trống nếu chưa có"
+                    className="mt-1 h-11 w-full rounded border border-stamp/35 bg-surface px-3 text-[16px] leading-6 text-textMain outline-none placeholder:text-textFaint focus:border-ink disabled:cursor-not-allowed disabled:opacity-60"
+                    onChange={(event) =>
+                      onDraftChange("sellPriceInput", event.target.value)
+                    }
+                  />
+                </label>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {PRODUCT_UNIT_SUGGESTIONS.map((unit) => (
+                  <button
+                    key={unit}
+                    type="button"
+                    disabled={!interactive || isSaving}
+                    className={cn(
+                      "h-9 rounded border border-stamp/30 bg-surface px-3 text-[15px] font-semibold text-ink hover:border-ink hover:bg-paperWarm disabled:cursor-not-allowed disabled:opacity-60",
+                      draft.unit.trim() === unit && "border-ink bg-paperWarm",
+                    )}
+                    onClick={() => onDraftChange("unit", unit)}
+                  >
+                    {unit}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2 border-t border-ledgerBorder pt-3">
+              <Button
+                type="button"
+                disabled={!interactive || isSaving}
+                className="h-12 rounded bg-ink px-5 text-[16px] font-semibold text-paper hover:bg-inkDeep disabled:cursor-not-allowed disabled:opacity-55"
+                onClick={onSave}
+              >
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                {isSaving ? "Đang tạo..." : "Tạo hàng"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!interactive || isSaving}
+                className="h-12 rounded border-ledgerBorder bg-surface px-5 text-[16px] font-semibold text-textMute hover:bg-paperWarm hover:text-ink disabled:cursor-not-allowed disabled:opacity-55"
+                onClick={onCancel}
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+                Hủy
+              </Button>
+            </div>
+          </>
+        )}
+
+        {error ? (
+          <p className="mt-2 text-[15px] leading-6 text-debt" role="alert">
+            {error}
+          </p>
+        ) : null}
+      </article>
+    </div>
+  );
+}
+
+function ProductManagementPreviewContent({
+  preview,
+  isLive,
+  isSaving,
+  error,
+  onSelectCandidate,
+  onSave,
+  onCancel,
+}: Readonly<{
+  preview: ProductManagementUpdatePreview;
+  isLive: boolean;
+  isSaving: boolean;
+  error: string | null;
+  onSelectCandidate: (candidate: ProductManagementCandidate) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}>) {
+  if (preview.status === "not_found") {
+    return (
+      <div className={cn("flex w-full justify-start", !isLive && "opacity-70")}>
+        <div
+          className="max-w-[86%] rounded border border-dashed border-ledgerBorder bg-paperWarm px-4 py-3 text-[16px] leading-7 text-textMute shadow-none sm:max-w-[78%]"
+          data-testid="product-management-not-found"
+        >
+          Dạ, em chưa tìm thấy hàng “{preview.product_raw}” trong danh sách. Bác thêm hàng này trước rồi đổi đơn vị/giá sau nhé.
+        </div>
+      </div>
+    );
+  }
+
+  const title = productManagementTitle(preview.action);
+  const interactive = isLive && preview.status !== "saved";
+  const product =
+    preview.status === "ready" || preview.status === "saved"
+      ? preview.product
+      : null;
+  const newUnit = "target" in preview ? targetUnit(preview) : null;
+  const newSellPrice = "target" in preview ? targetSellPrice(preview) : null;
+
+  return (
+    <div className={cn("flex w-full justify-start", !interactive && "opacity-70")}>
+      <article
+        className={cn(
+          "w-full max-w-[94%] rounded border px-4 py-4 text-textMain shadow-[var(--shadow-card)] sm:max-w-[88%]",
+          interactive
+            ? "border-ledgerBorder bg-surface"
+            : "border-ledgerBorder bg-paperWarm shadow-none",
+        )}
+        data-testid={`product-management-${preview.status}`}
+      >
+        <div className="border-b border-ledgerBorder pb-3">
+          <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-stamp">
+            manage_product
+          </p>
+          <h2 className="mt-1 font-display text-2xl font-semibold tracking-normal text-inkDeep">
+            {title}
+          </h2>
+        </div>
+
+        {preview.status === "needs_choice" ? (
+          <div className="mt-3">
+            <p className="text-[16px] leading-7 text-textMute">
+              Bác chọn đúng hàng cần sửa giúp em ạ.
+            </p>
+            <EntityChoicePanel
+              entity={productManagementChoiceEntity(preview)}
+              label="Hàng"
+              allowCreate={false}
+              onSelect={(candidate) =>
+                onSelectCandidate(candidate as ProductManagementCandidate)
+              }
+            />
+          </div>
+        ) : null}
+
+        {product ? (
+          <div className="mt-4 rounded border border-ledgerBorder bg-paper px-3 py-3">
+            <div className="grid gap-2 text-[16px] leading-7 sm:grid-cols-[140px_1fr]">
+              <p className="font-semibold text-textMute">Hàng</p>
+              <p className="font-semibold text-inkDeep">{product.name}</p>
+              {preview.action === "set_unit" ? (
+                <>
+                  <p className="font-semibold text-textMute">Từ</p>
+                  <p className="font-semibold">{product.unit ?? "—"}</p>
+                  <p className="font-semibold text-textMute">Thành</p>
+                  <p className="font-semibold text-paid">{newUnit}</p>
+                </>
+              ) : (
+                <>
+                  <p className="font-semibold text-textMute">Từ</p>
+                  <p className="font-semibold">
+                    {formatProductManagementPrice(product.sell_price)}
+                  </p>
+                  <p className="font-semibold text-textMute">Thành</p>
+                  <p className="font-semibold text-paid">
+                    {formatProductManagementPrice(newSellPrice)}
+                  </p>
+                </>
+              )}
+            </div>
+          </div>
+        ) : null}
+
+        {preview.status === "saved" && product ? (
+          <p
+            className="mt-4 flex items-center gap-2 border-t border-ledgerBorder pt-3 text-[16px] font-semibold leading-6 text-paid"
+            data-testid="product-management-saved"
+          >
+            <Check className="h-5 w-5 shrink-0" aria-hidden="true" />
+            {preview.action === "set_unit"
+              ? `Đã đổi đơn vị hàng ${product.name} thành ${newUnit}.`
+              : `Đã đặt giá bán hàng ${product.name} thành ${formatProductManagementPrice(newSellPrice)}.`}
+          </p>
+        ) : null}
+
+        {preview.status === "ready" && interactive ? (
+          <div className="mt-4 flex flex-wrap gap-2 border-t border-ledgerBorder pt-3">
+            <Button
+              type="button"
+              disabled={isSaving}
+              className="h-12 rounded bg-ink px-5 text-[16px] font-semibold text-paper hover:bg-inkDeep disabled:cursor-not-allowed disabled:opacity-55"
+              onClick={onSave}
+            >
+              {isSaving ? "Đang lưu..." : "Lưu"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isSaving}
+              className="h-12 rounded border-ledgerBorder bg-surface px-5 text-[16px] font-semibold text-textMute hover:bg-paperWarm hover:text-ink disabled:cursor-not-allowed disabled:opacity-55"
+              onClick={onCancel}
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+              Hủy
+            </Button>
+          </div>
+        ) : null}
+
+        {error ? (
+          <p className="mt-2 text-[15px] leading-6 text-debt" role="alert">
+            {error}
+          </p>
+        ) : null}
+      </article>
+    </div>
+  );
+}
+
+function ProductManagementCanceledNotice({ isLive }: Readonly<{ isLive: boolean }>) {
+  return (
+    <div className={cn("flex w-full justify-start", !isLive && "opacity-70")}>
+      <div
+        className="max-w-[86%] rounded border border-dashed border-ledgerBorder bg-paperWarm px-4 py-3 text-[16px] leading-7 text-textMute shadow-none sm:max-w-[78%]"
+        data-testid="product-management-canceled"
+      >
+        Đã hủy thay đổi, chưa lưu vào danh sách.
+      </div>
+    </div>
+  );
+}
+
 function DeleteOrderConfirmModal({
   open,
   summary,
@@ -1006,6 +1545,7 @@ function DeleteOrderConfirmModal({
 export function PreviewCard({
   validated,
   answer = null,
+  productManagementPreview = null,
   patched,
   isLive,
   onPatchChange,
@@ -1044,6 +1584,20 @@ export function PreviewCard({
   const [undone, setUndone] = React.useState(false);
   const [undoError, setUndoError] = React.useState<string | null>(null);
   const [confirmDeleteOrder, setConfirmDeleteOrder] = React.useState(false);
+  const [productManagementState, setProductManagementState] =
+    React.useState<ProductManagementPreview | null>(productManagementPreview);
+  const [productManagementCreateDraft, setProductManagementCreateDraft] =
+    React.useState<ProductManagementCreateFormState>(() =>
+      productManagementPreview?.status === "create_draft"
+        ? productManagementCreateFormFromPreview(productManagementPreview)
+        : { name: "", unit: "cái", sellPriceInput: "" },
+    );
+  const [productManagementDismissed, setProductManagementDismissed] =
+    React.useState(false);
+  const [isSavingProductManagement, setIsSavingProductManagement] =
+    React.useState(false);
+  const [productManagementError, setProductManagementError] =
+    React.useState<string | null>(null);
   // Current debt of the resolved customer, for the live overpayment check on
   // record_payment. null = unknown (loading/failed) -> client doesn't block; the
   // DB function still defends.
@@ -1087,6 +1641,18 @@ export function PreviewCard({
     latestPatchRef.current = patched;
   }, [patched]);
 
+  React.useEffect(() => {
+    setProductManagementState(productManagementPreview);
+    setProductManagementCreateDraft(
+      productManagementPreview?.status === "create_draft"
+        ? productManagementCreateFormFromPreview(productManagementPreview)
+        : { name: "", unit: "cái", sellPriceInput: "" },
+    );
+    setProductManagementDismissed(false);
+    setIsSavingProductManagement(false);
+    setProductManagementError(null);
+  }, [productManagementPreview]);
+
   const paymentCustomerId =
     validated.intent === "record_payment"
       ? state.customer?.resolved_id ?? null
@@ -1116,6 +1682,145 @@ export function PreviewCard({
       cancelled = true;
     };
   }, [paymentCustomerId]);
+
+  function handleSelectProductManagementCandidate(
+    candidate: ProductManagementCandidate,
+  ) {
+    if (productManagementState?.status !== "needs_choice") {
+      return;
+    }
+
+    setProductManagementState({
+      status: "ready",
+      action: productManagementState.action,
+      product: productManagementProductFromCandidate(candidate),
+      target: productManagementState.target,
+    });
+    setProductManagementError(null);
+
+    if (shouldLearnAlias(productManagementState.product_raw, candidate.name)) {
+      void confirmAliasInBackground(
+        "product",
+        candidate.id,
+        productManagementState.product_raw,
+      );
+    }
+  }
+
+  function handleProductManagementCreateDraftChange(
+    field: keyof ProductManagementCreateFormState,
+    value: string,
+  ) {
+    setProductManagementCreateDraft((current) => ({
+      ...current,
+      [field]: value,
+    }));
+    setProductManagementError(null);
+  }
+
+  async function handleSaveProductManagementCreate() {
+    if (
+      productManagementState?.status !== "create_draft" ||
+      isSavingProductManagement
+    ) {
+      return;
+    }
+
+    setIsSavingProductManagement(true);
+    setProductManagementError(null);
+
+    try {
+      const result = await saveProductManagementCreatePreview(
+        productManagementCreateDraft,
+      );
+
+      if (!result.ok) {
+        setProductManagementError(result.message);
+        return;
+      }
+
+      setProductManagementState(result.data);
+    } catch (error) {
+      console.error("createProduct from chat preview failed", error);
+      setProductManagementError("Chưa tạo được hàng, bác thử lại ạ.");
+    } finally {
+      setIsSavingProductManagement(false);
+    }
+  }
+
+  async function handleSaveProductManagement() {
+    if (
+      productManagementState?.status !== "ready" ||
+      isSavingProductManagement
+    ) {
+      return;
+    }
+
+    setIsSavingProductManagement(true);
+    setProductManagementError(null);
+
+    try {
+      const result = await saveProductManagementPreview(productManagementState);
+
+      if (!result.ok) {
+        setProductManagementError(result.message);
+        return;
+      }
+
+      setProductManagementState(result.data);
+    } catch (error) {
+      console.error("updateProduct from chat preview failed", error);
+      setProductManagementError("Chưa lưu được thay đổi, bác thử lại ạ.");
+    } finally {
+      setIsSavingProductManagement(false);
+    }
+  }
+
+  function handleCancelProductManagement() {
+    if (isSavingProductManagement) {
+      return;
+    }
+
+    setProductManagementDismissed(true);
+    setProductManagementError(null);
+  }
+
+  if (productManagementPreview && productManagementDismissed) {
+    return <ProductManagementCanceledNotice isLive={isLive} />;
+  }
+
+  if (productManagementState) {
+    if (
+      productManagementState.status === "create_draft" ||
+      productManagementState.status === "create_duplicate" ||
+      productManagementState.status === "created"
+    ) {
+      return (
+        <ProductManagementCreatePreviewContent
+          preview={productManagementState}
+          isLive={isLive}
+          isSaving={isSavingProductManagement}
+          error={productManagementError}
+          draft={productManagementCreateDraft}
+          onDraftChange={handleProductManagementCreateDraftChange}
+          onSave={() => void handleSaveProductManagementCreate()}
+          onCancel={handleCancelProductManagement}
+        />
+      );
+    }
+
+    return (
+      <ProductManagementPreviewContent
+        preview={productManagementState}
+        isLive={isLive}
+        isSaving={isSavingProductManagement}
+        error={productManagementError}
+        onSelectCandidate={handleSelectProductManagementCandidate}
+        onSave={() => void handleSaveProductManagement()}
+        onCancel={handleCancelProductManagement}
+      />
+    );
+  }
 
   if (validated.kind === "none") {
     return (

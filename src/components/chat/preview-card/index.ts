@@ -3,5 +3,6 @@ export {
   createEmptyPreviewCardPatch,
   type PipelineTurnView,
   type PreviewCardPatch,
+  type ProductManagementPreview,
   type PreviewResolvedEntityPatch,
 } from "@/src/components/chat/preview-card/types";

@@ -122,6 +122,7 @@ export function ChatContainer({
           userMessageId: result.userMessage.id,
           validated: pipeline.validated,
           answer: result.answer ?? null,
+          productManagementPreview: result.productManagementPreview ?? null,
           patched: createEmptyPreviewCardPatch(),
         },
       ]);

@@ -9,10 +9,23 @@ const mocks = vi.hoisted(() => ({
   from: vi.fn(),
   insert: vi.fn(),
   select: vi.fn(),
+  readSelect: vi.fn(),
+  readEq: vi.fn(),
+  readIs: vi.fn(),
   single: vi.fn(),
   runChatPipeline: vi.fn(),
   answerQuery: vi.fn(),
 }));
+
+const productReadChain = {
+  select: mocks.readSelect,
+  eq: mocks.readEq,
+  is: mocks.readIs,
+};
+
+const chatInsertChain = {
+  insert: mocks.insert,
+};
 
 const supabase = {
   auth: {
@@ -114,6 +127,53 @@ const pipelineResult: ChatPipelineResult = {
   },
 };
 
+function manageProductPipeline(
+  productManagement: NonNullable<
+    ExtractedIntent["entities"]["product_management"]
+  >,
+): ChatPipelineResult {
+  const baseValidated = pipelineResult.ok ? pipelineResult.validated : null;
+  const rawText =
+    productManagement.action === "set_unit"
+      ? `đổi đơn vị ${productManagement.product_raw} thành ${productManagement.unit}`
+      : productManagement.action === "set_price"
+        ? `đặt giá ${productManagement.product_raw} ${productManagement.sell_price}`
+        : `thêm hàng ${productManagement.product_raw}`;
+
+  if (!baseValidated) {
+    throw new Error("Expected base pipeline fixture to be successful.");
+  }
+
+  return {
+    ok: true,
+    extracted: {
+      ...extractedIntent,
+      intent: "manage_product",
+      raw_text: rawText,
+      normalized_text: rawText,
+      entities: {
+        ...extractedIntent.entities,
+        customer_name: null,
+        product_name: productManagement.product_raw,
+        product_management: productManagement,
+        items: [],
+        amount: null,
+        payment_status: "unknown",
+      },
+    },
+    validated: {
+      ...baseValidated,
+      intent: "manage_product",
+      kind: "none",
+      raw_text: rawText,
+      customer: null,
+      items: [],
+      effective_amount: null,
+      ready_for_preview: false,
+    },
+  };
+}
+
 describe("processMessage", () => {
   beforeEach(() => {
     mocks.createClient.mockReset();
@@ -122,6 +182,9 @@ describe("processMessage", () => {
     mocks.from.mockReset();
     mocks.insert.mockReset();
     mocks.select.mockReset();
+    mocks.readSelect.mockReset();
+    mocks.readEq.mockReset();
+    mocks.readIs.mockReset();
     mocks.single.mockReset();
     mocks.runChatPipeline.mockReset();
     mocks.answerQuery.mockReset();
@@ -131,9 +194,12 @@ describe("processMessage", () => {
       data: { user: { id: "user-a" } },
       error: null,
     });
-    mocks.from.mockReturnValue({ insert: mocks.insert });
+    mocks.from.mockReturnValue(chatInsertChain);
     mocks.insert.mockReturnValue({ select: mocks.select });
     mocks.select.mockReturnValue({ single: mocks.single });
+    mocks.readSelect.mockReturnValue(productReadChain);
+    mocks.readEq.mockReturnValue(productReadChain);
+    mocks.readIs.mockResolvedValue({ data: [], error: null });
     mocks.single.mockResolvedValue({
       data: userMessage,
       error: null,
@@ -218,6 +284,310 @@ describe("processMessage", () => {
       content: "anh Hùng mua 20 bao xi măng",
       intent: null,
     });
+  });
+
+  it("attaches a not_found product-management preview for a 0-match set_unit", async () => {
+    const productPipeline = manageProductPipeline({
+      action: "set_unit",
+      product_raw: "gạch siêu lạ",
+      unit: "viên",
+      sell_price: null,
+    });
+    mocks.runChatPipeline.mockResolvedValue(productPipeline);
+    mocks.readIs.mockResolvedValue({
+      data: [
+        {
+          id: "product-xi-mang",
+          name: "Xi măng",
+          aliases: [],
+          unit: "bao",
+          sell_price: null,
+        },
+      ],
+      error: null,
+    });
+    mocks.from
+      .mockReturnValueOnce(chatInsertChain)
+      .mockReturnValueOnce(productReadChain);
+
+    const result = await processMessage("đổi đơn vị gạch siêu lạ thành viên");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.productManagementPreview).toEqual({
+        status: "not_found",
+        action: "set_unit",
+        product_raw: "gạch siêu lạ",
+      });
+    }
+    expect(mocks.from).toHaveBeenCalledWith("products");
+    expect(mocks.readSelect).toHaveBeenCalledWith("id,name,aliases,unit,sell_price");
+    expect(mocks.readEq).toHaveBeenCalledWith("owner_id", "user-a");
+    expect(mocks.readEq).toHaveBeenCalledWith("is_active", true);
+    expect(mocks.readIs).toHaveBeenCalledWith("deleted_at", null);
+    expect(mocks.insert).toHaveBeenCalledTimes(1);
+  });
+
+  it("attaches a ready product-management preview for a 1-match set_unit", async () => {
+    const productPipeline = manageProductPipeline({
+      action: "set_unit",
+      product_raw: "xi măng",
+      unit: "bao",
+      sell_price: null,
+    });
+    mocks.runChatPipeline.mockResolvedValue(productPipeline);
+    mocks.readIs.mockResolvedValue({
+      data: [
+        {
+          id: "product-xi-mang",
+          name: "Xi măng",
+          aliases: [],
+          unit: "cái",
+          sell_price: null,
+        },
+      ],
+      error: null,
+    });
+    mocks.from
+      .mockReturnValueOnce(chatInsertChain)
+      .mockReturnValueOnce(productReadChain);
+
+    const result = await processMessage("đổi đơn vị xi măng thành bao");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.productManagementPreview).toEqual({
+        status: "ready",
+        action: "set_unit",
+        product: {
+          id: "product-xi-mang",
+          name: "Xi măng",
+          unit: "cái",
+          sell_price: null,
+        },
+        target: { unit: "bao" },
+      });
+    }
+  });
+
+  it("attaches a ready product-management preview for a 1-match set_price", async () => {
+    const productPipeline = manageProductPipeline({
+      action: "set_price",
+      product_raw: "xi măng",
+      unit: null,
+      sell_price: 85000,
+    });
+    mocks.runChatPipeline.mockResolvedValue(productPipeline);
+    mocks.readIs.mockResolvedValue({
+      data: [
+        {
+          id: "product-xi-mang",
+          name: "Xi măng",
+          aliases: [],
+          unit: "bao",
+          sell_price: "70000",
+        },
+      ],
+      error: null,
+    });
+    mocks.from
+      .mockReturnValueOnce(chatInsertChain)
+      .mockReturnValueOnce(productReadChain);
+
+    const result = await processMessage("đặt giá xi măng 85000");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.productManagementPreview).toEqual({
+        status: "ready",
+        action: "set_price",
+        product: {
+          id: "product-xi-mang",
+          name: "Xi măng",
+          unit: "bao",
+          sell_price: 70000,
+        },
+        target: { sell_price: 85000 },
+      });
+    }
+  });
+
+  it("attaches a needs_choice preview when product aliases match multiple rows", async () => {
+    const productPipeline = manageProductPipeline({
+      action: "set_unit",
+      product_raw: "xi măng",
+      unit: "bao",
+      sell_price: null,
+    });
+    mocks.runChatPipeline.mockResolvedValue(productPipeline);
+    mocks.readIs.mockResolvedValue({
+      data: [
+        {
+          id: "product-xi-mang-a",
+          name: "Xi măng A",
+          aliases: ["xi măng"],
+          unit: "cái",
+          sell_price: null,
+        },
+        {
+          id: "product-xi-mang-b",
+          name: "Xi măng B",
+          aliases: ["xi măng"],
+          unit: "bao",
+          sell_price: "90000",
+        },
+      ],
+      error: null,
+    });
+    mocks.from
+      .mockReturnValueOnce(chatInsertChain)
+      .mockReturnValueOnce(productReadChain);
+
+    const result = await processMessage("đổi đơn vị xi măng thành bao");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.productManagementPreview).toMatchObject({
+        status: "needs_choice",
+        action: "set_unit",
+        product_raw: "xi măng",
+        target: { unit: "bao" },
+      });
+      expect(
+        result.productManagementPreview?.status === "needs_choice"
+          ? result.productManagementPreview.candidates
+          : [],
+      ).toEqual([
+        expect.objectContaining({
+          id: "product-xi-mang-a",
+          name: "Xi măng A",
+          unit: "cái",
+          sell_price: null,
+        }),
+        expect.objectContaining({
+          id: "product-xi-mang-b",
+          name: "Xi măng B",
+          unit: "bao",
+          sell_price: 90000,
+        }),
+      ]);
+    }
+  });
+
+  it("attaches a create_duplicate product-management preview when the product already exists", async () => {
+    const productPipeline = manageProductPipeline({
+      action: "create",
+      product_raw: "gạch đỏ",
+      unit: null,
+      sell_price: null,
+    });
+    mocks.runChatPipeline.mockResolvedValue(productPipeline);
+    mocks.readIs.mockResolvedValue({
+      data: [
+        {
+          id: "product-gach-do",
+          name: "Gạch đỏ",
+          unit: "viên",
+          sell_price: "2000",
+        },
+      ],
+      error: null,
+    });
+    mocks.from
+      .mockReturnValueOnce(chatInsertChain)
+      .mockReturnValueOnce(productReadChain);
+
+    const result = await processMessage("thêm hàng gạch đỏ");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.productManagementPreview).toEqual({
+        status: "create_duplicate",
+        action: "create",
+        product_raw: "gạch đỏ",
+        product: {
+          id: "product-gach-do",
+          name: "Gạch đỏ",
+          unit: "viên",
+          sell_price: 2000,
+        },
+      });
+    }
+    expect(mocks.from).toHaveBeenCalledWith("products");
+    expect(mocks.readSelect).toHaveBeenCalledWith("id,name,unit,sell_price");
+    expect(mocks.readEq).toHaveBeenCalledWith("owner_id", "user-a");
+    expect(mocks.readEq).toHaveBeenCalledWith("is_active", true);
+    expect(mocks.readIs).toHaveBeenCalledWith("deleted_at", null);
+    expect(mocks.insert).toHaveBeenCalledTimes(1);
+  });
+
+  it("attaches a create_draft product-management preview for a new product", async () => {
+    const productPipeline = manageProductPipeline({
+      action: "create",
+      product_raw: "gạch đỏ",
+      unit: null,
+      sell_price: null,
+    });
+    mocks.runChatPipeline.mockResolvedValue(productPipeline);
+    mocks.readIs.mockResolvedValue({ data: [], error: null });
+    mocks.from
+      .mockReturnValueOnce(chatInsertChain)
+      .mockReturnValueOnce(productReadChain);
+
+    const result = await processMessage("thêm hàng gạch đỏ");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.productManagementPreview).toEqual({
+        status: "create_draft",
+        action: "create",
+        product_raw: "gạch đỏ",
+        draft: {
+          name: "gạch đỏ",
+          unit: "cái",
+          sell_price: null,
+        },
+      });
+    }
+    expect(mocks.from).toHaveBeenCalledTimes(2);
+    expect(mocks.from).toHaveBeenCalledWith("products");
+    expect(mocks.readSelect).toHaveBeenCalledWith("id,name,unit,sell_price");
+    expect(mocks.readEq).toHaveBeenCalledWith("owner_id", "user-a");
+    expect(mocks.readEq).toHaveBeenCalledWith("is_active", true);
+    expect(mocks.readIs).toHaveBeenCalledWith("deleted_at", null);
+    expect(mocks.insert).toHaveBeenCalledTimes(1);
+  });
+
+  it("prefills create_draft unit and sell_price when extractor returns them", async () => {
+    const productPipeline = manageProductPipeline({
+      action: "create",
+      product_raw: "sơn Dulux",
+      unit: "thùng",
+      sell_price: 85000,
+    });
+    mocks.runChatPipeline.mockResolvedValue(productPipeline);
+    mocks.readIs.mockResolvedValue({ data: [], error: null });
+    mocks.from
+      .mockReturnValueOnce(chatInsertChain)
+      .mockReturnValueOnce(productReadChain);
+
+    const result = await processMessage("thêm hàng sơn Dulux");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.productManagementPreview).toEqual({
+        status: "create_draft",
+        action: "create",
+        product_raw: "sơn Dulux",
+        draft: {
+          name: "sơn Dulux",
+          unit: "thùng",
+          sell_price: 85000,
+        },
+      });
+    }
+    expect(mocks.from).toHaveBeenCalledTimes(2);
+    expect(mocks.from).toHaveBeenCalledWith("products");
   });
 
   it("attaches a deterministic answer for supported query intents", async () => {
