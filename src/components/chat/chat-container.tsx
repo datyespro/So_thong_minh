@@ -10,10 +10,16 @@ import {
   type PreviewCardPatch,
 } from "@/src/components/chat/preview-card";
 import type { ChatMessageView } from "@/src/components/chat/types";
+import {
+  clearDraft,
+  loadDraft,
+  type PreviewDraft,
+} from "@/src/lib/chat/preview-draft";
 
 type ChatContainerProps = Readonly<{
   greeting: string;
   initialMessages: ChatMessageView[];
+  ownerId: string;
   todayLabel: string;
 }>;
 
@@ -30,6 +36,7 @@ const READING_COLUMN = "mx-auto w-full max-w-[760px] px-3 sm:px-5 lg:px-6";
 export function ChatContainer({
   greeting,
   initialMessages,
+  ownerId,
   todayLabel,
 }: ChatContainerProps) {
   const [messages, setMessages] = React.useState<ChatMessageView[]>(initialMessages);
@@ -39,8 +46,19 @@ export function ChatContainer({
   const [isProcessing, setIsProcessing] = React.useState(false);
   const [pipelineTurns, setPipelineTurns] = React.useState<PipelineTurnView[]>([]);
   const [activeTurnId, setActiveTurnId] = React.useState<string | null>(null);
+  const [restoredDraft, setRestoredDraft] = React.useState<PreviewDraft | null>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const showGreeting = messages.length === 0;
+  const hasLiveTurn =
+    activeTurnId !== null && pipelineTurns.some((turn) => turn.id === activeTurnId);
+  const visibleRestoredDraft =
+    restoredDraft && !hasLiveTurn && !isSending && !isProcessing
+      ? restoredDraft
+      : null;
+
+  React.useEffect(() => {
+    setRestoredDraft(loadDraft(ownerId));
+  }, [ownerId]);
 
   const handlePickSample = React.useCallback((text: string) => {
     setError(null);
@@ -159,6 +177,11 @@ export function ChatContainer({
     [],
   );
 
+  const handleClearRestoredDraft = React.useCallback(() => {
+    clearDraft(ownerId);
+    setRestoredDraft(null);
+  }, [ownerId]);
+
   return (
     <section className="flex h-full min-h-0 bg-paper text-textMain">
       <div className="flex h-full min-h-0 w-full flex-col">
@@ -185,12 +208,15 @@ export function ChatContainer({
         </div>
 
         <MessageList
+          ownerId={ownerId}
           messages={messages}
           isProcessing={isProcessing}
           pipelineTurns={pipelineTurns}
           activeTurnId={activeTurnId}
+          restoredDraft={visibleRestoredDraft}
           onPickSample={handlePickSample}
           onPatchTurn={handlePatchTurn}
+          onClearRestoredDraft={handleClearRestoredDraft}
         />
 
         <div className={READING_COLUMN}>

@@ -61,19 +61,36 @@ import type {
 import type {
   EntityCandidate,
   ResolvedEntity,
+  ResolvedIntent,
+  ResolvedItem,
 } from "@/src/lib/ai/resolve-schema";
 import type { QueryAnswer } from "@/src/lib/ai/answer-query";
-import type { ValidatedIntent } from "@/src/lib/ai/validate-schema";
+import {
+  ValidatedIntentSchema,
+  type ValidatedIntent,
+} from "@/src/lib/ai/validate-schema";
 import { businessDateVN, dayjs } from "@/src/lib/dayjs";
 import { parseProductSellPriceInput } from "@/src/lib/products/update";
+import {
+  clearDraft,
+  saveDraft,
+  type PreviewDraft,
+  type PreviewDraftIntent,
+} from "@/src/lib/chat/preview-draft";
+
+type PreviewCardMode = "live" | "restored";
 
 type PreviewCardProps = Readonly<{
   validated: ValidatedIntent;
   answer?: QueryAnswer | null;
   productManagementPreview?: ProductManagementPreview | null;
   patched: PreviewCardPatch;
+  ownerId?: string;
   isLive: boolean;
+  mode?: PreviewCardMode;
   onPatchChange: (patch: PreviewCardPatch) => void;
+  restoredDraft?: PreviewDraft | null;
+  onRestoredDismiss?: () => void;
 }>;
 
 type DraftInputs = {
@@ -742,6 +759,422 @@ function makeIdempotencyKey() {
   }
 
   return `idem-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function isPreviewDraftIntent(intent: ValidatedIntent["intent"]): intent is PreviewDraftIntent {
+  return (
+    intent === "create_order" ||
+    intent === "record_payment" ||
+    intent === "create_purchase"
+  );
+}
+
+function resolvedEntityFromPatch(
+  entity: ResolvedEntity | null,
+  patch: PreviewResolvedEntityPatch | null,
+) {
+  if (!patch) {
+    return entity;
+  }
+
+  return {
+    raw: patch.raw,
+    entity_type: patch.entity_type,
+    status: "resolved" as const,
+    resolved_id: patch.resolved_id,
+    resolved_name: patch.resolved_name,
+    confidence: 1,
+    candidates: [],
+  };
+}
+
+function resolvedItemFromValidated(
+  item: ValidatedIntent["items"][number],
+  itemIndex: number,
+  patch: PreviewCardPatch,
+): ResolvedItem {
+  return {
+    raw: item.raw,
+    product_name: item.product_name,
+    quantity: patch.itemQuantities[itemIndex] ?? item.quantity,
+    unit: item.unit,
+    unit_price: patch.itemPrices[itemIndex] ?? item.unit_price,
+    line_total: item.line_total,
+    confidence: item.confidence,
+    resolution:
+      resolvedEntityFromPatch(item.resolution, patch.itemProducts[itemIndex] ?? null) ??
+      item.resolution,
+  };
+}
+
+function statusForResolvedIntent(resolved: Pick<ResolvedIntent, "customer" | "supplier" | "items">) {
+  const entities = [
+    resolved.customer,
+    resolved.supplier,
+    ...resolved.items.map((item) => item.resolution),
+  ].filter((entity): entity is ResolvedEntity => entity !== null);
+
+  if (entities.every((entity) => entity.status === "resolved")) {
+    return "all_resolved" as const;
+  }
+
+  if (
+    entities.some(
+      (entity) =>
+        entity.status === "needs_confirmation" || entity.status === "ambiguous",
+    )
+  ) {
+    return "needs_confirmation" as const;
+  }
+
+  return "has_unresolved" as const;
+}
+
+export function resolvedIntentForPreviewDraft(
+  validated: ValidatedIntent,
+  patch: PreviewCardPatch,
+): ResolvedIntent | null {
+  if (!isPreviewDraftIntent(validated.intent)) {
+    return null;
+  }
+
+  const resolved: ResolvedIntent = {
+    intent: validated.intent,
+    raw_text: validated.raw_text,
+    amount:
+      validated.intent === "record_payment"
+        ? patch.amount ?? validated.effective_amount
+        : null,
+    payment_status: "unknown",
+    payment_method: null,
+    customer: resolvedEntityFromPatch(validated.customer, patch.customer),
+    supplier: resolvedEntityFromPatch(validated.supplier, patch.supplier),
+    items: validated.items.map((item, index) =>
+      resolvedItemFromValidated(item, index, patch),
+    ),
+    overall_status: "has_unresolved",
+    needs_confirmation: false,
+  };
+
+  const overallStatus = statusForResolvedIntent(resolved);
+
+  return {
+    ...resolved,
+    overall_status: overallStatus,
+    needs_confirmation: overallStatus === "needs_confirmation",
+  };
+}
+
+function isStateResolvedForDraft(
+  intent: PreviewDraftIntent,
+  state: ReturnType<typeof getPatchedPreviewState>,
+) {
+  if (
+    (intent === "create_order" || intent === "record_payment") &&
+    state.customer?.status !== "resolved"
+  ) {
+    return false;
+  }
+
+  if (
+    intent === "create_purchase" &&
+    state.supplier !== null &&
+    state.supplier.status !== "resolved"
+  ) {
+    return false;
+  }
+
+  return state.items.every((item) => item.resolution.status === "resolved");
+}
+
+function saveCurrentPreviewDraft(input: Readonly<{
+  ownerId: string | undefined;
+  validated: ValidatedIntent;
+  patched: PreviewCardPatch;
+  state: ReturnType<typeof getPatchedPreviewState>;
+  idempotencyKey: string;
+}>) {
+  if (!input.ownerId || !isPreviewDraftIntent(input.validated.intent)) {
+    return;
+  }
+
+  if (!isStateResolvedForDraft(input.validated.intent, input.state)) {
+    return;
+  }
+
+  const resolved = resolvedIntentForPreviewDraft(input.validated, input.patched);
+
+  if (!resolved) {
+    return;
+  }
+
+  saveDraft(input.ownerId, {
+    intent: input.validated.intent,
+    idempotencyKey: input.idempotencyKey,
+    resolved,
+    patched: input.patched,
+  });
+}
+
+function entityNameForState(
+  intent: PreviewDraftIntent,
+  state: ReturnType<typeof getPatchedPreviewState>,
+) {
+  const entity = intent === "create_purchase" ? state.supplier : state.customer;
+
+  return counterpartyName(entity);
+}
+
+function restoredOrderItems(
+  state: ReturnType<typeof getPatchedPreviewState>,
+): CommitOrderItemInput[] | null {
+  const items: CommitOrderItemInput[] = [];
+
+  for (const displayItem of state.items) {
+    const productId = displayItem.resolution.resolved_id;
+
+    if (
+      !productId ||
+      displayItem.quantity === null ||
+      displayItem.unitPrice === null
+    ) {
+      return null;
+    }
+
+    items.push({
+      product_id: productId,
+      product_name_snapshot: displayItem.name,
+      unit_snapshot: displayItem.unit,
+      quantity: displayItem.quantity,
+      unit_price: displayItem.unitPrice,
+    });
+  }
+
+  return items;
+}
+
+function restoredPurchaseItems(
+  state: ReturnType<typeof getPatchedPreviewState>,
+): CommitPurchaseItemInput[] | null {
+  const items: CommitPurchaseItemInput[] = [];
+
+  for (const displayItem of state.items) {
+    const productId = displayItem.resolution.resolved_id;
+
+    if (
+      !productId ||
+      displayItem.quantity === null ||
+      displayItem.unitPrice === null
+    ) {
+      return null;
+    }
+
+    items.push({
+      product_id: productId,
+      product_name_snapshot: displayItem.name,
+      unit_snapshot: displayItem.unit,
+      quantity: displayItem.quantity,
+      unit_cost: displayItem.unitPrice,
+    });
+  }
+
+  return items;
+}
+
+type RestoredDraftCommitResult =
+  | {
+      ok: true;
+      validated: ValidatedIntent;
+      committedInfo: CommittedInfo;
+    }
+  | {
+      ok: false;
+      message: string;
+      validated?: ValidatedIntent;
+    };
+
+async function validateRestoredDraft(draft: PreviewDraft) {
+  const response = await fetch("/api/ai/validate-intent", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ resolved: draft.resolved }),
+  });
+  const body = await response.json() as {
+    ok?: boolean;
+    data?: unknown;
+    message?: string;
+  };
+
+  if (!response.ok || body.ok !== true) {
+    return {
+      ok: false as const,
+      message: body.message ?? "Chưa kiểm được nháp, bác thử lại ạ.",
+    };
+  }
+
+  const parsed = ValidatedIntentSchema.safeParse(body.data);
+
+  if (!parsed.success || parsed.data.intent !== draft.intent) {
+    return {
+      ok: false as const,
+      message: "Nháp không còn đúng dạng để ghi, bác bỏ nháp rồi tạo lại giúp em ạ.",
+    };
+  }
+
+  return { ok: true as const, data: parsed.data };
+}
+
+export async function commitRestoredPreviewDraft(
+  draft: PreviewDraft,
+): Promise<RestoredDraftCommitResult> {
+  clearDraft(draft.ownerId);
+
+  try {
+    const validation = await validateRestoredDraft(draft);
+
+    if (!validation.ok) {
+      saveDraft(draft.ownerId, draft);
+      return { ok: false, message: validation.message };
+    }
+
+    const validated = validation.data;
+    const state = getPatchedPreviewState(validated, draft.patched);
+
+    if (!state.canConfirm) {
+      saveDraft(draft.ownerId, draft);
+      return {
+        ok: false,
+        validated,
+        message: "Nháp còn thiếu thông tin, bác kiểm tra rồi tạo lại giúp em ạ.",
+      };
+    }
+
+    if (draft.intent === "create_order") {
+      const customerId = state.customer?.resolved_id ?? null;
+      const items = restoredOrderItems(state);
+
+      if (!customerId || !items) {
+        saveDraft(draft.ownerId, draft);
+        return {
+          ok: false,
+          validated,
+          message: "Đơn còn thiếu thông tin, bác kiểm tra rồi tạo lại giúp em ạ.",
+        };
+      }
+
+      const entityName = entityNameForState(draft.intent, state);
+      const result = await commitOrder({
+        idempotency_key: draft.idempotencyKey,
+        customer_id: customerId,
+        customer_name: entityName,
+        raw_input: validated.raw_text,
+        items,
+      });
+
+      if (!result.ok) {
+        saveDraft(draft.ownerId, draft);
+        return { ok: false, validated, message: result.message };
+      }
+
+      return {
+        ok: true,
+        validated,
+        committedInfo: {
+          id: result.data.order_id,
+          business_date: result.data.business_date,
+          message: commitConfirmationMessage({
+            type: "create_order",
+            entityName,
+          }),
+        },
+      };
+    }
+
+    if (draft.intent === "record_payment") {
+      const customerId = state.customer?.resolved_id ?? null;
+      const amount = state.amount;
+
+      if (!customerId || amount === null || !(amount > 0)) {
+        saveDraft(draft.ownerId, draft);
+        return {
+          ok: false,
+          validated,
+          message: "Phiếu thu còn thiếu thông tin, bác kiểm tra rồi tạo lại giúp em ạ.",
+        };
+      }
+
+      const entityName = entityNameForState(draft.intent, state);
+      const result = await commitPayment({
+        idempotency_key: draft.idempotencyKey,
+        customer_id: customerId,
+        customer_name: entityName,
+        amount,
+        raw_input: validated.raw_text,
+      });
+
+      if (!result.ok) {
+        saveDraft(draft.ownerId, draft);
+        return { ok: false, validated, message: result.message };
+      }
+
+      return {
+        ok: true,
+        validated,
+        committedInfo: {
+          id: result.data.payment_id,
+          business_date: null,
+          message: commitConfirmationMessage({
+            type: "record_payment",
+            entityName,
+          }),
+        },
+      };
+    }
+
+    const items = restoredPurchaseItems(state);
+
+    if (!items) {
+      saveDraft(draft.ownerId, draft);
+      return {
+        ok: false,
+        validated,
+        message: "Đơn nhập còn thiếu thông tin, bác kiểm tra rồi tạo lại giúp em ạ.",
+      };
+    }
+
+    const supplierName = entityNameForState(draft.intent, state);
+    const result = await commitPurchase({
+      idempotency_key: draft.idempotencyKey,
+      supplier_id: state.supplier?.resolved_id ?? null,
+      supplier_name: supplierName,
+      raw_input: validated.raw_text,
+      items,
+    });
+
+    if (!result.ok) {
+      saveDraft(draft.ownerId, draft);
+      return { ok: false, validated, message: result.message };
+    }
+
+    return {
+      ok: true,
+      validated,
+      committedInfo: {
+        id: result.data.purchase_id,
+        business_date: result.data.business_date,
+        message: commitConfirmationMessage({
+          type: "create_purchase",
+          supplierName,
+        }),
+      },
+    };
+  } catch {
+    saveDraft(draft.ownerId, draft);
+    return {
+      ok: false,
+      message: "Chưa ghi được nháp, bác thử lại ạ.",
+    };
+  }
 }
 
 function issueGroups(issues: VisibleIssue[]) {
@@ -1537,13 +1970,22 @@ function DeleteOrderConfirmModal({
 }
 
 export function PreviewCard({
-  validated,
+  validated: initialValidated,
   answer = null,
   productManagementPreview = null,
   patched,
+  ownerId,
   isLive,
+  mode = "live",
   onPatchChange,
+  restoredDraft = null,
+  onRestoredDismiss,
 }: PreviewCardProps) {
+  const isRestored = mode === "restored";
+  const isLiveMode = mode === "live";
+  const [restoredValidated, setRestoredValidated] =
+    React.useState<ValidatedIntent | null>(null);
+  const validated = restoredValidated ?? initialValidated;
   const [notice, setNotice] = React.useState<string | null>(null);
   const [forceCreateCustomer, setForceCreateCustomer] = React.useState(false);
   const [dismissedCustomerCreate, setDismissedCustomerCreate] = React.useState(false);
@@ -1565,7 +2007,9 @@ export function PreviewCard({
   const [productSearchLoading, setProductSearchLoading] = React.useState(false);
   const [productSearchError, setProductSearchError] = React.useState<string | null>(null);
   const [productSearchCreateOpen, setProductSearchCreateOpen] = React.useState(false);
-  const [idempotencyKey, setIdempotencyKey] = React.useState(makeIdempotencyKey);
+  const [idempotencyKey, setIdempotencyKey] = React.useState(
+    restoredDraft?.idempotencyKey ?? makeIdempotencyKey,
+  );
   const [isCommitting, setIsCommitting] = React.useState(false);
   const [committedInfo, setCommittedInfo] = React.useState<CommittedInfo | null>(null);
   const [commitError, setCommitError] = React.useState<string | null>(null);
@@ -1603,6 +2047,16 @@ export function PreviewCard({
   });
   const latestPatchRef = React.useRef(patched);
   const state = getPatchedPreviewState(validated, patched);
+  const liveInteractions = isLiveMode && isLive;
+
+  React.useEffect(() => {
+    setRestoredValidated(null);
+
+    if (isRestored && restoredDraft?.idempotencyKey) {
+      setIdempotencyKey(restoredDraft.idempotencyKey);
+    }
+  }, [initialValidated, isRestored, restoredDraft?.idempotencyKey]);
+
   const handleCloseDeleteOrderConfirm = React.useCallback(() => {
     setConfirmDeleteOrder(false);
   }, []);
@@ -1615,7 +2069,7 @@ export function PreviewCard({
         hasCommitted: committedInfo !== null,
         itemCount: state.items.length,
         undone,
-        isLive,
+        isLive: liveInteractions,
         isEditing,
       })
     ) {
@@ -1625,7 +2079,7 @@ export function PreviewCard({
     validated.kind,
     validated.intent,
     isEditing,
-    isLive,
+    liveInteractions,
     committedInfo,
     undone,
     state.items.length,
@@ -1634,6 +2088,39 @@ export function PreviewCard({
   React.useEffect(() => {
     latestPatchRef.current = patched;
   }, [patched]);
+
+  React.useEffect(() => {
+    if (
+      !isLiveMode ||
+      !isLive ||
+      isCommitting ||
+      committedInfo ||
+      undone ||
+      isEditing
+    ) {
+      return;
+    }
+
+    saveCurrentPreviewDraft({
+      ownerId,
+      validated,
+      patched,
+      state,
+      idempotencyKey,
+    });
+  }, [
+    committedInfo,
+    idempotencyKey,
+    isCommitting,
+    isEditing,
+    isLive,
+    isLiveMode,
+    ownerId,
+    patched,
+    state,
+    undone,
+    validated,
+  ]);
 
   React.useEffect(() => {
     setProductManagementState(productManagementPreview);
@@ -1780,7 +2267,7 @@ export function PreviewCard({
   }
 
   if (productManagementPreview && productManagementDismissed) {
-    return <ProductManagementCanceledNotice isLive={isLive} />;
+    return <ProductManagementCanceledNotice isLive={liveInteractions} />;
   }
 
   if (productManagementState) {
@@ -1792,7 +2279,7 @@ export function PreviewCard({
       return (
         <ProductManagementCreatePreviewContent
           preview={productManagementState}
-          isLive={isLive}
+          isLive={liveInteractions}
           isSaving={isSavingProductManagement}
           error={productManagementError}
           draft={productManagementCreateDraft}
@@ -1806,7 +2293,7 @@ export function PreviewCard({
     return (
       <ProductManagementPreviewContent
         preview={productManagementState}
-        isLive={isLive}
+        isLive={liveInteractions}
         isSaving={isSavingProductManagement}
         error={productManagementError}
         onSelectCandidate={handleSelectProductManagementCandidate}
@@ -1819,7 +2306,7 @@ export function PreviewCard({
   if (validated.kind === "none") {
     return (
       <div
-        className={cn("flex w-full justify-start", !isLive && "opacity-70")}
+        className={cn("flex w-full justify-start", !liveInteractions && "opacity-70")}
         data-testid="preview-none"
       >
         <div className="max-w-[86%] rounded border border-dashed border-ledgerBorder bg-paperWarm px-4 py-3 text-[16px] leading-7 text-textMute shadow-none sm:max-w-[78%]">
@@ -1831,7 +2318,7 @@ export function PreviewCard({
 
   if (validated.kind === "query" || validated.kind === "edit" || validated.kind === "undo") {
     return (
-      <div className={cn("flex w-full justify-start", !isLive && "opacity-70")}>
+      <div className={cn("flex w-full justify-start", !liveInteractions && "opacity-70")}>
         <article
           className="w-full max-w-[92%] rounded border border-ledgerBorder bg-surface px-4 py-4 text-[16px] leading-7 text-textMain shadow-[var(--shadow-card)] sm:max-w-[84%]"
           data-testid={`preview-${validated.kind}`}
@@ -1874,7 +2361,7 @@ export function PreviewCard({
     resaveDisabled,
   } = getPreviewCardInteractionFlags({
     intent: validated.intent,
-    isLive,
+    isLive: liveInteractions,
     hasCommitted: committedInfo !== null,
     undone,
     isEditing,
@@ -1904,6 +2391,14 @@ export function PreviewCard({
     );
   const commitDisabled =
     !state.canConfirm || isCommitting || overpaymentBlocking;
+  const restoredCommitDisabled =
+    !state.canConfirm || isCommitting || overpaymentBlocking || committedInfo !== null;
+  const cardVisualActive = interactive || isRestored;
+  const previewCardTestId = isRestored
+    ? "preview-card-restored"
+    : interactive
+      ? "preview-card-live"
+      : "preview-card-frozen";
   // For a payment, the header "Tổng tiền" mirrors the amount. While that amount
   // isn't valid-to-commit, show "—" instead of a number so a green total never
   // contradicts the red overpayment warning. Reuses the 007b overpaymentBlocking
@@ -1924,7 +2419,7 @@ export function PreviewCard({
       hasCommitted: committedInfo !== null,
       itemCount: state.items.length,
       undone,
-      isLive,
+      isLive: liveInteractions,
       isEditing,
     });
   const deleteOrderSummary = formatDeleteOrderSummary({
@@ -2210,6 +2705,22 @@ export function PreviewCard({
     return items;
   }
 
+  function clearLivePreviewDraft() {
+    if (ownerId) {
+      clearDraft(ownerId);
+    }
+  }
+
+  function resaveLivePreviewDraft() {
+    saveCurrentPreviewDraft({
+      ownerId,
+      validated,
+      patched,
+      state,
+      idempotencyKey,
+    });
+  }
+
   async function handleCommitOrder() {
     // 007a writes create_order only. record_payment / create_purchase stay
     // on the placeholder toast until their own TIP.
@@ -2238,6 +2749,7 @@ export function PreviewCard({
     setIsCommitting(true);
     setCommitError(null);
     setNotice(null);
+    clearLivePreviewDraft();
 
     try {
       const result = await commitOrder({
@@ -2250,6 +2762,7 @@ export function PreviewCard({
 
       if (!result.ok) {
         setCommitError(result.message);
+        resaveLivePreviewDraft();
         return;
       }
 
@@ -2264,6 +2777,7 @@ export function PreviewCard({
       setResaveError(null);
     } catch (error) {
       console.error("commitOrder failed", error);
+      resaveLivePreviewDraft();
       setCommitError("Chưa ghi được đơn, bác thử lại ạ.");
     } finally {
       setIsCommitting(false);
@@ -2295,6 +2809,7 @@ export function PreviewCard({
     setIsCommitting(true);
     setCommitError(null);
     setNotice(null);
+    clearLivePreviewDraft();
 
     try {
       const result = await commitPayment({
@@ -2307,6 +2822,7 @@ export function PreviewCard({
 
       if (!result.ok) {
         setCommitError(result.message);
+        resaveLivePreviewDraft();
         return;
       }
 
@@ -2320,6 +2836,7 @@ export function PreviewCard({
       });
     } catch (error) {
       console.error("commitPayment failed", error);
+      resaveLivePreviewDraft();
       setCommitError("Chưa ghi được, bác thử lại ạ.");
     } finally {
       setIsCommitting(false);
@@ -2362,6 +2879,7 @@ export function PreviewCard({
     setIsCommitting(true);
     setCommitError(null);
     setNotice(null);
+    clearLivePreviewDraft();
 
     try {
       const supplierName = counterpartyName(state.supplier);
@@ -2376,6 +2894,7 @@ export function PreviewCard({
 
       if (!result.ok) {
         setCommitError(result.message);
+        resaveLivePreviewDraft();
         return;
       }
 
@@ -2389,13 +2908,53 @@ export function PreviewCard({
       });
     } catch (error) {
       console.error("commitPurchase failed", error);
+      resaveLivePreviewDraft();
       setCommitError("Chưa ghi được đơn nhập, bác thử lại ạ.");
     } finally {
       setIsCommitting(false);
     }
   }
 
+  async function handleCommitRestoredDraft() {
+    if (!restoredDraft || isCommitting || committedInfo) {
+      return;
+    }
+
+    setIsCommitting(true);
+    setCommitError(null);
+    setNotice(null);
+
+    const result = await commitRestoredPreviewDraft(restoredDraft);
+
+    if (result.validated) {
+      setRestoredValidated(result.validated);
+    }
+
+    if (!result.ok) {
+      setCommitError(result.message);
+      setIsCommitting(false);
+      return;
+    }
+
+    setCommittedInfo(result.committedInfo);
+    setResaveError(null);
+    setIsCommitting(false);
+  }
+
+  function handleDismissRestoredDraft() {
+    if (restoredDraft) {
+      clearDraft(restoredDraft.ownerId);
+    }
+
+    onRestoredDismiss?.();
+  }
+
   function handleConfirmClick() {
+    if (isRestored) {
+      void handleCommitRestoredDraft();
+      return;
+    }
+
     if (validated.intent === "create_order") {
       void handleCommitOrder();
       return;
@@ -2418,7 +2977,7 @@ export function PreviewCard({
     if (
       validated.intent !== "create_order" ||
       !committedInfo ||
-      !isLive ||
+      !liveInteractions ||
       undone ||
       isEditing
     ) {
@@ -2711,15 +3270,15 @@ export function PreviewCard({
   }
 
   return (
-    <div className={cn("flex w-full justify-start", !interactive && "opacity-70")}>
+    <div className={cn("flex w-full justify-start", !cardVisualActive && "opacity-70")}>
       <article
         className={cn(
           "w-full max-w-[94%] rounded border px-4 py-4 text-textMain shadow-[var(--shadow-card)] sm:max-w-[88%]",
-          interactive
+          cardVisualActive
             ? "border-ledgerBorder bg-surface"
             : "border-ledgerBorder bg-paperWarm shadow-none",
         )}
-        data-testid={interactive ? "preview-card-live" : "preview-card-frozen"}
+        data-testid={previewCardTestId}
       >
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-ledgerBorder pb-3">
           <div>
@@ -3294,6 +3853,48 @@ export function PreviewCard({
                   </p>
                 ) : null}
               </div>
+            ) : null}
+          </div>
+        ) : isRestored ? (
+          <div className="mt-4 border-t border-ledgerBorder pt-3">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                disabled={restoredCommitDisabled}
+                title={
+                  state.canConfirm
+                    ? "Ghi vào sổ ạ"
+                    : "Còn thiếu thông tin, bác bỏ nháp rồi tạo lại giúp em ạ."
+                }
+                className="h-12 rounded bg-ink px-5 text-[16px] font-semibold text-paper hover:bg-inkDeep disabled:cursor-not-allowed disabled:opacity-55"
+                onClick={handleConfirmClick}
+              >
+                {isCommitting ? "Đang ghi đơn..." : buttonLabel}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isCommitting}
+                className="h-12 rounded border-ledgerBorder bg-surface px-5 text-[16px] font-semibold text-textMute hover:bg-paperWarm hover:text-ink disabled:cursor-not-allowed disabled:opacity-55"
+                onClick={handleDismissRestoredDraft}
+              >
+                Bỏ
+              </Button>
+            </div>
+            {!state.canConfirm ? (
+              <p className="mt-2 text-[15px] leading-6 text-textMute">
+                Còn thiếu thông tin, bác bỏ nháp rồi tạo lại giúp em ạ.
+              </p>
+            ) : null}
+            {commitError ? (
+              <p className="mt-2 text-[15px] leading-6 text-debt" role="alert">
+                {commitError}
+              </p>
+            ) : null}
+            {notice ? (
+              <p className="mt-2 text-[15px] leading-6 text-stamp" role="status">
+                {notice}
+              </p>
             ) : null}
           </div>
         ) : interactive ? (

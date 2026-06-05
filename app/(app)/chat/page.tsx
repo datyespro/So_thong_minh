@@ -93,6 +93,7 @@ export default async function ChatPage() {
     <ChatContainer
       greeting={getGreeting(getVietnamHour(now))}
       initialMessages={initialMessages}
+      ownerId={user.id}
       todayLabel={getTodayLabel(now)}
     />
   );

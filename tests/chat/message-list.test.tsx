@@ -24,12 +24,15 @@ function renderMessageList({
 }) {
   return renderToStaticMarkup(
     createElement(MessageList, {
+      ownerId: "owner-1",
       messages,
       isProcessing,
       pipelineTurns,
       activeTurnId,
+      restoredDraft: null,
       onPickSample: () => undefined,
       onPatchTurn: () => undefined,
+      onClearRestoredDraft: () => undefined,
     }),
   );
 }

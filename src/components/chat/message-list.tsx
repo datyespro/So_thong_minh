@@ -10,23 +10,64 @@ import type {
   PipelineTurnView,
   PreviewCardPatch,
 } from "@/src/components/chat/preview-card";
+import type { PreviewDraft } from "@/src/lib/chat/preview-draft";
+import type { ValidatedIntent, ValidatedLineItem } from "@/src/lib/ai/validate-schema";
 
 type MessageListProps = Readonly<{
+  ownerId: string;
   messages: ChatMessageView[];
   isProcessing: boolean;
   pipelineTurns: PipelineTurnView[];
   activeTurnId: string | null;
+  restoredDraft: PreviewDraft | null;
   onPickSample: (text: string) => void;
   onPatchTurn: (turnId: string, patch: PreviewCardPatch) => void;
+  onClearRestoredDraft: () => void;
 }>;
 
+function restoredLineItem(item: PreviewDraft["resolved"]["items"][number]): ValidatedLineItem {
+  const lineTotal =
+    item.quantity !== null && item.unit_price !== null
+      ? item.quantity * item.unit_price
+      : item.line_total;
+
+  return {
+    ...item,
+    effective_quantity: item.quantity,
+    effective_unit: item.unit,
+    effective_unit_price: item.unit_price,
+    line_total: lineTotal,
+    issues: [],
+  };
+}
+
+function restoredValidatedSnapshot(draft: PreviewDraft): ValidatedIntent {
+  return {
+    intent: draft.intent,
+    kind: "writable",
+    raw_text: draft.resolved.raw_text,
+    customer: draft.resolved.customer,
+    supplier: draft.resolved.supplier,
+    items: draft.resolved.items.map(restoredLineItem),
+    effective_amount:
+      draft.intent === "record_payment" ? draft.resolved.amount ?? null : null,
+    issues: [],
+    ready_for_preview: true,
+    blocking_count: 0,
+    warning_count: 0,
+  };
+}
+
 export function MessageList({
+  ownerId,
   messages,
   isProcessing,
   pipelineTurns,
   activeTurnId,
+  restoredDraft,
   onPickSample,
   onPatchTurn,
+  onClearRestoredDraft,
 }: MessageListProps) {
   const bottomRef = React.useRef<HTMLDivElement | null>(null);
   const turnsByMessageId = React.useMemo(() => {
@@ -43,7 +84,7 @@ export function MessageList({
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [messages, isProcessing, pipelineTurns, activeTurnId]);
 
-  if (messages.length === 0) {
+  if (messages.length === 0 && !restoredDraft) {
     return (
       <div className="flex min-h-0 flex-1 flex-col items-center justify-start px-4 pb-10 pt-20 text-center sm:pt-24">
         <SamplePromptNotes onPick={onPickSample} />
@@ -74,6 +115,7 @@ export function MessageList({
                   answer={turn.answer ?? null}
                   productManagementPreview={turn.productManagementPreview ?? null}
                   patched={turn.patched}
+                  ownerId={ownerId}
                   isLive={turn.id === activeTurnId}
                   onPatchChange={(patch) => onPatchTurn(turn.id, patch)}
                 />
@@ -81,6 +123,17 @@ export function MessageList({
             </React.Fragment>
           );
         })}
+        {restoredDraft ? (
+          <PreviewCard
+            mode="restored"
+            validated={restoredValidatedSnapshot(restoredDraft)}
+            patched={restoredDraft.patched}
+            restoredDraft={restoredDraft}
+            isLive={false}
+            onPatchChange={() => undefined}
+            onRestoredDismiss={onClearRestoredDraft}
+          />
+        ) : null}
         {isProcessing ? <TypingIndicator /> : null}
         <div ref={bottomRef} />
       </div>
