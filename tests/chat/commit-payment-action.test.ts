@@ -20,6 +20,7 @@ const { commitPayment } = await import("@/app/(app)/chat/actions");
 const validInput = {
   idempotency_key: "idem-1",
   customer_id: "cust-1",
+  customer_name: "anh Tuấn",
   amount: 200000,
   raw_input: "anh Tuấn trả 200k",
 };
@@ -63,11 +64,43 @@ describe("commitPayment", () => {
     expect(params.p_amount).toBe(200000);
     expect(params.p_method).toBeNull();
 
-    expect(mocks.from).toHaveBeenCalledWith("usage_events");
-    expect(mocks.insert).toHaveBeenCalledWith({
+    expect(mocks.from).toHaveBeenNthCalledWith(1, "usage_events");
+    expect(mocks.insert).toHaveBeenNthCalledWith(1, {
       owner_id: "user-a",
       event_type: "payment_created",
     });
+    expect(mocks.from).toHaveBeenNthCalledWith(2, "chat_messages");
+    expect(mocks.insert).toHaveBeenNthCalledWith(2, {
+      owner_id: "user-a",
+      role: "assistant",
+      content: "Đã ghi thu nợ cho anh Tuấn",
+      intent: "record_payment",
+      metadata: {
+        payment_id: "payment-1",
+        source: "tip_18b",
+      },
+    });
+  });
+
+  it("does not persist assistant text when the rpc reuses an existing payment", async () => {
+    mocks.rpc.mockResolvedValue({
+      data: {
+        payment_id: "payment-1",
+        amount: 200000,
+        new_debt_total: 100000,
+        idempotent_reuse: true,
+      },
+      error: null,
+    });
+
+    const result = await commitPayment(validInput);
+
+    expect(result).toEqual({
+      ok: true,
+      data: { payment_id: "payment-1", amount: 200000, new_debt_total: 100000 },
+    });
+    expect(mocks.from).not.toHaveBeenCalledWith("chat_messages");
+    expect(mocks.insert).toHaveBeenCalledTimes(1);
   });
 
   it("maps the overpayment guard to a friendly blocking message", async () => {

@@ -19,6 +19,11 @@ import {
   answerQuery,
   type QueryAnswer,
 } from "@/src/lib/ai/answer-query";
+import {
+  commitConfirmationMessage,
+  friendlyNoneMessage,
+  queryAnswerToText,
+} from "@/src/lib/ai/terminal-text";
 import { resolveOne, type EntityRow } from "@/src/lib/ai/entity-resolver";
 import type { ResolvedEntity } from "@/src/lib/ai/resolve-schema";
 import type { ProductManagement } from "@/src/lib/ai/intent-schema";
@@ -106,6 +111,86 @@ function toUserMessage(row: InsertedChatRow): ChatMessageView {
     content: row.content,
     created_at: row.created_at,
   };
+}
+
+async function persistAssistantTerminalMessage({
+  supabase,
+  ownerId,
+  content,
+  intent,
+  metadata,
+  source = "tip_18a",
+}: {
+  supabase: Pick<SupabaseClient, "from">;
+  ownerId: string;
+  content: string;
+  intent: string;
+  metadata?: Record<string, unknown>;
+  source?: string;
+}) {
+  try {
+    const { error } = await supabase.from("chat_messages").insert({
+      owner_id: ownerId,
+      role: "assistant",
+      content,
+      intent,
+      metadata: {
+        ...(metadata ?? {}),
+        source,
+      },
+    });
+
+    if (error) {
+      console.warn("Failed to persist assistant terminal chat message", {
+        code: error.code,
+        message: error.message,
+      });
+    }
+  } catch (error) {
+    console.warn("Failed to persist assistant terminal chat message", error);
+  }
+}
+
+async function persistTerminalAssistantResponse({
+  supabase,
+  ownerId,
+  pipeline,
+  answer,
+}: {
+  supabase: Pick<SupabaseClient, "from">;
+  ownerId: string;
+  pipeline: ChatPipelineResult;
+  answer: QueryAnswer | null;
+}) {
+  if (!pipeline.ok) {
+    return;
+  }
+
+  if (
+    pipeline.validated.kind === "none" &&
+    (pipeline.validated.intent === "small_talk" ||
+      pipeline.validated.intent === "unknown")
+  ) {
+    await persistAssistantTerminalMessage({
+      supabase,
+      ownerId,
+      content: friendlyNoneMessage(pipeline.validated.intent),
+      intent: pipeline.validated.intent,
+    });
+    return;
+  }
+
+  if (answer) {
+    await persistAssistantTerminalMessage({
+      supabase,
+      ownerId,
+      content: queryAnswerToText(answer),
+      intent: "query",
+      metadata: {
+        query_subject: answer.type,
+      },
+    });
+  }
 }
 
 function normalizeCustomerName(name: string) {
@@ -1131,6 +1216,7 @@ export type CommitOrderItemInput = Readonly<{
 export type CommitOrderInput = Readonly<{
   idempotency_key: string;
   customer_id: string;
+  customer_name?: string | null;
   raw_input: string;
   items: CommitOrderItemInput[];
 }>;
@@ -1163,6 +1249,7 @@ export type RecreateSaleOrderInput = Readonly<{
   oldOrderId: string;
   idempotencyKey: string;
   customer_id: string;
+  customer_name?: string | null;
   raw_input: string;
   items: CommitOrderItemInput[];
 }>;
@@ -1303,6 +1390,22 @@ export async function commitOrder(
 
   if (telemetry.error) {
     console.error("usage_events insert failed", telemetry.error);
+  }
+
+  if (result.idempotent_reuse !== true) {
+    await persistAssistantTerminalMessage({
+      supabase,
+      ownerId: user.id,
+      content: commitConfirmationMessage({
+        type: "create_order",
+        entityName: input.customer_name,
+      }),
+      intent: "create_order",
+      source: "tip_18b",
+      metadata: {
+        order_id: result.order_id,
+      },
+    });
   }
 
   return {
@@ -1451,6 +1554,20 @@ export async function recreateSaleOrder(
 
   const result = commitData as CommitSaleOrderRpcResult;
 
+  if (result.idempotent_reuse !== true) {
+    await persistAssistantTerminalMessage({
+      supabase,
+      ownerId: user.id,
+      content: commitConfirmationMessage({ type: "edit_order" }),
+      intent: "edit_order",
+      source: "tip_18b",
+      metadata: {
+        old_order_id: input.oldOrderId,
+        new_order_id: result.order_id,
+      },
+    });
+  }
+
   return {
     ok: true,
     data: {
@@ -1465,6 +1582,7 @@ export async function recreateSaleOrder(
 export type CommitPaymentInput = Readonly<{
   idempotency_key: string;
   customer_id: string;
+  customer_name?: string | null;
   amount: number;
   raw_input: string;
 }>;
@@ -1537,6 +1655,22 @@ export async function commitPayment(
     console.error("usage_events insert failed", telemetry.error);
   }
 
+  if (result.idempotent_reuse !== true) {
+    await persistAssistantTerminalMessage({
+      supabase,
+      ownerId: user.id,
+      content: commitConfirmationMessage({
+        type: "record_payment",
+        entityName: input.customer_name,
+      }),
+      intent: "record_payment",
+      source: "tip_18b",
+      metadata: {
+        payment_id: result.payment_id,
+      },
+    });
+  }
+
   return {
     ok: true,
     data: {
@@ -1558,6 +1692,7 @@ export type CommitPurchaseItemInput = Readonly<{
 export type CommitPurchaseInput = Readonly<{
   idempotency_key: string;
   supplier_id: string | null;
+  supplier_name?: string | null;
   raw_input: string;
   items: CommitPurchaseItemInput[];
 }>;
@@ -1672,6 +1807,22 @@ export async function commitPurchase(
 
   if (telemetry.error) {
     console.error("usage_events insert failed", telemetry.error);
+  }
+
+  if (result.idempotent_reuse !== true) {
+    await persistAssistantTerminalMessage({
+      supabase,
+      ownerId: user.id,
+      content: commitConfirmationMessage({
+        type: "create_purchase",
+        supplierName: input.supplier_name,
+      }),
+      intent: "create_purchase",
+      source: "tip_18b",
+      metadata: {
+        purchase_id: result.purchase_id,
+      },
+    });
   }
 
   return {
@@ -1844,6 +1995,13 @@ export async function processMessage(
   if (!productManagementPreviewResult.ok) {
     return productManagementPreviewResult;
   }
+
+  await persistTerminalAssistantResponse({
+    supabase,
+    ownerId: user.id,
+    pipeline,
+    answer,
+  });
 
   return {
     ok: true,

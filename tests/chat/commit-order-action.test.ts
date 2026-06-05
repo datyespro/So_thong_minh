@@ -23,6 +23,7 @@ const { commitOrder } = await import("@/app/(app)/chat/actions");
 const validInput = {
   idempotency_key: "idem-1",
   customer_id: "cust-1",
+  customer_name: "anh Hùng",
   raw_input: "anh Hùng mua 3 bao xi măng",
   items: [
     {
@@ -113,9 +114,20 @@ describe("commitOrder", () => {
     expect(mocks.dateEq).toHaveBeenNthCalledWith(1, "owner_id", "user-a");
     expect(mocks.dateEq).toHaveBeenNthCalledWith(2, "id", "order-1");
     expect(mocks.from).toHaveBeenNthCalledWith(2, "usage_events");
-    expect(mocks.insert).toHaveBeenCalledWith({
+    expect(mocks.insert).toHaveBeenNthCalledWith(1, {
       owner_id: "user-a",
       event_type: "order_created",
+    });
+    expect(mocks.from).toHaveBeenNthCalledWith(3, "chat_messages");
+    expect(mocks.insert).toHaveBeenNthCalledWith(2, {
+      owner_id: "user-a",
+      role: "assistant",
+      content: "Đã ghi đơn cho anh Hùng",
+      intent: "create_order",
+      metadata: {
+        order_id: "order-1",
+        source: "tip_18b",
+      },
     });
   });
 
@@ -141,6 +153,37 @@ describe("commitOrder", () => {
         business_date: "2026-06-02",
       },
     });
+    expect(mocks.from).not.toHaveBeenCalledWith("chat_messages");
+    expect(mocks.insert).toHaveBeenCalledTimes(1);
+    expect(mocks.insert).toHaveBeenCalledWith({
+      owner_id: "user-a",
+      event_type: "order_created",
+    });
+  });
+
+  it("keeps the committed response ok when assistant persistence fails", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    mocks.insert
+      .mockResolvedValueOnce({ error: null })
+      .mockResolvedValueOnce({ error: { code: "42501", message: "RLS denied" } });
+
+    const result = await commitOrder(validInput);
+
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        order_id: "order-1",
+        total_amount: 300000,
+        debt_amount: 300000,
+        business_date: "2026-06-02",
+      },
+    });
+    expect(warnSpy).toHaveBeenCalledWith(
+      "Failed to persist assistant terminal chat message",
+      { code: "42501", message: "RLS denied" },
+    );
+
+    warnSpy.mockRestore();
   });
 
   it("rejects when not authenticated and never calls the rpc", async () => {

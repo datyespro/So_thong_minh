@@ -106,17 +106,66 @@ describe("commitPurchase", () => {
     expect(mocks.dateEq).toHaveBeenNthCalledWith(1, "owner_id", "user-a");
     expect(mocks.dateEq).toHaveBeenNthCalledWith(2, "id", "purchase-1");
     expect(mocks.from).toHaveBeenNthCalledWith(2, "usage_events");
-    expect(mocks.insert).toHaveBeenCalledWith({
+    expect(mocks.insert).toHaveBeenNthCalledWith(1, {
       owner_id: "user-a",
       event_type: "purchase_created",
+    });
+    expect(mocks.from).toHaveBeenNthCalledWith(3, "chat_messages");
+    expect(mocks.insert).toHaveBeenNthCalledWith(2, {
+      owner_id: "user-a",
+      role: "assistant",
+      content: "Đã ghi nhập hàng",
+      intent: "create_purchase",
+      metadata: {
+        purchase_id: "purchase-1",
+        source: "tip_18b",
+      },
     });
   });
 
   it("passes a supplier id through when present", async () => {
-    await commitPurchase({ ...validInput, supplier_id: "supplier-9" });
+    await commitPurchase({
+      ...validInput,
+      supplier_id: "supplier-9",
+      supplier_name: "NCC A",
+    });
 
     const [, params] = mocks.rpc.mock.calls[0];
     expect(params.p_supplier_id).toBe("supplier-9");
+    expect(mocks.insert).toHaveBeenNthCalledWith(2, {
+      owner_id: "user-a",
+      role: "assistant",
+      content: "Đã ghi nhập hàng từ NCC A",
+      intent: "create_purchase",
+      metadata: {
+        purchase_id: "purchase-1",
+        source: "tip_18b",
+      },
+    });
+  });
+
+  it("does not persist assistant text when the rpc reuses an existing purchase", async () => {
+    mocks.rpc.mockResolvedValue({
+      data: {
+        purchase_id: "purchase-1",
+        total_amount: 8000000,
+        idempotent_reuse: true,
+      },
+      error: null,
+    });
+
+    const result = await commitPurchase(validInput);
+
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        purchase_id: "purchase-1",
+        total_amount: 8000000,
+        business_date: "2026-06-02",
+      },
+    });
+    expect(mocks.from).not.toHaveBeenCalledWith("chat_messages");
+    expect(mocks.insert).toHaveBeenCalledTimes(1);
   });
 
   it("rejects an empty purchase without calling the rpc", async () => {

@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   getUser: vi.fn(),
   rpc: vi.fn(),
   from: vi.fn(),
+  insert: vi.fn(),
   orderSelect: vi.fn(),
   orderEq: vi.fn(),
   orderMaybeSingle: vi.fn(),
@@ -40,6 +41,7 @@ describe("recreateSaleOrder", () => {
     mocks.getUser.mockReset();
     mocks.rpc.mockReset();
     mocks.from.mockReset();
+    mocks.insert.mockReset();
     mocks.orderSelect.mockReset();
     mocks.orderEq.mockReset();
     mocks.orderMaybeSingle.mockReset();
@@ -54,13 +56,16 @@ describe("recreateSaleOrder", () => {
       data: { user: { id: "user-a" } },
       error: null,
     });
-    mocks.from.mockReturnValue(orderBuilder);
+    mocks.from.mockImplementation((table: string) =>
+      table === "orders" ? orderBuilder : { insert: mocks.insert },
+    );
     mocks.orderSelect.mockReturnValue(orderBuilder);
     mocks.orderEq.mockReturnValue(orderBuilder);
     mocks.orderMaybeSingle.mockResolvedValue({
       data: { business_date: "2026-05-20", status: "confirmed" },
       error: null,
     });
+    mocks.insert.mockResolvedValue({ error: null });
     mocks.rpc
       .mockResolvedValueOnce({ data: { already_undone: false }, error: null })
       .mockResolvedValueOnce({
@@ -86,8 +91,8 @@ describe("recreateSaleOrder", () => {
       },
     });
 
-    expect(mocks.from).toHaveBeenCalledTimes(1);
-    expect(mocks.from).toHaveBeenCalledWith("orders");
+    expect(mocks.from).toHaveBeenCalledTimes(2);
+    expect(mocks.from).toHaveBeenNthCalledWith(1, "orders");
     expect(mocks.orderSelect).toHaveBeenCalledWith("business_date,status");
     expect(mocks.orderEq).toHaveBeenNthCalledWith(1, "owner_id", "user-a");
     expect(mocks.orderEq).toHaveBeenNthCalledWith(2, "id", "order-old");
@@ -104,6 +109,49 @@ describe("recreateSaleOrder", () => {
     expect(commitParams.p_business_date).toBe("2026-05-20");
     expect(commitParams.p_note).toBe("anh Hung mua 12 bao xi mang");
     expect(commitParams.p_items).toEqual(validInput.items);
+
+    expect(mocks.from).toHaveBeenNthCalledWith(2, "chat_messages");
+    expect(mocks.insert).toHaveBeenCalledTimes(1);
+    expect(mocks.insert).toHaveBeenCalledWith({
+      owner_id: "user-a",
+      role: "assistant",
+      content: "Đã sửa đơn",
+      intent: "edit_order",
+      metadata: {
+        old_order_id: "order-old",
+        new_order_id: "order-new",
+        source: "tip_18b",
+      },
+    });
+  });
+
+  it("does not persist assistant text when the recommit reuses an existing order", async () => {
+    mocks.rpc.mockReset();
+    mocks.rpc
+      .mockResolvedValueOnce({ data: { already_undone: false }, error: null })
+      .mockResolvedValueOnce({
+        data: {
+          order_id: "order-new",
+          total_amount: 1080000,
+          debt_amount: 1080000,
+          idempotent_reuse: true,
+        },
+        error: null,
+      });
+
+    const result = await recreateSaleOrder(validInput);
+
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        newOrderId: "order-new",
+        total_amount: 1080000,
+        debt_amount: 1080000,
+        business_date: "2026-05-20",
+      },
+    });
+    expect(mocks.from).not.toHaveBeenCalledWith("chat_messages");
+    expect(mocks.insert).not.toHaveBeenCalled();
   });
 
   it("returns not_editable for a non-confirmed original order without undoing", async () => {

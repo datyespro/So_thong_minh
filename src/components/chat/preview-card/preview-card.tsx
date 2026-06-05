@@ -29,6 +29,10 @@ import {
   parseVietnameseNumber,
 } from "@/src/components/chat/preview-card/number-utils";
 import {
+  commitConfirmationMessage,
+  friendlyNoneMessage,
+} from "@/src/lib/ai/terminal-text";
+import {
   addItem,
   getPatchedPreviewState,
   removeAddedItem,
@@ -486,16 +490,6 @@ function compactFeatureText(intent: ValidatedIntent["intent"]) {
   }
 
   return "Phần trả lời sẽ có ở bước sau ạ.";
-}
-
-function friendlyNoneMessage(intent: ValidatedIntent["intent"]) {
-  if (intent === "manage_product") {
-    // TEMPORARY TIP-#3-D-a: recognition only. Real product actions land in
-    // #3-D-b/#3-E; do not write product data from this branch.
-    return "Dạ, em đã hiểu ý bác. Tính năng quản lý hàng qua chat em đang hoàn thiện ạ.";
-  }
-
-  return intent === "small_talk" ? "Dạ, em nghe ạ." : "Em chưa rõ ý câu này ạ.";
 }
 
 function formatAnswerDate(value: string | null) {
@@ -2249,6 +2243,7 @@ export function PreviewCard({
       const result = await commitOrder({
         idempotency_key: idempotencyKey,
         customer_id: customerId,
+        customer_name: entityName,
         raw_input: validated.raw_text,
         items,
       });
@@ -2261,7 +2256,10 @@ export function PreviewCard({
       setCommittedInfo({
         id: result.data.order_id,
         business_date: result.data.business_date,
-        message: `Đã ghi đơn cho ${entityName ?? "khách"}`,
+        message: commitConfirmationMessage({
+          type: "create_order",
+          entityName,
+        }),
       });
       setResaveError(null);
     } catch (error) {
@@ -2302,6 +2300,7 @@ export function PreviewCard({
       const result = await commitPayment({
         idempotency_key: idempotencyKey,
         customer_id: customerId,
+        customer_name: entityName,
         amount,
         raw_input: validated.raw_text,
       });
@@ -2314,7 +2313,10 @@ export function PreviewCard({
       setCommittedInfo({
         id: result.data.payment_id,
         business_date: null,
-        message: `Đã ghi thu nợ cho ${entityName ?? "khách"}`,
+        message: commitConfirmationMessage({
+          type: "record_payment",
+          entityName,
+        }),
       });
     } catch (error) {
       console.error("commitPayment failed", error);
@@ -2362,9 +2364,12 @@ export function PreviewCard({
     setNotice(null);
 
     try {
+      const supplierName = counterpartyName(state.supplier);
+
       const result = await commitPurchase({
         idempotency_key: idempotencyKey,
         supplier_id: state.supplier?.resolved_id ?? null,
+        supplier_name: supplierName,
         raw_input: validated.raw_text,
         items,
       });
@@ -2374,14 +2379,13 @@ export function PreviewCard({
         return;
       }
 
-      const supplierName = counterpartyName(state.supplier);
-
       setCommittedInfo({
         id: result.data.purchase_id,
         business_date: result.data.business_date,
-        message: supplierName
-          ? `Đã ghi nhập hàng từ ${supplierName}`
-          : "Đã ghi nhập hàng",
+        message: commitConfirmationMessage({
+          type: "create_purchase",
+          supplierName,
+        }),
       });
     } catch (error) {
       console.error("commitPurchase failed", error);
@@ -2506,7 +2510,7 @@ export function PreviewCard({
       setCommittedInfo({
         id: result.data.newOrderId,
         business_date: result.data.business_date,
-        message: "Đã sửa đơn",
+        message: commitConfirmationMessage({ type: "edit_order" }),
       });
       setIsEditing(false);
       setEditPatchSnapshot(null);

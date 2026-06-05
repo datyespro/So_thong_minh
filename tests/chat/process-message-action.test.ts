@@ -127,6 +127,41 @@ const pipelineResult: ChatPipelineResult = {
   },
 };
 
+function nonePipeline(intent: "small_talk" | "unknown", rawText: string): ChatPipelineResult {
+  if (!pipelineResult.ok) {
+    throw new Error("Expected base pipeline fixture to be successful.");
+  }
+
+  return {
+    ok: true,
+    extracted: {
+      ...extractedIntent,
+      intent,
+      raw_text: rawText,
+      normalized_text: rawText,
+      entities: {
+        ...extractedIntent.entities,
+        customer_name: null,
+        product_name: null,
+        items: [],
+        amount: null,
+      },
+      next_stage_hint: intent === "small_talk" ? "answer_small_talk" : "reject",
+    },
+    validated: {
+      ...pipelineResult.validated,
+      intent,
+      kind: "none",
+      raw_text: rawText,
+      customer: null,
+      supplier: null,
+      items: [],
+      effective_amount: null,
+      ready_for_preview: false,
+    },
+  };
+}
+
 function manageProductPipeline(
   productManagement: NonNullable<
     ExtractedIntent["entities"]["product_management"]
@@ -265,6 +300,85 @@ describe("processMessage", () => {
     });
     expect(mocks.insert).toHaveBeenCalledTimes(1);
     expect(mocks.answerQuery).not.toHaveBeenCalled();
+  });
+
+  it("persists small_talk terminal assistant text", async () => {
+    const smallTalkPipeline = nonePipeline("small_talk", "hi");
+    mocks.runChatPipeline.mockResolvedValue(smallTalkPipeline);
+    mocks.single.mockResolvedValue({
+      data: { ...userMessage, content: "hi" },
+      error: null,
+    });
+
+    const result = await processMessage("hi");
+
+    expect(result).toEqual({
+      ok: true,
+      userMessage: { ...userMessage, content: "hi" },
+      pipeline: smallTalkPipeline,
+    });
+    expect(mocks.insert).toHaveBeenCalledTimes(2);
+    expect(mocks.insert.mock.calls[1][0]).toMatchObject({
+      owner_id: "user-a",
+      role: "assistant",
+      content: "Dạ, em nghe ạ.",
+      intent: "small_talk",
+      metadata: { source: "tip_18a" },
+    });
+  });
+
+  it("persists unknown terminal assistant text", async () => {
+    const unknownPipeline = nonePipeline("unknown", "???");
+    mocks.runChatPipeline.mockResolvedValue(unknownPipeline);
+    mocks.single.mockResolvedValue({
+      data: { ...userMessage, content: "???" },
+      error: null,
+    });
+
+    const result = await processMessage("???");
+
+    expect(result).toEqual({
+      ok: true,
+      userMessage: { ...userMessage, content: "???" },
+      pipeline: unknownPipeline,
+    });
+    expect(mocks.insert).toHaveBeenCalledTimes(2);
+    expect(mocks.insert.mock.calls[1][0]).toMatchObject({
+      owner_id: "user-a",
+      role: "assistant",
+      content: "Em chưa rõ ý câu này ạ.",
+      intent: "unknown",
+      metadata: { source: "tip_18a" },
+    });
+  });
+
+  it("does not fail the response when assistant persistence fails", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const smallTalkPipeline = nonePipeline("small_talk", "hi");
+    mocks.runChatPipeline.mockResolvedValue(smallTalkPipeline);
+    mocks.single.mockResolvedValue({
+      data: { ...userMessage, content: "hi" },
+      error: null,
+    });
+    mocks.insert
+      .mockReturnValueOnce({ select: mocks.select })
+      .mockResolvedValueOnce({
+        error: { code: "42501", message: "RLS denied" },
+      });
+
+    const result = await processMessage("hi");
+
+    expect(result).toEqual({
+      ok: true,
+      userMessage: { ...userMessage, content: "hi" },
+      pipeline: smallTalkPipeline,
+    });
+    expect(warnSpy).toHaveBeenCalledWith(
+      "Failed to persist assistant terminal chat message",
+      { code: "42501", message: "RLS denied" },
+    );
+
+    warnSpy.mockRestore();
   });
 
   it("only inserts one user chat row and never touches service-role paths", async () => {
@@ -641,6 +755,17 @@ describe("processMessage", () => {
       validated: queryPipeline.validated,
       ownerId: "user-a",
       supabase,
+    });
+    expect(mocks.insert).toHaveBeenCalledTimes(2);
+    expect(mocks.insert.mock.calls[1][0]).toMatchObject({
+      owner_id: "user-a",
+      role: "assistant",
+      content: "anh Hùng đang nợ 400.000 đ",
+      intent: "query",
+      metadata: {
+        source: "tip_18a",
+        query_subject: "debt",
+      },
     });
   });
 
