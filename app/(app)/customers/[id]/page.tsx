@@ -10,7 +10,11 @@ import {
   type CustomerPurchaseHistoryRow,
   type CustomerPurchaseHistorySortDirection,
 } from "@/src/lib/customers/purchase-history";
-import { dayjs } from "@/src/lib/dayjs";
+import {
+  buildCustomerDebtSummary,
+  type CustomerDebtSummary,
+} from "@/src/lib/customers/debt-summary";
+import { APP_TIME_ZONE, dayjs } from "@/src/lib/dayjs";
 import { formatVietnameseMoney } from "@/src/lib/format/money";
 import { createClient } from "@/src/lib/supabase/server";
 import { getAuthenticatedUser } from "@/src/components/shared/AuthGuard";
@@ -25,6 +29,17 @@ type CustomerDetailRow = {
   name: string;
   debt_total: number | string | null;
   phone: string | null;
+};
+
+type CustomerOrderRow = CustomerHistoryOrder & {
+  total_amount: number | string | null;
+  paid_amount: number | string | null;
+};
+
+type CustomerPaymentRow = {
+  id: string;
+  amount: number | string | null;
+  paid_at: string | null;
 };
 
 const HISTORY_COLUMNS = [
@@ -58,6 +73,18 @@ function formatBusinessDate(value: string | null) {
   return parsed.isValid() ? parsed.format("DD/MM/YYYY") : "—";
 }
 
+function formatPaymentDate(value: string | null) {
+  if (!value) {
+    return "—";
+  }
+
+  const parsed = dayjs(value);
+
+  return parsed.isValid()
+    ? parsed.tz(APP_TIME_ZONE).format("DD/MM/YYYY HH:mm")
+    : "—";
+}
+
 function formatQuantity(value: number | string) {
   return String(value);
 }
@@ -74,6 +101,101 @@ function PurchaseHistoryEmptyState() {
       <p className="font-display text-xl font-semibold text-inkDeep">
         Khách này chưa có lịch sử mua.
       </p>
+    </div>
+  );
+}
+
+function PaymentHistoryEmptyState() {
+  return (
+    <div className="rounded border border-ledgerBorder bg-surface px-4 py-8 text-center">
+      <p className="font-display text-xl font-semibold text-inkDeep">
+        Khách này chưa có lần trả nợ nào.
+      </p>
+    </div>
+  );
+}
+
+function DebtReconciliationLine({
+  summary,
+}: Readonly<{ summary: CustomerDebtSummary }>) {
+  if (!summary.reconciles) {
+    return (
+      <div className="mt-4 border-t border-dashed border-ledgerBorder pt-3">
+        <p className="text-[16px] font-semibold leading-7 text-debt">
+          Số liệu đang lệch, cần kiểm tra ạ
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 border-t border-dashed border-ledgerBorder pt-3">
+      <p className="text-[16px] font-semibold leading-7 text-textMain">
+        <span className="text-inkDeep">
+          Tổng mua {formatMoneyValue(summary.totalPurchase)}
+        </span>
+        <span className="px-1 text-textMute">−</span>
+        <span className="text-paid">
+          Đã trả {formatMoneyValue(summary.paidTotal)}
+        </span>
+        <span className="px-1 text-textMute">=</span>
+        <span className="text-debt">
+          Còn nợ {formatMoneyValue(summary.debtTotal)}
+        </span>
+      </p>
+      {summary.paidImmediate > 0 ? (
+        <p className="mt-1 text-[15px] leading-6 text-textMute">
+          Trả ngay khi mua:{" "}
+          <span className="font-semibold text-paid">
+            {formatMoneyValue(summary.paidImmediate)}
+          </span>
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function PaymentHistoryList({
+  payments,
+  total,
+}: Readonly<{
+  payments: CustomerPaymentRow[];
+  total: number;
+}>) {
+  if (payments.length === 0) {
+    return <PaymentHistoryEmptyState />;
+  }
+
+  return (
+    <div className="overflow-hidden rounded border border-ledgerBorder bg-surface shadow-[var(--shadow-card)]">
+      <ul className="divide-y divide-ledgerBorder">
+        {payments.map((payment) => (
+          <li
+            key={payment.id}
+            className="grid gap-2 px-4 py-3 text-[16px] leading-7 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+          >
+            <div>
+              <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-stamp">
+                Ngày trả
+              </p>
+              <p className="mt-1 font-semibold text-inkDeep">
+                {formatPaymentDate(payment.paid_at)}
+              </p>
+            </div>
+            <p className="font-display text-xl font-semibold tracking-normal text-paid sm:text-right">
+              {formatMoneyValue(payment.amount)}
+            </p>
+          </li>
+        ))}
+      </ul>
+      <div className="grid gap-2 border-t-2 border-ledgerBorder bg-paperWarm px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+        <p className="font-display text-[18px] font-semibold text-inkDeep">
+          Tổng đã trả nợ
+        </p>
+        <p className="font-mono text-[20px] font-bold text-paid sm:text-right">
+          {formatMoneyValue(total)}
+        </p>
+      </div>
     </div>
   );
 }
@@ -273,7 +395,7 @@ export default async function CustomerDetailPage({
   const customer = customerData as CustomerDetailRow;
   const { data: orderData, error: ordersError } = await supabase
     .from("orders")
-    .select("id,business_date")
+    .select("id,business_date,total_amount,paid_amount")
     .eq("owner_id", user.id)
     .eq("customer_id", customerId)
     .eq("status", "confirmed")
@@ -284,7 +406,20 @@ export default async function CustomerDetailPage({
     throw new Error("Không tải được lịch sử đơn của khách.");
   }
 
-  const orders = (orderData ?? []) as CustomerHistoryOrder[];
+  const orders = (orderData ?? []) as CustomerOrderRow[];
+  const { data: paymentData, error: paymentsError } = await supabase
+    .from("payments")
+    .select("id,amount,paid_at")
+    .eq("owner_id", user.id)
+    .eq("customer_id", customerId)
+    .is("deleted_at", null)
+    .order("paid_at", { ascending: false });
+
+  if (paymentsError) {
+    throw new Error("Không tải được lịch sử trả nợ của khách.");
+  }
+
+  const payments = (paymentData ?? []) as CustomerPaymentRow[];
   const orderIds = orders.map((order) => order.id);
   let items: CustomerHistoryItem[] = [];
 
@@ -308,6 +443,11 @@ export default async function CustomerDetailPage({
 
   const historyRows = flattenCustomerPurchaseHistory(orders, items, sort);
   const historyTotal = sumCustomerPurchaseHistoryTotal(historyRows);
+  const debtSummary = buildCustomerDebtSummary({
+    orders,
+    payments,
+    debtTotal: customer.debt_total,
+  });
   const phoneHref = customer.phone ? normalizedPhoneHref(customer.phone) : null;
 
   return (
@@ -334,6 +474,7 @@ export default async function CustomerDetailPage({
             <p className="mt-2 font-mono text-[34px] font-bold leading-none text-debt sm:text-[40px]">
               {formatMoneyValue(customer.debt_total)}
             </p>
+            <DebtReconciliationLine summary={debtSummary} />
           </div>
 
           <div className="flex flex-wrap gap-2 md:justify-end">
@@ -360,6 +501,32 @@ export default async function CustomerDetailPage({
             ) : null}
           </div>
         </div>
+
+        <section className="mb-6" aria-labelledby="payment-history-heading">
+          <div className="mb-3 flex items-end justify-between gap-3 border-b border-ledgerBorder pb-3">
+            <div>
+              <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-stamp">
+                Tiền khách trả
+              </p>
+              <h2
+                id="payment-history-heading"
+                className="mt-1 font-display text-2xl font-semibold text-inkDeep"
+              >
+                Lịch sử trả nợ
+              </h2>
+            </div>
+            {payments.length > 0 ? (
+              <p className="font-mono text-[12px] font-semibold text-textMute">
+                {payments.length} lần
+              </p>
+            ) : null}
+          </div>
+
+          <PaymentHistoryList
+            payments={payments}
+            total={debtSummary.paidLater}
+          />
+        </section>
 
         <section aria-labelledby="purchase-history-heading">
           <div className="mb-3 flex items-end justify-between gap-3 border-b border-ledgerBorder pb-3">
