@@ -1,5 +1,5 @@
-select oi.order_id, oi.product_name_snapshot, oi.unit_snapshot,
-       oi.quantity, oi.unit_price, oi.line_total
-from order_items oi
-where oi.product_id = 'a585bd97-2306-49b5-887f-b2f18699591e';
+-- Tổng bán ngày (thay ngày)
+select count(*) so_don, coalesce(sum(total_amount),0) tong_ban
+from orders where owner_id = auth.uid()
+  and business_date = '2026-06-10' and status='confirmed' and deleted_at is null;
 

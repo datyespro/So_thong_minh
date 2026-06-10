@@ -18,9 +18,18 @@ type AppShellProps = Readonly<{
   displayName: string;
   email?: string;
   avatarInitial: string;
+  todayOrderCount: number;
+  debtorCount: number;
 }>;
 
-export function AppShell({ children, displayName, email, avatarInitial }: AppShellProps) {
+export function AppShell({
+  children,
+  displayName,
+  email,
+  avatarInitial,
+  todayOrderCount,
+  debtorCount,
+}: AppShellProps) {
   const [collapsed, setCollapsed] = React.useState(false);
   const pathname = usePathname();
 
@@ -130,11 +139,15 @@ export function AppShell({ children, displayName, email, avatarInitial }: AppShe
         >
           <div className="flex justify-between">
             <span>Đơn ghi</span>
-            <span className="font-mono font-semibold text-textMain">0</span>
+            <span className="font-mono font-semibold text-textMain">
+              {todayOrderCount}
+            </span>
           </div>
           <div className="mt-1 flex justify-between">
             <span>Khách nợ</span>
-            <span className="font-mono font-semibold text-debt">0</span>
+            <span className="font-mono font-semibold text-debt">
+              {debtorCount}
+            </span>
           </div>
         </div>
 
