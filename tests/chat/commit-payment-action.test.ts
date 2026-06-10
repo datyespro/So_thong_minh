@@ -17,6 +17,23 @@ vi.mock("@/src/lib/supabase/server", () => ({
 
 const { commitPayment } = await import("@/app/(app)/chat/actions");
 
+type MockFn = ReturnType<typeof vi.fn>;
+type MaybeSingleBuilder = {
+  select: MockFn;
+  eq: MockFn;
+  is: MockFn;
+  maybeSingle: MockFn;
+};
+
+function makeMaybeSingleBuilder(result: unknown): MaybeSingleBuilder {
+  const builder = {} as MaybeSingleBuilder;
+  builder.select = vi.fn(() => builder);
+  builder.eq = vi.fn(() => builder);
+  builder.is = vi.fn(() => builder);
+  builder.maybeSingle = vi.fn(async () => result);
+  return builder;
+}
+
 const validInput = {
   idempotency_key: "idem-1",
   customer_id: "cust-1",
@@ -26,6 +43,9 @@ const validInput = {
 };
 
 describe("commitPayment", () => {
+  let historyPaymentBuilder: MaybeSingleBuilder;
+  let historyCustomerBuilder: MaybeSingleBuilder;
+
   beforeEach(() => {
     mocks.getUser.mockReset();
     mocks.rpc.mockReset();
@@ -45,8 +65,29 @@ describe("commitPayment", () => {
       },
       error: null,
     });
+    historyPaymentBuilder = makeMaybeSingleBuilder({
+      data: {
+        customer_id: "cust-1",
+        amount: "200000",
+      },
+      error: null,
+    });
+    historyCustomerBuilder = makeMaybeSingleBuilder({
+      data: { name: "anh Tuấn" },
+      error: null,
+    });
     mocks.insert.mockResolvedValue({ error: null });
-    mocks.from.mockReturnValue({ insert: mocks.insert });
+    mocks.from.mockImplementation((table: string) => {
+      if (table === "payments") {
+        return historyPaymentBuilder;
+      }
+
+      if (table === "customers") {
+        return historyCustomerBuilder;
+      }
+
+      return { insert: mocks.insert };
+    });
   });
 
   it("records the payment and logs payment_created telemetry", async () => {
@@ -69,7 +110,16 @@ describe("commitPayment", () => {
       owner_id: "user-a",
       event_type: "payment_created",
     });
-    expect(mocks.from).toHaveBeenNthCalledWith(2, "chat_messages");
+    expect(mocks.from).toHaveBeenNthCalledWith(2, "payments");
+    expect(historyPaymentBuilder.select).toHaveBeenCalledWith("customer_id,amount");
+    expect(historyPaymentBuilder.eq).toHaveBeenNthCalledWith(1, "owner_id", "user-a");
+    expect(historyPaymentBuilder.eq).toHaveBeenNthCalledWith(2, "id", "payment-1");
+    expect(historyPaymentBuilder.is).toHaveBeenCalledWith("deleted_at", null);
+    expect(mocks.from).toHaveBeenNthCalledWith(3, "customers");
+    expect(historyCustomerBuilder.eq).toHaveBeenNthCalledWith(1, "owner_id", "user-a");
+    expect(historyCustomerBuilder.eq).toHaveBeenNthCalledWith(2, "id", "cust-1");
+    expect(historyCustomerBuilder.is).toHaveBeenCalledWith("deleted_at", null);
+    expect(mocks.from).toHaveBeenNthCalledWith(4, "chat_messages");
     expect(mocks.insert).toHaveBeenNthCalledWith(2, {
       owner_id: "user-a",
       role: "assistant",
@@ -77,6 +127,17 @@ describe("commitPayment", () => {
       intent: "record_payment",
       metadata: {
         payment_id: "payment-1",
+        card: {
+          v: 1,
+          kind: "record_payment",
+          entity_name: "anh Tuấn",
+          business_date: null,
+          total_amount: null,
+          debt_amount: null,
+          amount: 200000,
+          items: null,
+          source_id: "payment-1",
+        },
         source: "tip_18b",
       },
     });

@@ -5,6 +5,7 @@ export type ChatMessageView = {
   role: ChatRole;
   content: string;
   created_at: string;
+  metadata?: unknown;
   pending?: boolean;
   ephemeral?: boolean;
 };

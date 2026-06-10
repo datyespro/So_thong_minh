@@ -10,6 +10,7 @@ type ChatHistoryRow = {
   role: string;
   content: string;
   created_at: string;
+  metadata: unknown;
 };
 
 function isChatRole(role: string): role is ChatRole {
@@ -26,6 +27,7 @@ function toChatMessageView(row: ChatHistoryRow): ChatMessageView | null {
     role: row.role,
     content: row.content,
     created_at: row.created_at,
+    metadata: row.metadata,
   };
 }
 
@@ -73,7 +75,7 @@ export default async function ChatPage() {
 
   const { data, error } = await supabase
     .from("chat_messages")
-    .select("id,role,content,created_at")
+    .select("id,role,content,created_at,metadata")
     .eq("owner_id", user.id)
     .order("created_at", { ascending: true })
     .limit(200);

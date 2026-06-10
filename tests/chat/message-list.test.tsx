@@ -184,4 +184,107 @@ describe("MessageList", () => {
     expect(html.match(/Ghi đơn/g) ?? []).toHaveLength(1);
     expect(html).toContain("2.000.000 đ");
   });
+
+  it("renders a persisted commit card from assistant metadata and hides the text bubble", () => {
+    const messages: ChatMessageView[] = [
+      {
+        id: "message-1",
+        role: "assistant",
+        content: "Đã ghi đơn cho anh Hùng",
+        created_at: "2026-06-02T03:00:00.000Z",
+        metadata: {
+          source: "tip_18b",
+          order_id: "order-1",
+          card: {
+            v: 1,
+            kind: "create_order",
+            entity_name: "anh Hùng",
+            business_date: "2026-06-02",
+            total_amount: 300000,
+            debt_amount: 300000,
+            amount: null,
+            items: [
+              {
+                name: "xi măng",
+                quantity: 3,
+                unit: "bao",
+                unit_price: 100000,
+                line_total: 300000,
+              },
+            ],
+            source_id: "order-1",
+          },
+        },
+      },
+    ];
+
+    const html = renderMessageList({ messages });
+
+    expect(html).toContain('data-testid="history-commit-card"');
+    expect(html).toContain("Đơn bán hàng");
+    expect(html).toContain("anh Hùng");
+    expect(html).toContain("xi măng");
+    expect(html).toContain("300.000 đ");
+    expect(html).toContain("Đã ghi đơn cho anh Hùng");
+    expect(html).not.toContain("Hoàn tác");
+    expect(html).not.toContain("Sửa Đơn");
+    expect(html).not.toContain("Cần kiểm tra");
+  });
+
+  it("falls back to the text bubble for invalid history card metadata", () => {
+    const messages: ChatMessageView[] = [
+      {
+        id: "message-1",
+        role: "assistant",
+        content: "Đã ghi đơn cho anh Hùng",
+        created_at: "2026-06-02T03:00:00.000Z",
+        metadata: {
+          card: {
+            v: 2,
+          },
+        },
+      },
+    ];
+
+    const html = renderMessageList({ messages });
+
+    expect(html).not.toContain('data-testid="history-commit-card"');
+    expect(html).toContain("Đã ghi đơn cho anh Hùng");
+  });
+
+  it("shows walk-in customer text when a persisted order card has no customer name", () => {
+    const messages: ChatMessageView[] = [
+      {
+        id: "message-1",
+        role: "assistant",
+        content: "Đã ghi đơn cho khách",
+        created_at: "2026-06-02T03:00:00.000Z",
+        metadata: {
+          card: {
+            v: 1,
+            kind: "create_order",
+            entity_name: null,
+            business_date: "2026-06-02",
+            total_amount: 100000,
+            debt_amount: 100000,
+            amount: null,
+            items: [
+              {
+                name: "gạch",
+                quantity: 10,
+                unit: "viên",
+                unit_price: 10000,
+                line_total: 100000,
+              },
+            ],
+            source_id: "order-1",
+          },
+        },
+      },
+    ];
+
+    const html = renderMessageList({ messages });
+
+    expect(html).toContain("Khách lẻ");
+  });
 });

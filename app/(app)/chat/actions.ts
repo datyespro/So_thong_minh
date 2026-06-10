@@ -3,6 +3,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ActionResult } from "@/src/types/action-result";
 import type { ChatMessageView } from "@/src/components/chat/types";
+import type { HistoryCommitCard } from "@/src/lib/chat/history-card";
 import type {
   ProductManagementCandidate,
   ProductManagementPreview,
@@ -39,6 +40,7 @@ import { businessDateVN } from "@/src/lib/dayjs";
 const MAX_MESSAGE_LENGTH = 2000;
 
 type ProductManagementSupabaseClient = Pick<SupabaseClient, "from">;
+type HistoryCardSupabaseClient = Pick<SupabaseClient, "from">;
 
 type InsertedChatRow = {
   id: string;
@@ -149,6 +151,303 @@ async function persistAssistantTerminalMessage({
   } catch (error) {
     console.warn("Failed to persist assistant terminal chat message", error);
   }
+}
+
+type HistoryCardBuildInput =
+  | {
+      kind: "create_order" | "edit_order";
+      ownerId: string;
+      sourceId: string;
+      supabase: HistoryCardSupabaseClient;
+    }
+  | {
+      kind: "record_payment";
+      ownerId: string;
+      sourceId: string;
+      supabase: HistoryCardSupabaseClient;
+    }
+  | {
+      kind: "create_purchase";
+      ownerId: string;
+      sourceId: string;
+      supabase: HistoryCardSupabaseClient;
+    };
+
+type EntityNameRow = {
+  name: string | null;
+};
+
+type OrderHistoryRow = {
+  customer_id: string | null;
+  business_date: string | null;
+  total_amount: number | string | null;
+  debt_amount: number | string | null;
+};
+
+type OrderItemHistoryRow = {
+  product_name_snapshot: string | null;
+  unit_snapshot: string | null;
+  quantity: number | string | null;
+  unit_price: number | string | null;
+  line_total: number | string | null;
+};
+
+type PaymentHistoryRow = {
+  customer_id: string | null;
+  amount: number | string | null;
+};
+
+type PurchaseHistoryRow = {
+  supplier_id: string | null;
+  business_date: string | null;
+  total_amount: number | string | null;
+};
+
+type PurchaseItemHistoryRow = {
+  product_name_snapshot: string | null;
+  unit_snapshot: string | null;
+  quantity: number | string | null;
+  unit_cost: number | string | null;
+  line_total: number | string | null;
+};
+
+function toFiniteNumber(value: number | string | null | undefined) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
+function requiredHistoryNumber(
+  value: number | string | null | undefined,
+  field: string,
+) {
+  const numberValue = toFiniteNumber(value);
+
+  if (numberValue === null) {
+    throw new Error(`Invalid history card number: ${field}`);
+  }
+
+  return numberValue;
+}
+
+async function fetchHistoryEntityName(
+  supabase: HistoryCardSupabaseClient,
+  table: "customers" | "suppliers",
+  ownerId: string,
+  entityId: string | null,
+) {
+  if (!entityId) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from(table)
+    .select("name")
+    .eq("owner_id", ownerId)
+    .eq("id", entityId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  const row = data as EntityNameRow | null;
+  return typeof row?.name === "string" ? row.name : null;
+}
+
+async function buildOrderHistoryCommitCard(
+  input: Extract<HistoryCardBuildInput, { kind: "create_order" | "edit_order" }>,
+): Promise<HistoryCommitCard | null> {
+  const { data, error } = await input.supabase
+    .from("orders")
+    .select("customer_id,business_date,total_amount,debt_amount")
+    .eq("owner_id", input.ownerId)
+    .eq("id", input.sourceId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  const order = data as OrderHistoryRow | null;
+
+  if (!order) {
+    return null;
+  }
+
+  const { data: itemsData, error: itemsError } = await input.supabase
+    .from("order_items")
+    .select("product_name_snapshot,unit_snapshot,quantity,unit_price,line_total,sort_order")
+    .eq("owner_id", input.ownerId)
+    .eq("order_id", input.sourceId)
+    .is("deleted_at", null)
+    .order("sort_order", { ascending: true });
+
+  if (itemsError) {
+    throw itemsError;
+  }
+
+  const entityName = await fetchHistoryEntityName(
+    input.supabase,
+    "customers",
+    input.ownerId,
+    order.customer_id,
+  );
+
+  return {
+    v: 1,
+    kind: input.kind,
+    entity_name: entityName,
+    business_date:
+      typeof order.business_date === "string" ? order.business_date : null,
+    total_amount: toFiniteNumber(order.total_amount),
+    debt_amount: toFiniteNumber(order.debt_amount),
+    amount: null,
+    items: ((itemsData ?? []) as OrderItemHistoryRow[]).map((item) => ({
+      name: item.product_name_snapshot ?? "Hàng",
+      quantity: requiredHistoryNumber(item.quantity, "order_items.quantity"),
+      unit: item.unit_snapshot ?? "",
+      unit_price: requiredHistoryNumber(item.unit_price, "order_items.unit_price"),
+      line_total: requiredHistoryNumber(item.line_total, "order_items.line_total"),
+    })),
+    source_id: input.sourceId,
+  };
+}
+
+async function buildPaymentHistoryCommitCard(
+  input: Extract<HistoryCardBuildInput, { kind: "record_payment" }>,
+): Promise<HistoryCommitCard | null> {
+  const { data, error } = await input.supabase
+    .from("payments")
+    .select("customer_id,amount")
+    .eq("owner_id", input.ownerId)
+    .eq("id", input.sourceId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  const payment = data as PaymentHistoryRow | null;
+
+  if (!payment) {
+    return null;
+  }
+
+  const entityName = await fetchHistoryEntityName(
+    input.supabase,
+    "customers",
+    input.ownerId,
+    payment.customer_id,
+  );
+
+  return {
+    v: 1,
+    kind: input.kind,
+    entity_name: entityName,
+    business_date: null,
+    total_amount: null,
+    debt_amount: null,
+    amount: toFiniteNumber(payment.amount),
+    items: null,
+    source_id: input.sourceId,
+  };
+}
+
+async function buildPurchaseHistoryCommitCard(
+  input: Extract<HistoryCardBuildInput, { kind: "create_purchase" }>,
+): Promise<HistoryCommitCard | null> {
+  const { data, error } = await input.supabase
+    .from("purchases")
+    .select("supplier_id,business_date,total_amount")
+    .eq("owner_id", input.ownerId)
+    .eq("id", input.sourceId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  const purchase = data as PurchaseHistoryRow | null;
+
+  if (!purchase) {
+    return null;
+  }
+
+  const { data: itemsData, error: itemsError } = await input.supabase
+    .from("purchase_items")
+    .select("product_name_snapshot,unit_snapshot,quantity,unit_cost,line_total,sort_order")
+    .eq("owner_id", input.ownerId)
+    .eq("purchase_id", input.sourceId)
+    .is("deleted_at", null)
+    .order("sort_order", { ascending: true });
+
+  if (itemsError) {
+    throw itemsError;
+  }
+
+  const entityName = await fetchHistoryEntityName(
+    input.supabase,
+    "suppliers",
+    input.ownerId,
+    purchase.supplier_id,
+  );
+
+  return {
+    v: 1,
+    kind: input.kind,
+    entity_name: entityName,
+    business_date:
+      typeof purchase.business_date === "string" ? purchase.business_date : null,
+    total_amount: toFiniteNumber(purchase.total_amount),
+    debt_amount: null,
+    amount: null,
+    items: ((itemsData ?? []) as PurchaseItemHistoryRow[]).map((item) => ({
+      name: item.product_name_snapshot ?? "Hàng",
+      quantity: requiredHistoryNumber(item.quantity, "purchase_items.quantity"),
+      unit: item.unit_snapshot ?? "",
+      unit_price: requiredHistoryNumber(item.unit_cost, "purchase_items.unit_cost"),
+      line_total: requiredHistoryNumber(item.line_total, "purchase_items.line_total"),
+    })),
+    source_id: input.sourceId,
+  };
+}
+
+async function buildHistoryCommitCardSnapshot(
+  input: HistoryCardBuildInput,
+): Promise<HistoryCommitCard | null> {
+  try {
+    if (input.kind === "record_payment") {
+      return await buildPaymentHistoryCommitCard(input);
+    }
+
+    if (input.kind === "create_purchase") {
+      return await buildPurchaseHistoryCommitCard(input);
+    }
+
+    return await buildOrderHistoryCommitCard(input);
+  } catch (error) {
+    console.warn("Failed to build history commit card snapshot", error);
+    return null;
+  }
+}
+
+function metadataWithHistoryCard(
+  metadata: Record<string, unknown>,
+  card: HistoryCommitCard | null,
+) {
+  return card ? { ...metadata, card } : metadata;
 }
 
 async function persistTerminalAssistantResponse({
@@ -1367,6 +1666,7 @@ export async function commitOrder(
       .select("business_date")
       .eq("owner_id", user.id)
       .eq("id", result.order_id)
+      .is("deleted_at", null)
       .maybeSingle();
 
     const order = orderData as BusinessDateRow | null;
@@ -1393,6 +1693,13 @@ export async function commitOrder(
   }
 
   if (result.idempotent_reuse !== true) {
+    const card = await buildHistoryCommitCardSnapshot({
+      supabase,
+      ownerId: user.id,
+      kind: "create_order",
+      sourceId: result.order_id,
+    });
+
     await persistAssistantTerminalMessage({
       supabase,
       ownerId: user.id,
@@ -1402,9 +1709,9 @@ export async function commitOrder(
       }),
       intent: "create_order",
       source: "tip_18b",
-      metadata: {
+      metadata: metadataWithHistoryCard({
         order_id: result.order_id,
-      },
+      }, card),
     });
   }
 
@@ -1476,6 +1783,7 @@ export async function recreateSaleOrder(
     .select("business_date,status")
     .eq("owner_id", user.id)
     .eq("id", input.oldOrderId)
+    .is("deleted_at", null)
     .maybeSingle();
 
   if (orderError) {
@@ -1555,16 +1863,23 @@ export async function recreateSaleOrder(
   const result = commitData as CommitSaleOrderRpcResult;
 
   if (result.idempotent_reuse !== true) {
+    const card = await buildHistoryCommitCardSnapshot({
+      supabase,
+      ownerId: user.id,
+      kind: "edit_order",
+      sourceId: result.order_id,
+    });
+
     await persistAssistantTerminalMessage({
       supabase,
       ownerId: user.id,
       content: commitConfirmationMessage({ type: "edit_order" }),
       intent: "edit_order",
       source: "tip_18b",
-      metadata: {
+      metadata: metadataWithHistoryCard({
         old_order_id: input.oldOrderId,
         new_order_id: result.order_id,
-      },
+      }, card),
     });
   }
 
@@ -1656,6 +1971,13 @@ export async function commitPayment(
   }
 
   if (result.idempotent_reuse !== true) {
+    const card = await buildHistoryCommitCardSnapshot({
+      supabase,
+      ownerId: user.id,
+      kind: "record_payment",
+      sourceId: result.payment_id,
+    });
+
     await persistAssistantTerminalMessage({
       supabase,
       ownerId: user.id,
@@ -1665,9 +1987,9 @@ export async function commitPayment(
       }),
       intent: "record_payment",
       source: "tip_18b",
-      metadata: {
+      metadata: metadataWithHistoryCard({
         payment_id: result.payment_id,
-      },
+      }, card),
     });
   }
 
@@ -1786,6 +2108,7 @@ export async function commitPurchase(
       .select("business_date")
       .eq("owner_id", user.id)
       .eq("id", result.purchase_id)
+      .is("deleted_at", null)
       .maybeSingle();
 
     const purchase = purchaseData as BusinessDateRow | null;
@@ -1810,6 +2133,13 @@ export async function commitPurchase(
   }
 
   if (result.idempotent_reuse !== true) {
+    const card = await buildHistoryCommitCardSnapshot({
+      supabase,
+      ownerId: user.id,
+      kind: "create_purchase",
+      sourceId: result.purchase_id,
+    });
+
     await persistAssistantTerminalMessage({
       supabase,
       ownerId: user.id,
@@ -1819,9 +2149,9 @@ export async function commitPurchase(
       }),
       intent: "create_purchase",
       source: "tip_18b",
-      metadata: {
+      metadata: metadataWithHistoryCard({
         purchase_id: result.purchase_id,
-      },
+      }, card),
     });
   }
 

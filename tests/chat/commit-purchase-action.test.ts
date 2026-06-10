@@ -20,6 +20,38 @@ vi.mock("@/src/lib/supabase/server", () => ({
 
 const { commitPurchase } = await import("@/app/(app)/chat/actions");
 
+type MockFn = ReturnType<typeof vi.fn>;
+type MaybeSingleBuilder = {
+  select: MockFn;
+  eq: MockFn;
+  is: MockFn;
+  maybeSingle: MockFn;
+};
+type OrderBuilder = {
+  select: MockFn;
+  eq: MockFn;
+  is: MockFn;
+  order: MockFn;
+};
+
+function makeMaybeSingleBuilder(result: unknown): MaybeSingleBuilder {
+  const builder = {} as MaybeSingleBuilder;
+  builder.select = vi.fn(() => builder);
+  builder.eq = vi.fn(() => builder);
+  builder.is = vi.fn(() => builder);
+  builder.maybeSingle = vi.fn(async () => result);
+  return builder;
+}
+
+function makeOrderBuilder(result: unknown): OrderBuilder {
+  const builder = {} as OrderBuilder;
+  builder.select = vi.fn(() => builder);
+  builder.eq = vi.fn(() => builder);
+  builder.is = vi.fn(() => builder);
+  builder.order = vi.fn(async () => result);
+  return builder;
+}
+
 const validInput = {
   idempotency_key: "idem-1",
   supplier_id: null,
@@ -36,6 +68,10 @@ const validInput = {
 };
 
 describe("commitPurchase", () => {
+  let historyPurchaseBuilder: MaybeSingleBuilder;
+  let historyItemsBuilder: OrderBuilder;
+  let historySupplierBuilder: MaybeSingleBuilder;
+
   beforeEach(() => {
     mocks.getUser.mockReset();
     mocks.rpc.mockReset();
@@ -48,6 +84,7 @@ describe("commitPurchase", () => {
     const dateBuilder = {
       select: mocks.dateSelect,
       eq: mocks.dateEq,
+      is: vi.fn(() => dateBuilder),
       maybeSingle: mocks.dateMaybeSingle,
     };
 
@@ -69,10 +106,48 @@ describe("commitPurchase", () => {
       data: { business_date: "2026-06-02" },
       error: null,
     });
+    historyPurchaseBuilder = makeMaybeSingleBuilder({
+      data: {
+        supplier_id: null,
+        business_date: "2026-06-02",
+        total_amount: "8000000",
+      },
+      error: null,
+    });
+    historyItemsBuilder = makeOrderBuilder({
+      data: [
+        {
+          product_name_snapshot: "xi măng",
+          unit_snapshot: "bao",
+          quantity: "100",
+          unit_cost: "80000",
+          line_total: "8000000",
+        },
+      ],
+      error: null,
+    });
+    historySupplierBuilder = makeMaybeSingleBuilder({
+      data: { name: "NCC A" },
+      error: null,
+    });
     mocks.insert.mockResolvedValue({ error: null });
-    mocks.from.mockImplementation((table: string) =>
-      table === "purchases" ? dateBuilder : { insert: mocks.insert },
-    );
+    let purchaseReadCount = 0;
+    mocks.from.mockImplementation((table: string) => {
+      if (table === "purchases") {
+        purchaseReadCount += 1;
+        return purchaseReadCount === 1 ? dateBuilder : historyPurchaseBuilder;
+      }
+
+      if (table === "purchase_items") {
+        return historyItemsBuilder;
+      }
+
+      if (table === "suppliers") {
+        return historySupplierBuilder;
+      }
+
+      return { insert: mocks.insert };
+    });
   });
 
   it("commits a supplierless purchase and logs purchase_created telemetry", async () => {
@@ -110,7 +185,28 @@ describe("commitPurchase", () => {
       owner_id: "user-a",
       event_type: "purchase_created",
     });
-    expect(mocks.from).toHaveBeenNthCalledWith(3, "chat_messages");
+    expect(mocks.from).toHaveBeenNthCalledWith(3, "purchases");
+    expect(historyPurchaseBuilder.select).toHaveBeenCalledWith(
+      "supplier_id,business_date,total_amount",
+    );
+    expect(historyPurchaseBuilder.eq).toHaveBeenNthCalledWith(1, "owner_id", "user-a");
+    expect(historyPurchaseBuilder.eq).toHaveBeenNthCalledWith(2, "id", "purchase-1");
+    expect(historyPurchaseBuilder.is).toHaveBeenCalledWith("deleted_at", null);
+    expect(mocks.from).toHaveBeenNthCalledWith(4, "purchase_items");
+    expect(historyItemsBuilder.select).toHaveBeenCalledWith(
+      "product_name_snapshot,unit_snapshot,quantity,unit_cost,line_total,sort_order",
+    );
+    expect(historyItemsBuilder.eq).toHaveBeenNthCalledWith(1, "owner_id", "user-a");
+    expect(historyItemsBuilder.eq).toHaveBeenNthCalledWith(
+      2,
+      "purchase_id",
+      "purchase-1",
+    );
+    expect(historyItemsBuilder.is).toHaveBeenCalledWith("deleted_at", null);
+    expect(historyItemsBuilder.order).toHaveBeenCalledWith("sort_order", {
+      ascending: true,
+    });
+    expect(mocks.from).toHaveBeenNthCalledWith(5, "chat_messages");
     expect(mocks.insert).toHaveBeenNthCalledWith(2, {
       owner_id: "user-a",
       role: "assistant",
@@ -118,12 +214,40 @@ describe("commitPurchase", () => {
       intent: "create_purchase",
       metadata: {
         purchase_id: "purchase-1",
+        card: {
+          v: 1,
+          kind: "create_purchase",
+          entity_name: null,
+          business_date: "2026-06-02",
+          total_amount: 8000000,
+          debt_amount: null,
+          amount: null,
+          items: [
+            {
+              name: "xi măng",
+              quantity: 100,
+              unit: "bao",
+              unit_price: 80000,
+              line_total: 8000000,
+            },
+          ],
+          source_id: "purchase-1",
+        },
         source: "tip_18b",
       },
     });
   });
 
   it("passes a supplier id through when present", async () => {
+    historyPurchaseBuilder.maybeSingle.mockResolvedValueOnce({
+      data: {
+        supplier_id: "supplier-9",
+        business_date: "2026-06-02",
+        total_amount: "8000000",
+      },
+      error: null,
+    });
+
     await commitPurchase({
       ...validInput,
       supplier_id: "supplier-9",
@@ -139,6 +263,25 @@ describe("commitPurchase", () => {
       intent: "create_purchase",
       metadata: {
         purchase_id: "purchase-1",
+        card: {
+          v: 1,
+          kind: "create_purchase",
+          entity_name: "NCC A",
+          business_date: "2026-06-02",
+          total_amount: 8000000,
+          debt_amount: null,
+          amount: null,
+          items: [
+            {
+              name: "xi măng",
+              quantity: 100,
+              unit: "bao",
+              unit_price: 80000,
+              line_total: 8000000,
+            },
+          ],
+          source_id: "purchase-1",
+        },
         source: "tip_18b",
       },
     });

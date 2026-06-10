@@ -20,6 +20,38 @@ vi.mock("@/src/lib/supabase/server", () => ({
 
 const { recreateSaleOrder } = await import("@/app/(app)/chat/actions");
 
+type MockFn = ReturnType<typeof vi.fn>;
+type MaybeSingleBuilder = {
+  select: MockFn;
+  eq: MockFn;
+  is: MockFn;
+  maybeSingle: MockFn;
+};
+type OrderBuilder = {
+  select: MockFn;
+  eq: MockFn;
+  is: MockFn;
+  order: MockFn;
+};
+
+function makeMaybeSingleBuilder(result: unknown): MaybeSingleBuilder {
+  const builder = {} as MaybeSingleBuilder;
+  builder.select = vi.fn(() => builder);
+  builder.eq = vi.fn(() => builder);
+  builder.is = vi.fn(() => builder);
+  builder.maybeSingle = vi.fn(async () => result);
+  return builder;
+}
+
+function makeOrderBuilder(result: unknown): OrderBuilder {
+  const builder = {} as OrderBuilder;
+  builder.select = vi.fn(() => builder);
+  builder.eq = vi.fn(() => builder);
+  builder.is = vi.fn(() => builder);
+  builder.order = vi.fn(async () => result);
+  return builder;
+}
+
 const validInput = {
   oldOrderId: "order-old",
   idempotencyKey: "idem-new",
@@ -37,6 +69,10 @@ const validInput = {
 };
 
 describe("recreateSaleOrder", () => {
+  let historyOrderBuilder: MaybeSingleBuilder;
+  let historyItemsBuilder: OrderBuilder;
+  let historyCustomerBuilder: MaybeSingleBuilder;
+
   beforeEach(() => {
     mocks.getUser.mockReset();
     mocks.rpc.mockReset();
@@ -49,6 +85,7 @@ describe("recreateSaleOrder", () => {
     const orderBuilder = {
       select: mocks.orderSelect,
       eq: mocks.orderEq,
+      is: vi.fn(() => orderBuilder),
       maybeSingle: mocks.orderMaybeSingle,
     };
 
@@ -56,9 +93,48 @@ describe("recreateSaleOrder", () => {
       data: { user: { id: "user-a" } },
       error: null,
     });
-    mocks.from.mockImplementation((table: string) =>
-      table === "orders" ? orderBuilder : { insert: mocks.insert },
-    );
+    historyOrderBuilder = makeMaybeSingleBuilder({
+      data: {
+        customer_id: "cust-1",
+        business_date: "2026-05-20",
+        total_amount: "1080000",
+        debt_amount: "1080000",
+      },
+      error: null,
+    });
+    historyItemsBuilder = makeOrderBuilder({
+      data: [
+        {
+          product_name_snapshot: "xi mang",
+          unit_snapshot: "bao",
+          quantity: "12",
+          unit_price: "90000",
+          line_total: "1080000",
+        },
+      ],
+      error: null,
+    });
+    historyCustomerBuilder = makeMaybeSingleBuilder({
+      data: { name: "anh Hung" },
+      error: null,
+    });
+    let orderReadCount = 0;
+    mocks.from.mockImplementation((table: string) => {
+      if (table === "orders") {
+        orderReadCount += 1;
+        return orderReadCount === 1 ? orderBuilder : historyOrderBuilder;
+      }
+
+      if (table === "order_items") {
+        return historyItemsBuilder;
+      }
+
+      if (table === "customers") {
+        return historyCustomerBuilder;
+      }
+
+      return { insert: mocks.insert };
+    });
     mocks.orderSelect.mockReturnValue(orderBuilder);
     mocks.orderEq.mockReturnValue(orderBuilder);
     mocks.orderMaybeSingle.mockResolvedValue({
@@ -91,7 +167,7 @@ describe("recreateSaleOrder", () => {
       },
     });
 
-    expect(mocks.from).toHaveBeenCalledTimes(2);
+    expect(mocks.from).toHaveBeenCalledTimes(5);
     expect(mocks.from).toHaveBeenNthCalledWith(1, "orders");
     expect(mocks.orderSelect).toHaveBeenCalledWith("business_date,status");
     expect(mocks.orderEq).toHaveBeenNthCalledWith(1, "owner_id", "user-a");
@@ -110,7 +186,28 @@ describe("recreateSaleOrder", () => {
     expect(commitParams.p_note).toBe("anh Hung mua 12 bao xi mang");
     expect(commitParams.p_items).toEqual(validInput.items);
 
-    expect(mocks.from).toHaveBeenNthCalledWith(2, "chat_messages");
+    expect(mocks.from).toHaveBeenNthCalledWith(2, "orders");
+    expect(historyOrderBuilder.select).toHaveBeenCalledWith(
+      "customer_id,business_date,total_amount,debt_amount",
+    );
+    expect(historyOrderBuilder.eq).toHaveBeenNthCalledWith(1, "owner_id", "user-a");
+    expect(historyOrderBuilder.eq).toHaveBeenNthCalledWith(2, "id", "order-new");
+    expect(historyOrderBuilder.is).toHaveBeenCalledWith("deleted_at", null);
+    expect(mocks.from).toHaveBeenNthCalledWith(3, "order_items");
+    expect(historyItemsBuilder.select).toHaveBeenCalledWith(
+      "product_name_snapshot,unit_snapshot,quantity,unit_price,line_total,sort_order",
+    );
+    expect(historyItemsBuilder.eq).toHaveBeenNthCalledWith(1, "owner_id", "user-a");
+    expect(historyItemsBuilder.eq).toHaveBeenNthCalledWith(2, "order_id", "order-new");
+    expect(historyItemsBuilder.is).toHaveBeenCalledWith("deleted_at", null);
+    expect(historyItemsBuilder.order).toHaveBeenCalledWith("sort_order", {
+      ascending: true,
+    });
+    expect(mocks.from).toHaveBeenNthCalledWith(4, "customers");
+    expect(historyCustomerBuilder.eq).toHaveBeenNthCalledWith(1, "owner_id", "user-a");
+    expect(historyCustomerBuilder.eq).toHaveBeenNthCalledWith(2, "id", "cust-1");
+    expect(historyCustomerBuilder.is).toHaveBeenCalledWith("deleted_at", null);
+    expect(mocks.from).toHaveBeenNthCalledWith(5, "chat_messages");
     expect(mocks.insert).toHaveBeenCalledTimes(1);
     expect(mocks.insert).toHaveBeenCalledWith({
       owner_id: "user-a",
@@ -120,6 +217,25 @@ describe("recreateSaleOrder", () => {
       metadata: {
         old_order_id: "order-old",
         new_order_id: "order-new",
+        card: {
+          v: 1,
+          kind: "edit_order",
+          entity_name: "anh Hung",
+          business_date: "2026-05-20",
+          total_amount: 1080000,
+          debt_amount: 1080000,
+          amount: null,
+          items: [
+            {
+              name: "xi mang",
+              quantity: 12,
+              unit: "bao",
+              unit_price: 90000,
+              line_total: 1080000,
+            },
+          ],
+          source_id: "order-new",
+        },
         source: "tip_18b",
       },
     });

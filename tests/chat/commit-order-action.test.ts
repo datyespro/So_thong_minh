@@ -20,6 +20,38 @@ vi.mock("@/src/lib/supabase/server", () => ({
 
 const { commitOrder } = await import("@/app/(app)/chat/actions");
 
+type MockFn = ReturnType<typeof vi.fn>;
+type MaybeSingleBuilder = {
+  select: MockFn;
+  eq: MockFn;
+  is: MockFn;
+  maybeSingle: MockFn;
+};
+type OrderBuilder = {
+  select: MockFn;
+  eq: MockFn;
+  is: MockFn;
+  order: MockFn;
+};
+
+function makeMaybeSingleBuilder(result: unknown): MaybeSingleBuilder {
+  const builder = {} as MaybeSingleBuilder;
+  builder.select = vi.fn(() => builder);
+  builder.eq = vi.fn(() => builder);
+  builder.is = vi.fn(() => builder);
+  builder.maybeSingle = vi.fn(async () => result);
+  return builder;
+}
+
+function makeOrderBuilder(result: unknown): OrderBuilder {
+  const builder = {} as OrderBuilder;
+  builder.select = vi.fn(() => builder);
+  builder.eq = vi.fn(() => builder);
+  builder.is = vi.fn(() => builder);
+  builder.order = vi.fn(async () => result);
+  return builder;
+}
+
 const validInput = {
   idempotency_key: "idem-1",
   customer_id: "cust-1",
@@ -37,6 +69,10 @@ const validInput = {
 };
 
 describe("commitOrder", () => {
+  let historyOrderBuilder: MaybeSingleBuilder;
+  let historyItemsBuilder: OrderBuilder;
+  let historyCustomerBuilder: MaybeSingleBuilder;
+
   beforeEach(() => {
     mocks.getUser.mockReset();
     mocks.rpc.mockReset();
@@ -49,6 +85,7 @@ describe("commitOrder", () => {
     const dateBuilder = {
       select: mocks.dateSelect,
       eq: mocks.dateEq,
+      is: vi.fn(() => dateBuilder),
       maybeSingle: mocks.dateMaybeSingle,
     };
 
@@ -71,10 +108,49 @@ describe("commitOrder", () => {
       data: { business_date: "2026-06-02" },
       error: null,
     });
+    historyOrderBuilder = makeMaybeSingleBuilder({
+      data: {
+        customer_id: "cust-1",
+        business_date: "2026-06-02",
+        total_amount: "300000",
+        debt_amount: "300000",
+      },
+      error: null,
+    });
+    historyItemsBuilder = makeOrderBuilder({
+      data: [
+        {
+          product_name_snapshot: "xi măng",
+          unit_snapshot: "bao",
+          quantity: "3",
+          unit_price: "100000",
+          line_total: "300000",
+        },
+      ],
+      error: null,
+    });
+    historyCustomerBuilder = makeMaybeSingleBuilder({
+      data: { name: "anh Hùng" },
+      error: null,
+    });
     mocks.insert.mockResolvedValue({ error: null });
-    mocks.from.mockImplementation((table: string) =>
-      table === "orders" ? dateBuilder : { insert: mocks.insert },
-    );
+    let orderReadCount = 0;
+    mocks.from.mockImplementation((table: string) => {
+      if (table === "orders") {
+        orderReadCount += 1;
+        return orderReadCount === 1 ? dateBuilder : historyOrderBuilder;
+      }
+
+      if (table === "order_items") {
+        return historyItemsBuilder;
+      }
+
+      if (table === "customers") {
+        return historyCustomerBuilder;
+      }
+
+      return { insert: mocks.insert };
+    });
   });
 
   it("commits via the rpc and logs telemetry without content", async () => {
@@ -118,7 +194,69 @@ describe("commitOrder", () => {
       owner_id: "user-a",
       event_type: "order_created",
     });
-    expect(mocks.from).toHaveBeenNthCalledWith(3, "chat_messages");
+    expect(mocks.from).toHaveBeenNthCalledWith(3, "orders");
+    expect(historyOrderBuilder.select).toHaveBeenCalledWith(
+      "customer_id,business_date,total_amount,debt_amount",
+    );
+    expect(historyOrderBuilder.eq).toHaveBeenNthCalledWith(1, "owner_id", "user-a");
+    expect(historyOrderBuilder.eq).toHaveBeenNthCalledWith(2, "id", "order-1");
+    expect(historyOrderBuilder.is).toHaveBeenCalledWith("deleted_at", null);
+    expect(mocks.from).toHaveBeenNthCalledWith(4, "order_items");
+    expect(historyItemsBuilder.select).toHaveBeenCalledWith(
+      "product_name_snapshot,unit_snapshot,quantity,unit_price,line_total,sort_order",
+    );
+    expect(historyItemsBuilder.eq).toHaveBeenNthCalledWith(1, "owner_id", "user-a");
+    expect(historyItemsBuilder.eq).toHaveBeenNthCalledWith(2, "order_id", "order-1");
+    expect(historyItemsBuilder.is).toHaveBeenCalledWith("deleted_at", null);
+    expect(historyItemsBuilder.order).toHaveBeenCalledWith("sort_order", {
+      ascending: true,
+    });
+    expect(mocks.from).toHaveBeenNthCalledWith(5, "customers");
+    expect(historyCustomerBuilder.eq).toHaveBeenNthCalledWith(1, "owner_id", "user-a");
+    expect(historyCustomerBuilder.eq).toHaveBeenNthCalledWith(2, "id", "cust-1");
+    expect(historyCustomerBuilder.is).toHaveBeenCalledWith("deleted_at", null);
+    expect(mocks.from).toHaveBeenNthCalledWith(6, "chat_messages");
+    expect(mocks.insert).toHaveBeenNthCalledWith(2, {
+      owner_id: "user-a",
+      role: "assistant",
+      content: "Đã ghi đơn cho anh Hùng",
+      intent: "create_order",
+      metadata: {
+        order_id: "order-1",
+        card: {
+          v: 1,
+          kind: "create_order",
+          entity_name: "anh Hùng",
+          business_date: "2026-06-02",
+          total_amount: 300000,
+          debt_amount: 300000,
+          amount: null,
+          items: [
+            {
+              name: "xi măng",
+              quantity: 3,
+              unit: "bao",
+              unit_price: 100000,
+              line_total: 300000,
+            },
+          ],
+          source_id: "order-1",
+        },
+        source: "tip_18b",
+      },
+    });
+  });
+
+  it("keeps assistant text metadata when history card snapshot build fails", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    historyOrderBuilder.maybeSingle.mockResolvedValueOnce({
+      data: null,
+      error: { code: "42501", message: "RLS denied" },
+    });
+
+    const result = await commitOrder(validInput);
+
+    expect(result.ok).toBe(true);
     expect(mocks.insert).toHaveBeenNthCalledWith(2, {
       owner_id: "user-a",
       role: "assistant",
@@ -129,6 +267,12 @@ describe("commitOrder", () => {
         source: "tip_18b",
       },
     });
+    expect(warnSpy).toHaveBeenCalledWith(
+      "Failed to build history commit card snapshot",
+      { code: "42501", message: "RLS denied" },
+    );
+
+    warnSpy.mockRestore();
   });
 
   it("returns ok when the rpc reuses an existing order (idempotent)", async () => {

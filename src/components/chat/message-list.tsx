@@ -1,11 +1,13 @@
 "use client";
 
 import * as React from "react";
+import { HistoryCommitCard } from "@/src/components/chat/history-commit-card";
 import { MessageBubble } from "@/src/components/chat/message-bubble";
 import { PreviewCard } from "@/src/components/chat/preview-card";
 import { SamplePromptNotes } from "@/src/components/chat/sample-prompt-notes";
 import { TypingIndicator } from "@/src/components/chat/typing-indicator";
 import type { ChatMessageView } from "@/src/components/chat/types";
+import { parseHistoryCommitCard } from "@/src/lib/chat/history-card";
 import type {
   PipelineTurnView,
   PreviewCardPatch,
@@ -105,10 +107,21 @@ export function MessageList({
       <div className="mx-auto flex w-full max-w-[760px] flex-col gap-3 px-3 sm:px-5 lg:px-6">
         {messages.map((message) => {
           const turn = turnsByMessageId.get(message.id);
+          const historyCard =
+            message.role === "assistant"
+              ? parseHistoryCommitCard(message.metadata)
+              : null;
 
           return (
             <React.Fragment key={message.id}>
-              <MessageBubble message={message} />
+              {historyCard ? (
+                <HistoryCommitCard
+                  card={historyCard}
+                  confirmationText={message.content}
+                />
+              ) : (
+                <MessageBubble message={message} />
+              )}
               {turn ? (
                 <PreviewCard
                   validated={turn.validated}
