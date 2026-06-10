@@ -145,6 +145,7 @@ export function ChatContainer({
           validated: pipeline.validated,
           answer: result.answer ?? null,
           productManagementPreview: result.productManagementPreview ?? null,
+          terminalText: result.terminalText ?? null,
           patched: createEmptyPreviewCardPatch(),
         },
       ]);

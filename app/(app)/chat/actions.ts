@@ -32,6 +32,7 @@ import {
   capabilityReply,
   detectCapabilityQuestion,
 } from "@/src/lib/ai/capability-help";
+import { generateSmallTalkReply } from "@/src/lib/ai/small-talk-reply";
 import { resolveOne, type EntityRow } from "@/src/lib/ai/entity-resolver";
 import type { ResolvedEntity } from "@/src/lib/ai/resolve-schema";
 import type { ProductManagement } from "@/src/lib/ai/intent-schema";
@@ -110,6 +111,7 @@ export type ProcessMessageResult =
       pipeline: ChatPipelineResult;
       answer?: QueryAnswer | null;
       productManagementPreview?: ProductManagementPreview | null;
+      terminalText?: string | null;
     }
   | { ok: false; code: string; message: string };
 
@@ -525,9 +527,9 @@ async function persistTerminalAssistantResponse({
   ownerId: string;
   pipeline: ChatPipelineResult;
   answer: QueryAnswer | null;
-}) {
+}): Promise<string | null> {
   if (!pipeline.ok) {
-    return;
+    return null;
   }
 
   if (
@@ -552,7 +554,24 @@ async function persistTerminalAssistantResponse({
         },
         source: "tip_25a_capability",
       });
-      return;
+      return null;
+    }
+
+    if (pipeline.validated.intent === "small_talk") {
+      const llmReply = await generateSmallTalkReply({
+        rawText: pipeline.validated.raw_text,
+      });
+
+      if (llmReply) {
+        await persistAssistantTerminalMessage({
+          supabase,
+          ownerId,
+          content: llmReply,
+          intent: "small_talk",
+          source: "tip_25b_small_talk",
+        });
+        return llmReply;
+      }
     }
 
     await persistAssistantTerminalMessage({
@@ -561,7 +580,7 @@ async function persistTerminalAssistantResponse({
       content: friendlyNoneMessage(pipeline.validated.intent),
       intent: pipeline.validated.intent,
     });
-    return;
+    return null;
   }
 
   if (answer) {
@@ -575,6 +594,8 @@ async function persistTerminalAssistantResponse({
       },
     });
   }
+
+  return null;
 }
 
 function normalizeCustomerName(name: string) {
@@ -2411,7 +2432,7 @@ export async function processMessage(
     return productManagementPreviewResult;
   }
 
-  await persistTerminalAssistantResponse({
+  const terminalText = await persistTerminalAssistantResponse({
     supabase,
     ownerId: user.id,
     pipeline,
@@ -2426,5 +2447,6 @@ export async function processMessage(
     ...(productManagementPreviewResult.data
       ? { productManagementPreview: productManagementPreviewResult.data }
       : {}),
+    ...(terminalText ? { terminalText } : {}),
   };
 }

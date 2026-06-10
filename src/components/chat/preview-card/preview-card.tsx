@@ -97,6 +97,7 @@ type PreviewCardProps = Readonly<{
   validated: ValidatedIntent;
   answer?: QueryAnswer | null;
   productManagementPreview?: ProductManagementPreview | null;
+  terminalText?: string | null;
   patched: PreviewCardPatch;
   ownerId?: string;
   isLive: boolean;
@@ -2003,6 +2004,7 @@ export function PreviewCard({
   validated: initialValidated,
   answer = null,
   productManagementPreview = null,
+  terminalText = null,
   patched,
   ownerId,
   isLive,
@@ -2371,7 +2373,11 @@ export function PreviewCard({
         data-testid="preview-none"
       >
         <div className="max-w-[86%] rounded border border-dashed border-ledgerBorder bg-paperWarm px-4 py-3 text-[16px] leading-7 text-textMute shadow-none sm:max-w-[78%]">
-          <p>{capability?.content ?? friendlyNoneMessage(validated.intent)}</p>
+          <p>
+            {capability?.content ??
+              terminalText ??
+              friendlyNoneMessage(validated.intent)}
+          </p>
           {capability ? (
             <CapabilityChipRow chips={capability.chips} onPick={onPickSample} />
           ) : null}

@@ -102,6 +102,7 @@ export type PipelineTurnView = {
   validated: ValidatedIntent;
   answer?: QueryAnswer | null;
   productManagementPreview?: ProductManagementPreview | null;
+  terminalText?: string | null;
   patched: PreviewCardPatch;
 };
 
