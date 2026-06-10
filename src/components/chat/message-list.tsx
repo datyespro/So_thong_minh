@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { CapabilityChipRow } from "@/src/components/chat/capability-chip-row";
 import { HistoryCommitCard } from "@/src/components/chat/history-commit-card";
 import { MessageBubble } from "@/src/components/chat/message-bubble";
 import { PreviewCard } from "@/src/components/chat/preview-card";
@@ -8,6 +9,7 @@ import { SamplePromptNotes } from "@/src/components/chat/sample-prompt-notes";
 import { TypingIndicator } from "@/src/components/chat/typing-indicator";
 import type { ChatMessageView } from "@/src/components/chat/types";
 import { parseHistoryCommitCard } from "@/src/lib/chat/history-card";
+import { parseCapabilityChips } from "@/src/lib/ai/capability-help";
 import type {
   PipelineTurnView,
   PreviewCardPatch,
@@ -121,6 +123,10 @@ export function MessageList({
             message.role === "assistant"
               ? parseHistoryCommitCard(message.metadata)
               : null;
+          const capabilityChips =
+            message.role === "assistant" && !historyCard
+              ? parseCapabilityChips(message.metadata)
+              : null;
 
           return (
             <React.Fragment key={message.id}>
@@ -134,6 +140,16 @@ export function MessageList({
                       : "committed"
                   }
                 />
+              ) : capabilityChips ? (
+                <div>
+                  <MessageBubble message={message} />
+                  <div className="ml-0 max-w-[86%] sm:max-w-[78%]">
+                    <CapabilityChipRow
+                      chips={capabilityChips}
+                      onPick={onPickSample}
+                    />
+                  </div>
+                </div>
               ) : (
                 <MessageBubble message={message} />
               )}
@@ -146,6 +162,7 @@ export function MessageList({
                   ownerId={ownerId}
                   isLive={turn.id === activeTurnId}
                   onPatchChange={(patch) => onPatchTurn(turn.id, patch)}
+                  onPickSample={onPickSample}
                 />
               ) : null}
             </React.Fragment>
@@ -159,6 +176,7 @@ export function MessageList({
             restoredDraft={restoredDraft}
             isLive={false}
             onPatchChange={() => undefined}
+            onPickSample={onPickSample}
             onRestoredDismiss={onClearRestoredDraft}
           />
         ) : null}

@@ -40,6 +40,11 @@ import {
   dismissedPreviewMessage,
   friendlyNoneMessage,
 } from "@/src/lib/ai/terminal-text";
+import { CapabilityChipRow } from "@/src/components/chat/capability-chip-row";
+import {
+  capabilityReply,
+  detectCapabilityQuestion,
+} from "@/src/lib/ai/capability-help";
 import {
   addItem,
   getPatchedPreviewState,
@@ -97,6 +102,7 @@ type PreviewCardProps = Readonly<{
   isLive: boolean;
   mode?: PreviewCardMode;
   onPatchChange: (patch: PreviewCardPatch) => void;
+  onPickSample?: (text: string) => void;
   restoredDraft?: PreviewDraft | null;
   onRestoredDismiss?: (payload: DismissedPreviewPayload) => void;
 }>;
@@ -2002,6 +2008,7 @@ export function PreviewCard({
   isLive,
   mode = "live",
   onPatchChange,
+  onPickSample,
   restoredDraft = null,
   onRestoredDismiss,
 }: PreviewCardProps) {
@@ -2350,13 +2357,24 @@ export function PreviewCard({
   }
 
   if (validated.kind === "none") {
+    const capabilityCategory =
+      validated.intent === "small_talk" || validated.intent === "unknown"
+        ? detectCapabilityQuestion(validated.raw_text)
+        : null;
+    const capability = capabilityCategory
+      ? capabilityReply(capabilityCategory)
+      : null;
+
     return (
       <div
         className={cn("flex w-full justify-start", !liveInteractions && "opacity-70")}
         data-testid="preview-none"
       >
         <div className="max-w-[86%] rounded border border-dashed border-ledgerBorder bg-paperWarm px-4 py-3 text-[16px] leading-7 text-textMute shadow-none sm:max-w-[78%]">
-          {friendlyNoneMessage(validated.intent)}
+          <p>{capability?.content ?? friendlyNoneMessage(validated.intent)}</p>
+          {capability ? (
+            <CapabilityChipRow chips={capability.chips} onPick={onPickSample} />
+          ) : null}
         </div>
       </div>
     );

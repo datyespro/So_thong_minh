@@ -28,6 +28,10 @@ import {
   friendlyNoneMessage,
   queryAnswerToText,
 } from "@/src/lib/ai/terminal-text";
+import {
+  capabilityReply,
+  detectCapabilityQuestion,
+} from "@/src/lib/ai/capability-help";
 import { resolveOne, type EntityRow } from "@/src/lib/ai/entity-resolver";
 import type { ResolvedEntity } from "@/src/lib/ai/resolve-schema";
 import type { ProductManagement } from "@/src/lib/ai/intent-schema";
@@ -531,6 +535,26 @@ async function persistTerminalAssistantResponse({
     (pipeline.validated.intent === "small_talk" ||
       pipeline.validated.intent === "unknown")
   ) {
+    const capabilityCategory = detectCapabilityQuestion(
+      pipeline.validated.raw_text,
+    );
+
+    if (capabilityCategory) {
+      const reply = capabilityReply(capabilityCategory);
+
+      await persistAssistantTerminalMessage({
+        supabase,
+        ownerId,
+        content: reply.content,
+        intent: pipeline.validated.intent,
+        metadata: {
+          chips: reply.chips,
+        },
+        source: "tip_25a_capability",
+      });
+      return;
+    }
+
     await persistAssistantTerminalMessage({
       supabase,
       ownerId,

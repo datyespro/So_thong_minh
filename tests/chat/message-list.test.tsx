@@ -256,6 +256,28 @@ describe("MessageList", () => {
     expect(html).toContain("Đã ghi đơn cho anh Hùng");
   });
 
+  it("renders persisted capability chips under an assistant text bubble", () => {
+    const html = renderMessageList({
+      messages: [
+        {
+          id: "message-1",
+          role: "assistant",
+          content:
+            "Dạ bác nhắn kiểu: [Tên khách] trả [số tiền]. Em hiện thẻ xem trước cho bác bấm Ghi ạ.",
+          created_at: "2026-06-10T03:00:00.000Z",
+          metadata: {
+            source: "tip_25a_capability",
+            chips: ["Anh Hùng trả 200k"],
+          },
+        },
+      ],
+    });
+
+    expect(html).toContain("Anh Hùng trả 200k");
+    expect(html).toContain('data-testid="capability-chip-row"');
+    expect(html).not.toContain('data-testid="history-commit-card"');
+  });
+
   it("renders a dismissed preview card without the committed check tone", () => {
     const messages: ChatMessageView[] = [
       {

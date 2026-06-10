@@ -31,6 +31,7 @@ function renderCard(
     isLive?: boolean;
     answer?: QueryAnswer | null;
     productManagementPreview?: ProductManagementPreview | null;
+    onPickSample?: (text: string) => void;
   } = {},
 ) {
   return renderToStaticMarkup(
@@ -40,6 +41,7 @@ function renderCard(
       productManagementPreview: options.productManagementPreview ?? null,
       patched: options.patched ?? createEmptyPreviewCardPatch(),
       isLive: options.isLive ?? true,
+      onPickSample: options.onPickSample,
       onPatchChange: () => undefined,
     }),
   );
@@ -144,6 +146,26 @@ describe("PreviewCard", () => {
     expect(manageProductHtml).not.toContain("Em chưa rõ ý câu này");
     expect(editHtml).toContain("Tính năng này sẽ có ở bước sau ạ.");
     expect(editHtml).not.toContain("Ghi đơn");
+  });
+
+  it("renders capability help and chips for matched none intent", () => {
+    const html = renderCard(
+      baseValidated({
+        intent: "unknown",
+        kind: "none",
+        raw_text: "ghi đơn thế nào",
+        items: [],
+        effective_amount: null,
+        ready_for_preview: false,
+      }),
+      { onPickSample: () => undefined },
+    );
+
+    expect(html).toContain(
+      "Dạ bác nhắn kiểu: Bán cho [tên khách] [số lượng] [tên hàng] [giá].",
+    );
+    expect(html).toContain("Bán cho anh Hùng 5 bao xi măng 90k");
+    expect(html).toContain('data-testid="capability-chip-row"');
   });
 
   it("renders product-management not_found without save controls", () => {
