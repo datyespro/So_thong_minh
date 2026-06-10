@@ -2,10 +2,10 @@ import { z } from "zod";
 
 const HistoryCommitCardItemSchema = z.object({
   name: z.string(),
-  quantity: z.number(),
+  quantity: z.number().nullable(),
   unit: z.string(),
-  unit_price: z.number(),
-  line_total: z.number(),
+  unit_price: z.number().nullable(),
+  line_total: z.number().nullable(),
 });
 
 const HistoryCommitCardSchema = z.object({
@@ -17,7 +17,7 @@ const HistoryCommitCardSchema = z.object({
   debt_amount: z.number().nullable(),
   amount: z.number().nullable(),
   items: z.array(HistoryCommitCardItemSchema).nullable(),
-  source_id: z.string().min(1),
+  source_id: z.string().min(1).nullable(),
 });
 
 export type HistoryCommitCard = z.infer<typeof HistoryCommitCardSchema>;

@@ -11,6 +11,10 @@ import {
 } from "@/src/components/chat/preview-card";
 import type { ChatMessageView } from "@/src/components/chat/types";
 import {
+  isDuplicateDismissedPreviewMessage,
+  type DismissedPreviewPayload,
+} from "@/src/components/chat/preview-card/dismissed-preview-card";
+import {
   clearDraft,
   loadDraft,
   type PreviewDraft,
@@ -177,10 +181,31 @@ export function ChatContainer({
     [],
   );
 
-  const handleClearRestoredDraft = React.useCallback(() => {
-    clearDraft(ownerId);
-    setRestoredDraft(null);
-  }, [ownerId]);
+  const handleClearRestoredDraft = React.useCallback(
+    (payload: DismissedPreviewPayload) => {
+      clearDraft(ownerId);
+      setRestoredDraft(null);
+
+      setMessages((current) => {
+        if (isDuplicateDismissedPreviewMessage(current, payload)) {
+          return current;
+        }
+
+        return [
+          ...current,
+          {
+            id: makeTempId("assistant-dismissed-preview"),
+            role: "assistant",
+            content: payload.content,
+            created_at: new Date().toISOString(),
+            metadata: { source: "tip_22_dismiss", card: payload.card },
+            ephemeral: true,
+          },
+        ];
+      });
+    },
+    [ownerId],
+  );
 
   return (
     <section className="flex h-full min-h-0 bg-paper text-textMain">

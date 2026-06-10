@@ -33,6 +33,18 @@ describe("parseHistoryCommitCard", () => {
     expect(parseHistoryCommitCard({ card: missingSourceId })).toBeNull();
   });
 
+  it("accepts a present null source_id for an uncommitted preview", () => {
+    expect(
+      parseHistoryCommitCard({ card: { ...validCard, source_id: null } }),
+    ).toEqual({ ...validCard, source_id: null });
+  });
+
+  it("rejects an undefined source_id", () => {
+    expect(
+      parseHistoryCommitCard({ card: { ...validCard, source_id: undefined } }),
+    ).toBeNull();
+  });
+
   it("returns null for the wrong version", () => {
     expect(parseHistoryCommitCard({ card: { ...validCard, v: 2 } })).toBeNull();
   });

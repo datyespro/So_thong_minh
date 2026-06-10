@@ -12,6 +12,7 @@ import type {
   PipelineTurnView,
   PreviewCardPatch,
 } from "@/src/components/chat/preview-card";
+import type { DismissedPreviewPayload } from "@/src/components/chat/preview-card/dismissed-preview-card";
 import type { PreviewDraft } from "@/src/lib/chat/preview-draft";
 import type { ValidatedIntent, ValidatedLineItem } from "@/src/lib/ai/validate-schema";
 
@@ -24,8 +25,17 @@ type MessageListProps = Readonly<{
   restoredDraft: PreviewDraft | null;
   onPickSample: (text: string) => void;
   onPatchTurn: (turnId: string, patch: PreviewCardPatch) => void;
-  onClearRestoredDraft: () => void;
+  onClearRestoredDraft: (payload: DismissedPreviewPayload) => void;
 }>;
+
+function isDismissedHistoryMessage(metadata: unknown) {
+  return (
+    metadata !== null &&
+    typeof metadata === "object" &&
+    "source" in metadata &&
+    (metadata as { source?: unknown }).source === "tip_22_dismiss"
+  );
+}
 
 function restoredLineItem(item: PreviewDraft["resolved"]["items"][number]): ValidatedLineItem {
   const lineTotal =
@@ -118,6 +128,11 @@ export function MessageList({
                 <HistoryCommitCard
                   card={historyCard}
                   confirmationText={message.content}
+                  confirmationTone={
+                    isDismissedHistoryMessage(message.metadata)
+                      ? "dismissed"
+                      : "committed"
+                  }
                 />
               ) : (
                 <MessageBubble message={message} />

@@ -226,6 +226,10 @@ describe("MessageList", () => {
     expect(html).toContain("xi măng");
     expect(html).toContain("300.000 đ");
     expect(html).toContain("Đã ghi đơn cho anh Hùng");
+    expect(html).toContain("lucide-check");
+    expect(html).toContain(
+      'class="flex items-center gap-2 text-[16px] font-semibold leading-6 text-paid"',
+    );
     expect(html).not.toContain("Hoàn tác");
     expect(html).not.toContain("Sửa Đơn");
     expect(html).not.toContain("Cần kiểm tra");
@@ -250,6 +254,68 @@ describe("MessageList", () => {
 
     expect(html).not.toContain('data-testid="history-commit-card"');
     expect(html).toContain("Đã ghi đơn cho anh Hùng");
+  });
+
+  it("renders a dismissed preview card without the committed check tone", () => {
+    const messages: ChatMessageView[] = [
+      {
+        id: "message-1",
+        role: "assistant",
+        content: "Đã bỏ đơn của Ngọc Anh",
+        created_at: "2026-06-02T03:00:00.000Z",
+        metadata: {
+          source: "tip_22_dismiss",
+          card: {
+            v: 1,
+            kind: "create_order",
+            entity_name: "Ngọc Anh",
+            business_date: "2026-06-02",
+            total_amount: 100000,
+            debt_amount: null,
+            amount: null,
+            items: [
+              {
+                name: "xi măng",
+                quantity: 1,
+                unit: "bao",
+                unit_price: 100000,
+                line_total: 100000,
+              },
+            ],
+            source_id: null,
+          },
+        },
+      },
+    ];
+
+    const html = renderMessageList({ messages });
+
+    expect(html).toContain('data-testid="history-commit-card"');
+    expect(html).toContain("Đã bỏ đơn của Ngọc Anh");
+    expect(html).not.toContain("lucide-check");
+    expect(html).toContain(
+      'class="flex items-center gap-2 text-[16px] font-semibold leading-6 text-textMute"',
+    );
+  });
+
+  it("falls back to a text bubble when a dismissed preview has no valid card", () => {
+    const messages: ChatMessageView[] = [
+      {
+        id: "message-1",
+        role: "assistant",
+        content: "Đã bỏ đơn của khách",
+        created_at: "2026-06-02T03:00:00.000Z",
+        metadata: {
+          source: "tip_22_dismiss",
+          card: null,
+        },
+      },
+    ];
+
+    const html = renderMessageList({ messages });
+
+    expect(html).not.toContain('data-testid="history-commit-card"');
+    expect(html).toContain("Đã bỏ đơn của khách");
   });
 
   it("shows walk-in customer text when a persisted order card has no customer name", () => {

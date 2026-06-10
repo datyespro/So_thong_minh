@@ -3,7 +3,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ActionResult } from "@/src/types/action-result";
 import type { ChatMessageView } from "@/src/components/chat/types";
-import type { HistoryCommitCard } from "@/src/lib/chat/history-card";
+import {
+  parseHistoryCommitCard,
+  type HistoryCommitCard,
+} from "@/src/lib/chat/history-card";
 import type {
   ProductManagementCandidate,
   ProductManagementPreview,
@@ -151,6 +154,64 @@ async function persistAssistantTerminalMessage({
   } catch (error) {
     console.warn("Failed to persist assistant terminal chat message", error);
   }
+}
+
+type DismissiblePreviewIntent =
+  | "create_order"
+  | "record_payment"
+  | "create_purchase";
+
+function isDismissiblePreviewIntent(
+  intent: string,
+): intent is DismissiblePreviewIntent {
+  return (
+    intent === "create_order" ||
+    intent === "record_payment" ||
+    intent === "create_purchase"
+  );
+}
+
+export async function persistDismissedPreviewMessage(
+  input: Readonly<{
+    intent: string;
+    content: string;
+    card: unknown;
+  }>,
+): Promise<ActionResult<null>> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return {
+      ok: false,
+      code: "unauthorized",
+      message: "Vui lòng đăng nhập lại ạ.",
+    };
+  }
+
+  if (!isDismissiblePreviewIntent(input.intent)) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Thẻ này không hỗ trợ bỏ ạ.",
+    };
+  }
+
+  const card = parseHistoryCommitCard({ card: input.card });
+
+  await persistAssistantTerminalMessage({
+    supabase,
+    ownerId: user.id,
+    content: input.content,
+    intent: input.intent,
+    metadata: card ? { card } : undefined,
+    source: "tip_22_dismiss",
+  });
+
+  return { ok: true, data: null };
 }
 
 type HistoryCardBuildInput =

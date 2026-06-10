@@ -64,6 +64,7 @@ describe("PreviewCard", () => {
     expect(html).toContain('value="80000"');
     expect(html).toContain("1.600.000 đ");
     expect(html).toContain("Ghi đơn");
+    expect(html).toContain(">Bỏ</button>");
     expect(html).not.toContain('data-testid="issue-panel-blocking"');
     expect(html).not.toContain('disabled=""');
   });
@@ -622,10 +623,12 @@ describe("PreviewCard", () => {
     expect(purchaseHtml).toContain("Nhà cung cấp A");
     expect(purchaseHtml).toContain("Đơn vị");
     expect(purchaseHtml).toContain("Ghi nhập hàng");
+    expect(purchaseHtml).toContain(">Bỏ</button>");
     expect(paymentHtml).toContain("Thu / trả nợ");
     expect(paymentHtml).toContain("500.000 đ");
     expect(paymentHtml).not.toContain("Đơn vị");
     expect(paymentHtml).toContain("Ghi thu nợ");
+    expect(paymentHtml).toContain(">Bỏ</button>");
   });
 
   it("shows an unsettled total (—) for a payment with no amount yet", () => {
@@ -792,5 +795,6 @@ describe("PreviewCard", () => {
     expect(html).toContain("2.000.000 đ");
     expect(html).not.toContain("Nhập giá");
     expect(html).not.toContain("Ghi đơn");
+    expect(html).not.toContain(">Bỏ</button>");
   });
 });

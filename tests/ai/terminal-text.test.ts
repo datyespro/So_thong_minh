@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { formatVietnameseMoney } from "@/src/lib/format/money";
 import {
   commitConfirmationMessage,
+  dismissedPreviewMessage,
   friendlyNoneMessage,
   queryAnswerToText,
 } from "@/src/lib/ai/terminal-text";
@@ -14,6 +15,30 @@ describe("terminal chat text helpers", () => {
 
   it("keeps the shared money formatter null behavior", () => {
     expect(formatVietnameseMoney(null)).toBe("Chưa có");
+  });
+
+  it("formats dismissed preview messages by intent and counterparty", () => {
+    expect(
+      dismissedPreviewMessage({ type: "create_order", entityName: "Ngọc Anh" }),
+    ).toBe("Đã bỏ đơn của Ngọc Anh");
+    expect(dismissedPreviewMessage({ type: "create_order" })).toBe(
+      "Đã bỏ đơn của khách",
+    );
+    expect(
+      dismissedPreviewMessage({ type: "record_payment", entityName: "chị Lan" }),
+    ).toBe("Đã bỏ thu nợ của chị Lan");
+    expect(dismissedPreviewMessage({ type: "record_payment" })).toBe(
+      "Đã bỏ thu nợ của khách",
+    );
+    expect(
+      dismissedPreviewMessage({
+        type: "create_purchase",
+        supplierName: "NCC A",
+      }),
+    ).toBe("Đã bỏ nhập hàng từ NCC A");
+    expect(dismissedPreviewMessage({ type: "create_purchase" })).toBe(
+      "Đã bỏ nhập hàng",
+    );
   });
 
   it("formats commit confirmation messages without changing current UI text", () => {

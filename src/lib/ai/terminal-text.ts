@@ -7,6 +7,11 @@ export type CommitConfirmationMessageInput =
   | { type: "create_purchase"; supplierName?: string | null }
   | { type: "edit_order" };
 
+export type DismissedPreviewMessageInput =
+  | { type: "create_order"; entityName?: string | null }
+  | { type: "record_payment"; entityName?: string | null }
+  | { type: "create_purchase"; supplierName?: string | null };
+
 export function friendlyNoneMessage(intent: string) {
   if (intent === "manage_product") {
     // TEMPORARY TIP-#3-D-a: recognition only. Real product actions land in
@@ -20,6 +25,23 @@ export function friendlyNoneMessage(intent: string) {
 function displayNameOrFallback(value: string | null | undefined, fallback: string) {
   const trimmed = value?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : fallback;
+}
+
+export function dismissedPreviewMessage(
+  input: DismissedPreviewMessageInput,
+): string {
+  if (input.type === "create_order") {
+    return `Đã bỏ đơn của ${displayNameOrFallback(input.entityName, "khách")}`;
+  }
+
+  if (input.type === "record_payment") {
+    return `Đã bỏ thu nợ của ${displayNameOrFallback(input.entityName, "khách")}`;
+  }
+
+  const supplierName = input.supplierName?.trim();
+  return supplierName && supplierName.length > 0
+    ? `Đã bỏ nhập hàng từ ${supplierName}`
+    : "Đã bỏ nhập hàng";
 }
 
 export function commitConfirmationMessage(

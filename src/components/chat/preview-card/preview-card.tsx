@@ -11,6 +11,7 @@ import {
   createProduct,
   createProductFromChat,
   getCustomerDebt,
+  persistDismissedPreviewMessage,
   recreateSaleOrder,
   searchCustomersByName,
   searchProductsByName,
@@ -23,13 +24,20 @@ import {
 } from "@/app/(app)/chat/actions";
 import { cn } from "@/src/lib/utils";
 import { Button } from "@/src/components/ui/button";
+import { HistoryCommitCard } from "@/src/components/chat/history-commit-card";
 import { confirmAliasInBackground } from "@/src/components/chat/preview-card/alias-client";
+import {
+  buildDismissedPreviewCardFromState,
+  claimDismissPreview,
+  type DismissedPreviewPayload,
+} from "@/src/components/chat/preview-card/dismissed-preview-card";
 import {
   formatVietnameseMoney,
   parseVietnameseNumber,
 } from "@/src/components/chat/preview-card/number-utils";
 import {
   commitConfirmationMessage,
+  dismissedPreviewMessage,
   friendlyNoneMessage,
 } from "@/src/lib/ai/terminal-text";
 import {
@@ -90,7 +98,7 @@ type PreviewCardProps = Readonly<{
   mode?: PreviewCardMode;
   onPatchChange: (patch: PreviewCardPatch) => void;
   restoredDraft?: PreviewDraft | null;
-  onRestoredDismiss?: () => void;
+  onRestoredDismiss?: (payload: DismissedPreviewPayload) => void;
 }>;
 
 type DraftInputs = {
@@ -1852,6 +1860,22 @@ function ProductManagementCanceledNotice({ isLive }: Readonly<{ isLive: boolean 
   );
 }
 
+function DismissedPreviewNotice({
+  isLive,
+  content,
+}: Readonly<{ isLive: boolean; content: string }>) {
+  return (
+    <div className={cn("flex w-full justify-start", !isLive && "opacity-70")}>
+      <div
+        className="max-w-[86%] rounded border border-dashed border-ledgerBorder bg-paperWarm px-4 py-3 text-[16px] leading-7 text-textMute shadow-none sm:max-w-[78%]"
+        data-testid="dismissed-preview-notice"
+      >
+        {content}
+      </div>
+    </div>
+  );
+}
+
 function DeleteOrderConfirmModal({
   open,
   summary,
@@ -2013,6 +2037,9 @@ export function PreviewCard({
   const [isCommitting, setIsCommitting] = React.useState(false);
   const [committedInfo, setCommittedInfo] = React.useState<CommittedInfo | null>(null);
   const [commitError, setCommitError] = React.useState<string | null>(null);
+  const [dismissedPreview, setDismissedPreview] =
+    React.useState<DismissedPreviewPayload | null>(null);
+  const [isDismissingPreview, setIsDismissingPreview] = React.useState(false);
   const [isEditing, setIsEditing] = React.useState(false);
   const [isResaving, setIsResaving] = React.useState(false);
   const [resaveError, setResaveError] = React.useState<string | null>(null);
@@ -2046,8 +2073,10 @@ export function PreviewCard({
     amount: "",
   });
   const latestPatchRef = React.useRef(patched);
+  const dismissingPreviewRef = React.useRef(false);
   const state = getPatchedPreviewState(validated, patched);
   const liveInteractions = isLiveMode && isLive;
+  const canDismissPreview = isPreviewDraftIntent(validated.intent);
 
   React.useEffect(() => {
     setRestoredValidated(null);
@@ -2095,6 +2124,7 @@ export function PreviewCard({
       !isLive ||
       isCommitting ||
       committedInfo ||
+      dismissedPreview ||
       undone ||
       isEditing
     ) {
@@ -2110,6 +2140,7 @@ export function PreviewCard({
     });
   }, [
     committedInfo,
+    dismissedPreview,
     idempotencyKey,
     isCommitting,
     isEditing,
@@ -2303,6 +2334,21 @@ export function PreviewCard({
     );
   }
 
+  if (dismissedPreview && canDismissPreview) {
+    return dismissedPreview.card ? (
+      <HistoryCommitCard
+        card={dismissedPreview.card}
+        confirmationText={dismissedPreview.content}
+        confirmationTone="dismissed"
+      />
+    ) : (
+      <DismissedPreviewNotice
+        isLive={liveInteractions}
+        content={dismissedPreview.content}
+      />
+    );
+  }
+
   if (validated.kind === "none") {
     return (
       <div
@@ -2393,6 +2439,7 @@ export function PreviewCard({
     !state.canConfirm || isCommitting || overpaymentBlocking;
   const restoredCommitDisabled =
     !state.canConfirm || isCommitting || overpaymentBlocking || committedInfo !== null;
+  const dismissDisabled = isCommitting || isDismissingPreview || committedInfo !== null;
   const cardVisualActive = interactive || isRestored;
   const previewCardTestId = isRestored
     ? "preview-card-restored"
@@ -2941,12 +2988,65 @@ export function PreviewCard({
     setIsCommitting(false);
   }
 
-  function handleDismissRestoredDraft() {
-    if (restoredDraft) {
-      clearDraft(restoredDraft.ownerId);
+  function handleDismissPreview() {
+    if (
+      !isPreviewDraftIntent(validated.intent) ||
+      dismissedPreview ||
+      isCommitting ||
+      committedInfo
+    ) {
+      return;
     }
 
-    onRestoredDismiss?.();
+    if (!claimDismissPreview(dismissingPreviewRef)) {
+      return;
+    }
+
+    const intent = validated.intent;
+    const entityName = entityNameForState(intent, state);
+    const content =
+      intent === "create_purchase"
+        ? dismissedPreviewMessage({ type: intent, supplierName: entityName })
+        : dismissedPreviewMessage({ type: intent, entityName });
+    const card = buildDismissedPreviewCardFromState(
+      state,
+      intent,
+      cardBusinessDate,
+    );
+    const payload: DismissedPreviewPayload = { content, card };
+
+    if (!card) {
+      console.warn("Failed to build dismissed preview card snapshot");
+    }
+
+    setIsDismissingPreview(true);
+    setDismissedPreview(payload);
+    setCommitError(null);
+    setNotice(null);
+
+    if (isRestored) {
+      if (restoredDraft) {
+        clearDraft(restoredDraft.ownerId);
+      }
+
+      onRestoredDismiss?.(payload);
+    } else {
+      clearLivePreviewDraft();
+    }
+
+    void persistDismissedPreviewMessage({
+      intent,
+      content,
+      card,
+    })
+      .then((result) => {
+        if (!result.ok) {
+          console.warn("Failed to persist dismissed preview message", result);
+        }
+      })
+      .catch((error) => {
+        console.warn("Failed to persist dismissed preview message", error);
+      });
   }
 
   function handleConfirmClick() {
@@ -3874,9 +3974,9 @@ export function PreviewCard({
               <Button
                 type="button"
                 variant="outline"
-                disabled={isCommitting}
+                disabled={dismissDisabled}
                 className="h-12 rounded border-ledgerBorder bg-surface px-5 text-[16px] font-semibold text-textMute hover:bg-paperWarm hover:text-ink disabled:cursor-not-allowed disabled:opacity-55"
-                onClick={handleDismissRestoredDraft}
+                onClick={handleDismissPreview}
               >
                 Bỏ
               </Button>
@@ -3899,19 +3999,32 @@ export function PreviewCard({
           </div>
         ) : interactive ? (
           <div className="mt-4 border-t border-ledgerBorder pt-3">
-            <Button
-              type="button"
-              disabled={commitDisabled}
-              title={
-                state.canConfirm
-                  ? "Ghi vào sổ ạ"
-                  : "Còn thiếu thông tin, bác bổ sung giúp em ạ."
-              }
-              className="h-12 rounded bg-ink px-5 text-[16px] font-semibold text-paper hover:bg-inkDeep disabled:cursor-not-allowed disabled:opacity-55"
-              onClick={handleConfirmClick}
-            >
-              {isCommitting ? "Đang ghi đơn..." : buttonLabel}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                disabled={commitDisabled}
+                title={
+                  state.canConfirm
+                    ? "Ghi vào sổ ạ"
+                    : "Còn thiếu thông tin, bác bổ sung giúp em ạ."
+                }
+                className="h-12 rounded bg-ink px-5 text-[16px] font-semibold text-paper hover:bg-inkDeep disabled:cursor-not-allowed disabled:opacity-55"
+                onClick={handleConfirmClick}
+              >
+                {isCommitting ? "Đang ghi đơn..." : buttonLabel}
+              </Button>
+              {canDismissPreview ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={dismissDisabled}
+                  className="h-12 rounded border-ledgerBorder bg-surface px-5 text-[16px] font-semibold text-textMute hover:bg-paperWarm hover:text-ink disabled:cursor-not-allowed disabled:opacity-55"
+                  onClick={handleDismissPreview}
+                >
+                  Bỏ
+                </Button>
+              ) : null}
+            </div>
             {!state.canConfirm ? (
               <p className="mt-2 text-[15px] leading-6 text-textMute">
                 Còn thiếu thông tin, bác bổ sung giúp em ạ.

@@ -8,6 +8,7 @@ import { formatVietnameseMoney } from "@/src/lib/format/money";
 type HistoryCommitCardProps = Readonly<{
   card: HistoryCommitCard;
   confirmationText: string;
+  confirmationTone?: "committed" | "dismissed";
 }>;
 
 const CARD_TITLE: Record<HistoryCommitCard["kind"], string> = {
@@ -39,6 +40,12 @@ function moneyLabel(card: HistoryCommitCard) {
   return card.kind === "record_payment" ? "Số tiền" : "Tổng tiền";
 }
 
+function formatHistoryMoney(value: number | null) {
+  return value === null || !Number.isFinite(value)
+    ? "—"
+    : formatVietnameseMoney(value);
+}
+
 function formatBusinessDate(value: string) {
   return dayjs(value).format("DD/MM/YYYY");
 }
@@ -46,6 +53,7 @@ function formatBusinessDate(value: string) {
 export function HistoryCommitCard({
   card,
   confirmationText,
+  confirmationTone = "committed",
 }: HistoryCommitCardProps) {
   const items = card.items ?? [];
 
@@ -72,7 +80,7 @@ export function HistoryCommitCard({
           <div className="text-right">
             <p className="text-[14px] leading-5 text-textMute">{moneyLabel(card)}</p>
             <p className="font-display text-2xl font-semibold tracking-normal text-paid">
-              {formatVietnameseMoney(moneyTotal(card))}
+              {formatHistoryMoney(moneyTotal(card))}
             </p>
           </div>
         </div>
@@ -89,7 +97,7 @@ export function HistoryCommitCard({
             <div className="grid gap-2 text-[16px] leading-7 sm:grid-cols-[140px_1fr]">
               <p className="font-semibold text-textMute">Số tiền</p>
               <p className="font-semibold text-inkDeep">
-                {formatVietnameseMoney(card.amount)}
+                {formatHistoryMoney(card.amount)}
               </p>
             </div>
           </div>
@@ -115,7 +123,7 @@ export function HistoryCommitCard({
                     <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-stamp sm:hidden">
                       Số lượng
                     </p>
-                    <p className="font-semibold">{item.quantity}</p>
+                    <p className="font-semibold">{item.quantity ?? "—"}</p>
                   </div>
                   <div className="mt-2 grid grid-cols-[92px_minmax(0,1fr)] items-center gap-2 sm:mt-0 sm:block">
                     <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-stamp sm:hidden">
@@ -128,7 +136,7 @@ export function HistoryCommitCard({
                       Đơn giá
                     </p>
                     <p className="font-semibold">
-                      {formatVietnameseMoney(item.unit_price)}
+                      {formatHistoryMoney(item.unit_price)}
                     </p>
                   </div>
                   <div className="mt-2 grid grid-cols-[92px_minmax(0,1fr)] items-center gap-2 sm:mt-0 sm:block">
@@ -136,7 +144,7 @@ export function HistoryCommitCard({
                       Thành tiền
                     </p>
                     <p className="font-semibold text-inkDeep">
-                      {formatVietnameseMoney(item.line_total)}
+                      {formatHistoryMoney(item.line_total)}
                     </p>
                   </div>
                 </div>
@@ -146,8 +154,14 @@ export function HistoryCommitCard({
         ) : null}
 
         <div className="mt-4 border-t border-ledgerBorder pt-3">
-          <p className="flex items-center gap-2 text-[16px] font-semibold leading-6 text-paid">
-            <Check className="h-5 w-5 shrink-0" aria-hidden="true" />
+          <p
+            className={`flex items-center gap-2 text-[16px] font-semibold leading-6 ${
+              confirmationTone === "dismissed" ? "text-textMute" : "text-paid"
+            }`}
+          >
+            {confirmationTone === "committed" ? (
+              <Check className="h-5 w-5 shrink-0" aria-hidden="true" />
+            ) : null}
             {confirmationText}
           </p>
         </div>
