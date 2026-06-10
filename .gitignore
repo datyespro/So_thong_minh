@@ -42,3 +42,10 @@ yarn-error.log*
 # OS
 .DS_Store
 Thumbs.db
+
+# AI agent docs — local-only (quyết định Chủ nhà 10/06/2026)
+/AGENTS.md
+/CLAUDE.md
+/docs/ai-memory/
+/docs/adr/
+/docs/archive/
