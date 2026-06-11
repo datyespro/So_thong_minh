@@ -54,6 +54,7 @@ export const ResolvedIntentSchema = z.object({
   intent: IntentNameSchema,
   raw_text: z.string(),
   amount: z.number().nullable().optional(),
+  business_date: z.string().nullable().optional(),
   payment_status: PaymentStatusSchema.optional(),
   payment_method: z.string().nullable().optional(),
   customer: ResolvedEntitySchema.nullable(),

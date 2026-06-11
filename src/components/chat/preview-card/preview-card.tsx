@@ -182,6 +182,7 @@ export function getPreviewBusinessDate(
     intent: ValidatedIntent["intent"];
     hasCommitted: boolean;
     committedBusinessDate?: string | null;
+    validatedBusinessDate?: string | null;
   }>,
 ) {
   if (input.intent !== "create_order" && input.intent !== "create_purchase") {
@@ -192,7 +193,11 @@ export function getPreviewBusinessDate(
     return input.committedBusinessDate ?? null;
   }
 
-  return businessDateVN();
+  return input.validatedBusinessDate ?? businessDateVN();
+}
+
+export function businessDateCommitInput(value?: string | null) {
+  return value != null ? { business_date: value } : {};
 }
 
 export function formatPreviewBusinessDate(value: string) {
@@ -871,6 +876,7 @@ export function resolvedIntentForPreviewDraft(
   const resolved: ResolvedIntent = {
     intent: validated.intent,
     raw_text: validated.raw_text,
+    ...businessDateCommitInput(validated.business_date),
     amount:
       validated.intent === "record_payment"
         ? patch.amount ?? validated.effective_amount
@@ -1098,6 +1104,7 @@ export async function commitRestoredPreviewDraft(
         customer_id: customerId,
         customer_name: entityName,
         raw_input: validated.raw_text,
+        ...businessDateCommitInput(validated.business_date),
         items,
       });
 
@@ -1178,6 +1185,7 @@ export async function commitRestoredPreviewDraft(
       supplier_id: state.supplier?.resolved_id ?? null,
       supplier_name: supplierName,
       raw_input: validated.raw_text,
+      ...businessDateCommitInput(validated.business_date),
       items,
     });
 
@@ -2555,6 +2563,7 @@ export function PreviewCard({
     intent: validated.intent,
     hasCommitted: committedInfo !== null,
     committedBusinessDate: committedInfo?.business_date,
+    validatedBusinessDate: validated.business_date,
   });
   const deleteOrderConfirmOpen =
     confirmDeleteOrder &&
@@ -3004,6 +3013,7 @@ export function PreviewCard({
         customer_id: customerId,
         customer_name: entityName,
         raw_input: validated.raw_text,
+        ...businessDateCommitInput(validated.business_date),
         items,
       });
 
@@ -3136,6 +3146,7 @@ export function PreviewCard({
         supplier_id: state.supplier?.resolved_id ?? null,
         supplier_name: supplierName,
         raw_input: validated.raw_text,
+        ...businessDateCommitInput(validated.business_date),
         items,
       });
 

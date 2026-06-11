@@ -477,4 +477,25 @@ describe("resolveEntities", () => {
     expect(resolved.overall_status).toBe("has_unresolved");
     expect(resolved.needs_confirmation).toBe(true);
   });
+
+  it("copies a non-null business date and omits the key when extract has no date", async () => {
+    const dated = await resolveEntities({
+      ownerId: "owner-1",
+      entityRows: ownerRows,
+      intent: baseIntent({
+        entities: {
+          ...baseIntent().entities,
+          business_date: "2026-06-01",
+        },
+      }),
+    });
+    const undated = await resolveEntities({
+      ownerId: "owner-1",
+      entityRows: ownerRows,
+      intent: baseIntent(),
+    });
+
+    expect(dated.business_date).toBe("2026-06-01");
+    expect(undated).not.toHaveProperty("business_date");
+  });
 });

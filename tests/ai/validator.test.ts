@@ -418,3 +418,16 @@ describe("validateResolvedIntent routing", () => {
     ).toBe("none");
   });
 });
+
+describe("validateResolvedIntent business date", () => {
+  it("passes through a non-null date and preserves the old shape without one", () => {
+    const dated = validateResolvedIntent(
+      baseResolved({ business_date: "2026-06-01" }),
+      masters,
+    );
+    const undated = validateResolvedIntent(baseResolved(), masters);
+
+    expect(dated.business_date).toBe("2026-06-01");
+    expect(undated).not.toHaveProperty("business_date");
+  });
+});

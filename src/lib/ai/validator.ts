@@ -448,6 +448,9 @@ export function validateResolvedIntent(
       intent: resolved.intent,
       kind,
       raw_text: resolved.raw_text,
+      ...(resolved.business_date != null
+        ? { business_date: resolved.business_date }
+        : {}),
       customer: resolved.customer,
       supplier: resolved.supplier,
       items: passthroughItems(resolved.items),
@@ -480,6 +483,9 @@ export function validateResolvedIntent(
     intent: resolved.intent as WritableIntent,
     kind,
     raw_text: resolved.raw_text,
+    ...(resolved.business_date != null
+      ? { business_date: resolved.business_date }
+      : {}),
     customer: resolved.customer,
     supplier: resolved.supplier,
     items: result.items,

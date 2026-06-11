@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   addedItemFromCreatedProduct,
   addedItemFromProductCandidate,
+  businessDateCommitInput,
   canRemoveOrderItem,
   entityPatchFromCandidate,
   entityPatchFromCreatedCustomer,
@@ -195,6 +196,28 @@ describe("PreviewCard edit-order interaction flags", () => {
         hasCommitted: false,
       }),
     ).toBeNull();
+  });
+
+  it("prefers the validated date before commit and only sends a date when present", () => {
+    expect(
+      getPreviewBusinessDate({
+        intent: "create_order",
+        hasCommitted: false,
+        validatedBusinessDate: "2026-06-01",
+      }),
+    ).toBe("2026-06-01");
+    expect(
+      getPreviewBusinessDate({
+        intent: "create_order",
+        hasCommitted: true,
+        committedBusinessDate: "2026-06-02",
+        validatedBusinessDate: "2026-06-01",
+      }),
+    ).toBe("2026-06-02");
+    expect(businessDateCommitInput("2026-06-01")).toEqual({
+      business_date: "2026-06-01",
+    });
+    expect(businessDateCommitInput(null)).toEqual({});
   });
 
   it("builds added product items from a selected candidate or created product", () => {

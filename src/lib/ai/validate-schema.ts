@@ -57,6 +57,7 @@ export const ValidatedIntentSchema = z.object({
   intent: IntentNameSchema,
   kind: ValidationKindSchema,
   raw_text: z.string(),
+  business_date: z.string().nullable().optional(),
   customer: ResolvedEntitySchema.nullable(),
   supplier: ResolvedEntitySchema.nullable(),
   items: z.array(ValidatedLineItemSchema),

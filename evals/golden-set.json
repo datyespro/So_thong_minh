@@ -190,6 +190,38 @@
     "mode": "assert"
   },
   {
+    "id": "A11",
+    "group": "A",
+    "text": "ngày 1/6/2026, anh Hùng mua 20 bao xi măng, tổng 1tr6",
+    "expect": {
+      "intent": "create_order",
+      "fields": [
+        {
+          "path": "entities.business_date",
+          "match": "exact",
+          "value": "2026-06-01"
+        }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "A12",
+    "group": "A",
+    "text": "ngày 5/6/2026 chị Lan lấy 3 bao xi măng",
+    "expect": {
+      "intent": "create_order",
+      "fields": [
+        {
+          "path": "entities.business_date",
+          "match": "exact",
+          "value": "2026-06-05"
+        }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
     "id": "B1",
     "group": "B",
     "text": "nhập 100 bao xi măng từ Minh Phát",
@@ -269,6 +301,23 @@
           "path": "entities.items",
           "match": "items",
           "value": [{ "product_name": "xi mang", "quantity": 20, "unit": "bao" }]
+        }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "B6",
+    "group": "B",
+    "text": "nhập 50 bao xi măng từ Minh Phát ngày 2/6/2026",
+    "expect": {
+      "intent": "create_purchase",
+      "fields": [
+        { "path": "entities.supplier_name", "match": "name", "value": "Minh Phát" },
+        {
+          "path": "entities.business_date",
+          "match": "exact",
+          "value": "2026-06-02"
         }
       ]
     },

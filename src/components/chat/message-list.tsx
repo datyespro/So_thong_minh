@@ -60,6 +60,9 @@ function restoredValidatedSnapshot(draft: PreviewDraft): ValidatedIntent {
     intent: draft.intent,
     kind: "writable",
     raw_text: draft.resolved.raw_text,
+    ...(draft.resolved.business_date != null
+      ? { business_date: draft.resolved.business_date }
+      : {}),
     customer: draft.resolved.customer,
     supplier: draft.resolved.supplier,
     items: draft.resolved.items.map(restoredLineItem),

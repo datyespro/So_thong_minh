@@ -154,4 +154,50 @@ describe("restored preview draft commit", () => {
     expect(mocks.commitOrder).not.toHaveBeenCalled();
     expect(loadDraft("owner-1")?.idempotencyKey).toBe("idem-from-draft");
   });
+
+  it("preserves the transaction date through draft serialization and restored commit", async () => {
+    const validated = baseValidated({ business_date: "2026-06-01" });
+    const patched = createEmptyPreviewCardPatch();
+    const resolved = resolvedIntentForPreviewDraft(validated, patched);
+
+    if (!resolved) {
+      throw new Error("expected draftable resolved intent");
+    }
+
+    expect(resolved.business_date).toBe("2026-06-01");
+    expect(
+      resolvedIntentForPreviewDraft(baseValidated(), patched),
+    ).not.toHaveProperty("business_date");
+
+    const draft: PreviewDraft = {
+      ...draftFixture(),
+      resolved,
+    };
+    saveDraft(draft.ownerId, draft);
+    vi.mocked(fetch).mockResolvedValue(
+      jsonResponse({ ok: true, data: validated }),
+    );
+    mocks.commitOrder.mockResolvedValue({
+      ok: true,
+      data: {
+        order_id: "order-dated",
+        total_amount: 1600000,
+        debt_amount: 1600000,
+        business_date: "2026-06-01",
+      },
+    });
+
+    const result = await commitRestoredPreviewDraft(draft);
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/ai/validate-intent",
+      expect.objectContaining({
+        body: JSON.stringify({ resolved: draft.resolved }),
+      }),
+    );
+    expect(mocks.commitOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ business_date: "2026-06-01" }),
+    );
+    expect(result.ok).toBe(true);
+  });
 });

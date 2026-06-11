@@ -366,6 +366,43 @@ describe("commitOrder", () => {
     expect(mocks.rpc).not.toHaveBeenCalled();
   });
 
+  it("passes a valid requested business date to the sale RPC", async () => {
+    await commitOrder({ ...validInput, business_date: "2026-06-01" });
+
+    expect(mocks.rpc).toHaveBeenCalledWith(
+      "commit_sale_order",
+      expect.objectContaining({ p_business_date: "2026-06-01" }),
+    );
+  });
+
+  it("rejects an impossible business date before calling the RPC", async () => {
+    const result = await commitOrder({
+      ...validInput,
+      business_date: "2026-02-31",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      code: "validation_failed",
+      message: "Ngày ghi sổ không hợp lệ ạ.",
+    });
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+
+  it("rejects a future business date before calling the RPC", async () => {
+    const result = await commitOrder({
+      ...validInput,
+      business_date: "9999-12-31",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      code: "validation_failed",
+      message: "Ngày ghi sổ không được ở tương lai ạ.",
+    });
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+
   it("maps a database failure to a friendly db_error", async () => {
     mocks.rpc.mockResolvedValue({ data: null, error: { message: "boom" } });
 

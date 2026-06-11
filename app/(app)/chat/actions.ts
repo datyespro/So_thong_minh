@@ -1828,6 +1828,7 @@ export type CommitOrderInput = Readonly<{
   customer_id: string;
   customer_name?: string | null;
   raw_input: string;
+  business_date?: string | null;
   items: CommitOrderItemInput[];
 }>;
 
@@ -1889,6 +1890,45 @@ type BusinessDateRow = {
   business_date: string | null;
 };
 
+type RequestedBusinessDateResult =
+  | { ok: true; businessDate: string }
+  | { ok: false; message: string };
+
+const ISO_BUSINESS_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function resolveRequestedBusinessDate(value: unknown): RequestedBusinessDateResult {
+  if (value == null) {
+    return { ok: true, businessDate: businessDateVN() };
+  }
+
+  if (typeof value !== "string") {
+    return { ok: false, message: "Ngày ghi sổ không hợp lệ ạ." };
+  }
+
+  const match = ISO_BUSINESS_DATE_RE.exec(value);
+
+  if (!match) {
+    return { ok: false, message: "Ngày ghi sổ không hợp lệ ạ." };
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const isLeapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysByMonth = [31, isLeapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  const daysInMonth = daysByMonth[month - 1] ?? 0;
+
+  if (year < 1 || month < 1 || month > 12 || day < 1 || day > daysInMonth) {
+    return { ok: false, message: "Ngày ghi sổ không hợp lệ ạ." };
+  }
+
+  if (value > businessDateVN()) {
+    return { ok: false, message: "Ngày ghi sổ không được ở tương lai ạ." };
+  }
+
+  return { ok: true, businessDate: value };
+}
+
 export async function commitOrder(
   input: CommitOrderInput,
 ): Promise<ActionResult<CommitOrderView>> {
@@ -1941,7 +1981,17 @@ export async function commitOrder(
     }
   }
 
-  const requestedBusinessDate = businessDateVN();
+  const businessDateResult = resolveRequestedBusinessDate(input.business_date);
+
+  if (!businessDateResult.ok) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: businessDateResult.message,
+    };
+  }
+
+  const requestedBusinessDate = businessDateResult.businessDate;
 
   const { data, error } = await supabase.rpc("commit_sale_order", {
     p_idempotency_key: input.idempotency_key,
@@ -2327,6 +2377,7 @@ export type CommitPurchaseInput = Readonly<{
   supplier_id: string | null;
   supplier_name?: string | null;
   raw_input: string;
+  business_date?: string | null;
   items: CommitPurchaseItemInput[];
 }>;
 
@@ -2387,7 +2438,17 @@ export async function commitPurchase(
     }
   }
 
-  const requestedBusinessDate = businessDateVN();
+  const businessDateResult = resolveRequestedBusinessDate(input.business_date);
+
+  if (!businessDateResult.ok) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: businessDateResult.message,
+    };
+  }
+
+  const requestedBusinessDate = businessDateResult.businessDate;
 
   const { data, error } = await supabase.rpc("commit_purchase", {
     p_idempotency_key: input.idempotency_key,
