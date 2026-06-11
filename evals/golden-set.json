@@ -1,0 +1,680 @@
+[
+  {
+    "id": "A1",
+    "group": "A",
+    "text": "anh Phát mua 1 bao xi măng 80000",
+    "expect": {
+      "intent": "create_order",
+      "fields": [
+        { "path": "entities.customer_name", "match": "name", "value": "Phát" },
+        {
+          "path": "entities.items",
+          "match": "items",
+          "value": [
+            { "product_name": "xi măng", "quantity": 1, "unit": "bao", "unit_price": 80000 }
+          ]
+        }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "A2",
+    "group": "A",
+    "text": "chị Lan lấy 5 cây sắt phi 10",
+    "expect": {
+      "intent": "create_order",
+      "fields": [
+        { "path": "entities.customer_name", "match": "name", "value": "Lan" },
+        {
+          "path": "entities.items",
+          "match": "items",
+          "value": [{ "product_name": "sắt phi 10", "quantity": 5, "unit": "cây" }]
+        }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "A3",
+    "group": "A",
+    "text": "bán cho chú Ba 20 viên gạch ống",
+    "expect": {
+      "intent": "create_order",
+      "fields": [
+        { "path": "entities.customer_name", "match": "name", "value": "Ba" },
+        {
+          "path": "entities.items",
+          "match": "items",
+          "value": [{ "product_name": "gạch ống", "quantity": 20, "unit": "viên" }]
+        }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "A4",
+    "group": "A",
+    "text": "Hùng 5 bao xi măng",
+    "expect": {
+      "intent": "create_order",
+      "fields": [
+        { "path": "entities.customer_name", "match": "name", "value": "Hùng" },
+        {
+          "path": "entities.items",
+          "match": "items",
+          "value": [{ "product_name": "xi măng", "quantity": 5, "unit": "bao" }]
+        }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "A5",
+    "group": "A",
+    "text": "anh hung mua 2 bao xi mang",
+    "expect": {
+      "intent": "create_order",
+      "fields": [
+        { "path": "entities.customer_name", "match": "name", "value": "hung" },
+        {
+          "path": "entities.items",
+          "match": "items",
+          "value": [{ "product_name": "xi mang", "quantity": 2, "unit": "bao" }]
+        }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "A6",
+    "group": "A",
+    "text": "chị Tư mua 3 khối cát vàng 350k một khối",
+    "expect": {
+      "intent": "create_order",
+      "fields": [
+        { "path": "entities.customer_name", "match": "name", "value": "Tư" },
+        {
+          "path": "entities.items",
+          "match": "items",
+          "value": [
+            { "product_name": "cát vàng", "quantity": 3, "unit": "khối", "unit_price": 350000 }
+          ]
+        }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "A7",
+    "group": "A",
+    "text": "bán 10 cây sắt phi 16 cho anh Tài, lấy 1tr2",
+    "expect": {
+      "intent": "create_order",
+      "fields": [
+        { "path": "entities.customer_name", "match": "name", "value": "Tài" },
+        {
+          "path": "entities.items",
+          "match": "items",
+          "value": [{ "product_name": "sắt phi 16", "quantity": 10, "unit": "cây" }]
+        },
+        {
+          "paths": ["entities.amount", "entities.items.*.unit_price", "entities.items.*.line_total"],
+          "match": "any_number_path",
+          "value": 1200000
+        }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "A8",
+    "group": "A",
+    "text": "cô Hoa lấy 50 viên gạch, nợ",
+    "expect": {
+      "intent": "create_order",
+      "fields": [
+        { "path": "entities.customer_name", "match": "name", "value": "Hoa" },
+        {
+          "path": "entities.items",
+          "match": "items",
+          "value": [{ "product_name": "gạch", "quantity": 50, "unit": "viên" }]
+        },
+        { "path": "entities.payment_status", "match": "exact", "value": "debt" }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "A9",
+    "group": "A",
+    "text": "khách lẻ mua 1 bao xi măng trả luôn 80k",
+    "expect": {
+      "intent": "create_order",
+      "fields": [
+        {
+          "path": "entities.customer_name",
+          "match": "name_any_of",
+          "value": [null, "khách lẻ"]
+        },
+        {
+          "path": "entities.items",
+          "match": "items",
+          "value": [
+            { "product_name": "xi măng", "quantity": 1, "unit": "bao", "unit_price": 80000 }
+          ]
+        },
+        { "path": "entities.payment_status", "match": "exact", "value": "paid" }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "A10",
+    "group": "A",
+    "text": "bà Sáu mua 2 bao xi măng với 1 bao cát",
+    "expect": {
+      "intent": "create_order",
+      "fields": [
+        { "path": "entities.customer_name", "match": "name", "value": "Sáu" },
+        {
+          "path": "entities.items",
+          "match": "items",
+          "value": [
+            { "product_name": "xi măng", "quantity": 2, "unit": "bao" },
+            { "product_name": "cát", "quantity": 1, "unit": "bao" }
+          ]
+        }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "B1",
+    "group": "B",
+    "text": "nhập 100 bao xi măng từ Minh Phát",
+    "expect": {
+      "intent": "create_purchase",
+      "fields": [
+        { "path": "entities.supplier_name", "match": "name", "value": "Minh Phát" },
+        {
+          "path": "entities.items",
+          "match": "items",
+          "value": [{ "product_name": "xi măng", "quantity": 100, "unit": "bao" }]
+        }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "B2",
+    "group": "B",
+    "text": "nhập 50 bao xi măng Hà Tiên từ đại lý Thành Công",
+    "expect": {
+      "intent": "create_purchase",
+      "fields": [
+        { "path": "entities.supplier_name", "match": "name", "value": "Thành Công" },
+        {
+          "path": "entities.items",
+          "match": "items",
+          "value": [{ "product_name": "xi măng Hà Tiên", "quantity": 50, "unit": "bao" }]
+        }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "B3",
+    "group": "B",
+    "text": "lấy hàng từ Sông Hồng 200 viên gạch",
+    "expect": {
+      "intent": "create_purchase",
+      "fields": [
+        { "path": "entities.supplier_name", "match": "name", "value": "Sông Hồng" },
+        {
+          "path": "entities.items",
+          "match": "items",
+          "value": [{ "product_name": "gạch", "quantity": 200, "unit": "viên" }]
+        }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "B4",
+    "group": "B",
+    "text": "nhập kho 30 cây sắt phi 10 của công ty Tân Long",
+    "expect": {
+      "intent": "create_purchase",
+      "fields": [
+        { "path": "entities.supplier_name", "match": "name", "value": "Tân Long" },
+        {
+          "path": "entities.items",
+          "match": "items",
+          "value": [{ "product_name": "sắt phi 10", "quantity": 30, "unit": "cây" }]
+        }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "B5",
+    "group": "B",
+    "text": "nhap 20 bao xi mang tu Minh Phat",
+    "expect": {
+      "intent": "create_purchase",
+      "fields": [
+        { "path": "entities.supplier_name", "match": "name", "value": "Minh Phat" },
+        {
+          "path": "entities.items",
+          "match": "items",
+          "value": [{ "product_name": "xi mang", "quantity": 20, "unit": "bao" }]
+        }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "C1",
+    "group": "C",
+    "text": "nhập hàng 1000 bao xi măng",
+    "expect": {
+      "intent": "create_purchase",
+      "fields": [
+        { "path": "entities.supplier_name", "match": "exact", "value": null },
+        {
+          "path": "entities.items",
+          "match": "items",
+          "value": [{ "product_name": "xi măng", "quantity": 1000, "unit": "bao" }]
+        }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "C2",
+    "group": "C",
+    "text": "nhập kho 200 viên gạch",
+    "expect": {
+      "intent": "create_purchase",
+      "fields": [
+        { "path": "entities.supplier_name", "match": "exact", "value": null },
+        {
+          "path": "entities.items",
+          "match": "items",
+          "value": [{ "product_name": "gạch", "quantity": 200, "unit": "viên" }]
+        }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "C3",
+    "group": "C",
+    "text": "nhập 30 cây sắt phi 16",
+    "expect": {
+      "intent": "create_purchase",
+      "fields": [
+        { "path": "entities.supplier_name", "match": "exact", "value": null },
+        {
+          "path": "entities.items",
+          "match": "items",
+          "value": [{ "product_name": "sắt phi 16", "quantity": 30, "unit": "cây" }]
+        }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "C4",
+    "group": "C",
+    "text": "nhập thêm 50 khối cát",
+    "expect": {
+      "intent": "create_purchase",
+      "fields": [
+        { "path": "entities.supplier_name", "match": "exact", "value": null },
+        {
+          "path": "entities.items",
+          "match": "items",
+          "value": [{ "product_name": "cát", "quantity": 50, "unit": "khối" }]
+        }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "C5",
+    "group": "C",
+    "text": "nhap hang 10 bao xi mang",
+    "expect": {
+      "intent": "create_purchase",
+      "fields": [
+        { "path": "entities.supplier_name", "match": "exact", "value": null },
+        {
+          "path": "entities.items",
+          "match": "items",
+          "value": [{ "product_name": "xi mang", "quantity": 10, "unit": "bao" }]
+        }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "D1",
+    "group": "D",
+    "text": "anh Hùng trả 500k",
+    "expect": {
+      "intent": "record_payment",
+      "fields": [
+        { "path": "entities.customer_name", "match": "name", "value": "Hùng" },
+        { "path": "entities.amount", "match": "number", "value": 500000 }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "D2",
+    "group": "D",
+    "text": "chị Lan trả nợ 2 triệu",
+    "expect": {
+      "intent": "record_payment",
+      "fields": [
+        { "path": "entities.customer_name", "match": "name", "value": "Lan" },
+        { "path": "entities.amount", "match": "number", "value": 2000000 }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "D3",
+    "group": "D",
+    "text": "thu nợ chú Ba 300 nghìn",
+    "expect": {
+      "intent": "record_payment",
+      "fields": [
+        { "path": "entities.customer_name", "match": "name", "value": "Ba" },
+        { "path": "entities.amount", "match": "number", "value": 300000 }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "D4",
+    "group": "D",
+    "text": "anh hung tra no 1tr",
+    "expect": {
+      "intent": "record_payment",
+      "fields": [
+        { "path": "entities.customer_name", "match": "name", "value": "hung" },
+        { "path": "entities.amount", "match": "number", "value": 1000000 }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "D5",
+    "group": "D",
+    "text": "cô Hoa gửi 250k tiền nợ",
+    "expect": {
+      "intent": "record_payment",
+      "fields": [
+        { "path": "entities.customer_name", "match": "name", "value": "Hoa" },
+        { "path": "entities.amount", "match": "number", "value": 250000 }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "D6",
+    "group": "D",
+    "text": "chú Năm trả 700 nghìn tiền xi măng hôm trước",
+    "expect": {
+      "intent": "record_payment",
+      "fields": [
+        { "path": "entities.customer_name", "match": "name", "value": "Năm" },
+        { "path": "entities.amount", "match": "number", "value": 700000 }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "E1",
+    "group": "E",
+    "text": "anh Hùng nợ bao nhiêu",
+    "expect": {
+      "intent": "query_debt",
+      "fields": [{ "path": "entities.customer_name", "match": "name", "value": "Hùng" }]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "E2",
+    "group": "E",
+    "text": "tổng nợ của chị Lan",
+    "expect": {
+      "intent": "query_debt",
+      "fields": [{ "path": "entities.customer_name", "match": "name", "value": "Lan" }]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "E3",
+    "group": "E",
+    "text": "anh hung no bao nhieu tien",
+    "expect": {
+      "intent": "query_debt",
+      "fields": [{ "path": "entities.customer_name", "match": "name", "value": "hung" }]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "E4",
+    "group": "E",
+    "text": "hôm nay bán được bao nhiêu",
+    "expect": {
+      "intent": "query_sales",
+      "fields": [{ "path": "entities.time_range.kind", "match": "exact", "value": "today" }]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "E5",
+    "group": "E",
+    "text": "doanh thu tuần này",
+    "expect": {
+      "intent": "query_sales",
+      "fields": [{ "path": "entities.time_range.kind", "match": "exact", "value": "this_week" }]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "E6",
+    "group": "E",
+    "text": "còn bao nhiêu xi măng",
+    "expect": {
+      "intent": "query_inventory",
+      "fields": [{ "path": "entities.product_name", "match": "name", "value": "xi măng" }]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "E7",
+    "group": "E",
+    "text": "tồn kho sắt phi 10",
+    "expect": {
+      "intent": "query_inventory",
+      "fields": [{ "path": "entities.product_name", "match": "name", "value": "sắt phi 10" }]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "F1",
+    "group": "F",
+    "text": "thêm mặt hàng cát vàng giá 350 nghìn một khối",
+    "expect": {
+      "intent": "manage_product",
+      "fields": [
+        { "path": "entities.product_management.action", "match": "exact", "value": "create" },
+        { "path": "entities.product_management.product_raw", "match": "name", "value": "cát vàng" },
+        { "path": "entities.product_management.sell_price", "match": "number", "value": 350000 },
+        { "path": "entities.product_management.unit", "match": "exact", "value": "khối" }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "F2",
+    "group": "F",
+    "text": "đổi giá xi măng thành 85000",
+    "expect": {
+      "intent": "manage_product",
+      "fields": [
+        { "path": "entities.product_management.action", "match": "exact", "value": "set_price" },
+        { "path": "entities.product_management.product_raw", "match": "name", "value": "xi măng" },
+        { "path": "entities.product_management.sell_price", "match": "number", "value": 85000 }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "F3",
+    "group": "F",
+    "text": "thêm đơn vị cây cho sắt phi 10",
+    "expect": {
+      "intent": "manage_product",
+      "fields": [
+        { "path": "entities.product_management.action", "match": "exact", "value": "set_unit" },
+        { "path": "entities.product_management.product_raw", "match": "name", "value": "sắt phi 10" },
+        { "path": "entities.product_management.unit", "match": "exact", "value": "cây" }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "F4",
+    "group": "F",
+    "text": "tạo hàng mới: gạch block 12k một viên",
+    "expect": {
+      "intent": "manage_product",
+      "fields": [
+        { "path": "entities.product_management.action", "match": "exact", "value": "create" },
+        { "path": "entities.product_management.product_raw", "match": "name", "value": "gạch block" },
+        { "path": "entities.product_management.sell_price", "match": "number", "value": 12000 },
+        { "path": "entities.product_management.unit", "match": "exact", "value": "viên" }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "G1",
+    "group": "G",
+    "text": "chào em",
+    "expect": { "intent": "small_talk" },
+    "mode": "assert"
+  },
+  {
+    "id": "G2",
+    "group": "G",
+    "text": "cảm ơn em nha",
+    "expect": { "intent": "small_talk" },
+    "mode": "assert"
+  },
+  {
+    "id": "G3",
+    "group": "G",
+    "text": "dạo này buôn bán sao em",
+    "expect": { "intent": "small_talk" },
+    "mode": "assert"
+  },
+  {
+    "id": "G4",
+    "group": "G",
+    "text": "ngủ ngon nha em",
+    "expect": { "intent": "small_talk" },
+    "mode": "assert"
+  },
+  {
+    "id": "G5",
+    "group": "G",
+    "text": "mệt quá em ơi",
+    "expect": { "intent": "small_talk" },
+    "mode": "assert"
+  },
+  {
+    "id": "H1",
+    "group": "H",
+    "text": "asdfghjkl",
+    "expect": { "intent": "unknown" },
+    "mode": "assert"
+  },
+  {
+    "id": "H2",
+    "group": "H",
+    "text": "...",
+    "expect": { "intent": "unknown" },
+    "mode": "assert"
+  },
+  {
+    "id": "H3",
+    "group": "H",
+    "text": "?",
+    "expect": { "intent": "unknown" },
+    "mode": "assert"
+  },
+  {
+    "id": "S1",
+    "group": "S",
+    "text": "anh Nợ mua 2 bao xi măng",
+    "expect": {},
+    "mode": "snapshot"
+  },
+  {
+    "id": "S2",
+    "group": "S",
+    "text": "anh Tài thanh toán hết nợ",
+    "expect": {},
+    "mode": "snapshot"
+  },
+  {
+    "id": "S3",
+    "group": "S",
+    "text": "ai đang nợ nhiều nhất",
+    "expect": {},
+    "mode": "snapshot"
+  },
+  {
+    "id": "S4",
+    "group": "S",
+    "text": "xem tồn cát với gạch luôn em",
+    "expect": {},
+    "mode": "snapshot"
+  },
+  {
+    "id": "S5",
+    "group": "S",
+    "text": "thời tiết hôm nay sao em",
+    "expect": {},
+    "mode": "snapshot"
+  },
+  {
+    "id": "S6",
+    "group": "S",
+    "text": "hủy đơn vừa rồi",
+    "expect": {},
+    "mode": "snapshot"
+  },
+  {
+    "id": "S7",
+    "group": "S",
+    "text": "anh Hùng mua 2 bao xi măng hôm qua",
+    "expect": {},
+    "mode": "snapshot"
+  },
+  {
+    "id": "S8",
+    "group": "S",
+    "text": "ok em",
+    "expect": {},
+    "mode": "snapshot"
+  }
+]

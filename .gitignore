@@ -15,6 +15,7 @@ dist/
 
 # test coverage
 coverage/
+/evals/runs/
 
 # vercel
 .vercel/

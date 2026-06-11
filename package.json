@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "eval": "tsx scripts/eval-extract.ts",
     "seed:sample": "tsx scripts/dev/seed-sample-data.ts",
     "ai:test-intent": "tsx scripts/ai/test-extract-intent.ts",
     "ai:test-resolve": "tsx scripts/ai/test-resolve-entities.ts",
