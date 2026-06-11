@@ -1,35 +1,12 @@
 import { ChatContainer } from "@/src/components/chat/chat-container";
-import type { ChatMessageView, ChatRole } from "@/src/components/chat/types";
 import { getAuthenticatedUser } from "@/src/components/shared/AuthGuard";
+import {
+  toInitialMessages,
+  type ChatHistoryRow,
+} from "@/src/lib/chat/initial-messages";
 import { createClient } from "@/src/lib/supabase/server";
 
 const VIETNAM_TIME_ZONE = "Asia/Ho_Chi_Minh";
-
-type ChatHistoryRow = {
-  id: string;
-  role: string;
-  content: string;
-  created_at: string;
-  metadata: unknown;
-};
-
-function isChatRole(role: string): role is ChatRole {
-  return role === "user" || role === "assistant";
-}
-
-function toChatMessageView(row: ChatHistoryRow): ChatMessageView | null {
-  if (!isChatRole(row.role)) {
-    return null;
-  }
-
-  return {
-    id: row.id,
-    role: row.role,
-    content: row.content,
-    created_at: row.created_at,
-    metadata: row.metadata,
-  };
-}
 
 function getVietnamHour(date: Date) {
   const hour = new Intl.DateTimeFormat("vi-VN", {
@@ -77,7 +54,7 @@ export default async function ChatPage() {
     .from("chat_messages")
     .select("id,role,content,created_at,metadata")
     .eq("owner_id", user.id)
-    .order("created_at", { ascending: true })
+    .order("created_at", { ascending: false })
     .limit(200);
 
   if (error) {
@@ -87,9 +64,7 @@ export default async function ChatPage() {
     });
   }
 
-  const initialMessages = ((data ?? []) as ChatHistoryRow[])
-    .map(toChatMessageView)
-    .filter((message): message is ChatMessageView => message !== null);
+  const initialMessages = toInitialMessages((data ?? []) as ChatHistoryRow[]);
 
   return (
     <ChatContainer
