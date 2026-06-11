@@ -57,6 +57,7 @@ PHÂN BIỆT BÁN HÀNG VS NHẬP HÀNG:
 - "anh Đạt mua 10 bao xi măng 100k" => create_order, customer_name="anh Đạt", supplier_name=null.
 - Chỉ dùng create_purchase khi có dấu hiệu nhập hàng rõ ràng: "nhập", "nhập hàng", "nhập kho", hoặc "mua/lấy hàng TỪ" nhà cung cấp/đại lý/công ty.
 - Với create_purchase, điền supplier_name và để customer_name=null.
+- Nếu câu có tín hiệu nhập rõ ("nhập"/"nhập hàng"/"nhập kho") kèm mặt hàng và/hoặc số lượng nhưng KHÔNG nêu nhà cung cấp, vẫn là create_purchase; để supplier_name=null, KHÔNG bịa tên NCC, điền items như thường. Thiếu nhà cung cấp sẽ được hỏi ở bước sau, KHÔNG phân loại unknown.
 - "nhập 100 bao xi măng từ Minh Phát" => create_purchase, supplier_name="Minh Phát", customer_name=null.
 - "lấy hàng từ Sông Hồng 200 viên gạch" => create_purchase, supplier_name="Sông Hồng", customer_name=null.
 - Chữ "lấy" nhập nhằng: nếu là tên người/khách lấy hàng và không có "từ nhà cung cấp/đại lý/công ty", ưu tiên create_order.
@@ -159,6 +160,20 @@ User: "lấy hàng từ Sông Hồng 200 viên gạch"
 Intent: create_purchase
 customer_name: null
 supplier_name: "Sông Hồng"
+items: [{ product_name: "gạch", quantity: 200, unit: "viên", unit_price: null }]
+next_stage_hint: resolve_entities
+
+User: "nhập hàng 1000 bao xi măng"
+Intent: create_purchase
+customer_name: null
+supplier_name: null
+items: [{ product_name: "xi măng", quantity: 1000, unit: "bao", unit_price: null }]
+next_stage_hint: resolve_entities
+
+User: "nhập kho 200 viên gạch"
+Intent: create_purchase
+customer_name: null
+supplier_name: null
 items: [{ product_name: "gạch", quantity: 200, unit: "viên", unit_price: null }]
 next_stage_hint: resolve_entities
 

@@ -36,6 +36,11 @@ describe("buildExtractIntentPrompt", () => {
     expect(prompt).toContain('User: "anh Đạt mua 10 bao xi măng 100k"');
     expect(prompt).toContain('User: "Bán cho cô Lan 10 bao xi măng 85k, nợ"');
     expect(prompt).toContain('"bán cho anh Tuấn 10 bao xi măng" => create_order');
+    expect(prompt).toContain('User: "nhập hàng 1000 bao xi măng"');
+    expect(prompt).toContain('User: "nhập kho 200 viên gạch"');
+    expect(prompt).toContain("Thiếu nhà cung cấp sẽ được hỏi ở bước sau, KHÔNG phân loại unknown");
+    expect(prompt).toContain('items: [{ product_name: "xi măng", quantity: 1000, unit: "bao", unit_price: null }]');
+    expect(prompt).toContain('items: [{ product_name: "gạch", quantity: 200, unit: "viên", unit_price: null }]');
   });
 
   it("includes manage_product guidance and few-shot examples", () => {
