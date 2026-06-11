@@ -8,17 +8,20 @@ import {
   commitPayment,
   commitPurchase,
   createCustomer,
+  createSupplier,
   createProduct,
   createProductFromChat,
   getCustomerDebt,
   persistDismissedPreviewMessage,
   recreateSaleOrder,
   searchCustomersByName,
+  searchSuppliersByName,
   searchProductsByName,
   undoCommit,
   updateProduct,
   type CommitOrderItemInput,
   type CommitPurchaseItemInput,
+  type CreatedSupplierView,
   type CreatedProductView,
   type UndoTarget,
 } from "@/app/(app)/chat/actions";
@@ -754,6 +757,18 @@ export function entityPatchFromCreatedCustomer(
   };
 }
 
+export function entityPatchFromCreatedSupplier(
+  raw: string,
+  supplier: CreatedSupplierView,
+): PreviewResolvedEntityPatch {
+  return {
+    entity_type: "supplier",
+    raw,
+    resolved_id: supplier.id,
+    resolved_name: supplier.name,
+  };
+}
+
 function shouldLearnAlias(raw: string | null, resolvedName: string) {
   if (!raw) {
     return false;
@@ -1272,12 +1287,14 @@ function EntityChoicePanel({
   entity,
   label,
   allowCreate,
+  createLabel = "khách",
   onSelect,
   onCreate,
 }: Readonly<{
   entity: ResolvedEntity;
   label: string;
   allowCreate: boolean;
+  createLabel?: string;
   onSelect: (candidate: EntityCandidate) => void;
   onCreate?: () => void;
 }>) {
@@ -1320,7 +1337,7 @@ function EntityChoicePanel({
           onClick={onCreate}
         >
           <Plus className="h-4 w-4" aria-hidden="true" />
-          Không phải, thêm khách mới: &quot;{raw}&quot;
+          Không phải, thêm {createLabel} mới: &quot;{raw}&quot;
         </Button>
       ) : null}
     </div>
@@ -1347,6 +1364,52 @@ function CustomerCreatePanel({
     >
       <p className="font-semibold text-inkDeep">
         Chưa có khách &quot;{raw}&quot;. Thêm mới nhé?
+      </p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <Button
+          type="button"
+          className="h-11 rounded bg-ink px-3 text-[16px] font-semibold text-paper hover:bg-inkDeep"
+          disabled={isSaving}
+          onClick={onCreate}
+        >
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          {isSaving ? "Đang thêm..." : `Thêm ${raw}`}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-11 rounded border-ledgerBorder bg-surface px-3 text-[16px] font-semibold text-textMute hover:bg-paperWarm"
+          onClick={onDismiss}
+        >
+          <X className="h-4 w-4" aria-hidden="true" />
+          Để sau
+        </Button>
+      </div>
+      {error ? <p className="mt-2 text-[15px] text-debt">{error}</p> : null}
+    </div>
+  );
+}
+
+function SupplierCreatePanel({
+  raw,
+  isSaving,
+  error,
+  onCreate,
+  onDismiss,
+}: Readonly<{
+  raw: string;
+  isSaving: boolean;
+  error: string | null;
+  onCreate: () => void;
+  onDismiss: () => void;
+}>) {
+  return (
+    <div
+      className="mt-2 rounded border border-stamp/25 bg-paperNote px-3 py-3 text-[15px] leading-6"
+      data-testid="supplier-create-panel"
+    >
+      <p className="font-semibold text-inkDeep">
+        Chưa có nhà cung cấp &quot;{raw}&quot;. Thêm mới nhé?
       </p>
       <div className="mt-2 flex flex-wrap gap-2">
         <Button
@@ -2031,6 +2094,17 @@ export function PreviewCard({
   const [customerSearchLoading, setCustomerSearchLoading] = React.useState(false);
   const [customerSearchError, setCustomerSearchError] = React.useState<string | null>(null);
   const [customerSearchCreateOpen, setCustomerSearchCreateOpen] = React.useState(false);
+  const [forceCreateSupplier, setForceCreateSupplier] = React.useState(false);
+  const [dismissedSupplierCreate, setDismissedSupplierCreate] = React.useState(false);
+  const [isCreatingSupplier, setIsCreatingSupplier] = React.useState(false);
+  const [createSupplierError, setCreateSupplierError] = React.useState<string | null>(null);
+  const [supplierSearchOpen, setSupplierSearchOpen] = React.useState(false);
+  const [supplierSearchInput, setSupplierSearchInput] = React.useState("");
+  const [supplierSearchResult, setSupplierSearchResult] =
+    React.useState<ResolvedEntity | null>(null);
+  const [supplierSearchLoading, setSupplierSearchLoading] = React.useState(false);
+  const [supplierSearchError, setSupplierSearchError] = React.useState<string | null>(null);
+  const [supplierSearchCreateOpen, setSupplierSearchCreateOpen] = React.useState(false);
   const [isCreatingProduct, setIsCreatingProduct] = React.useState(false);
   const [createProductError, setCreateProductError] = React.useState<string | null>(null);
   const [productSearchOpen, setProductSearchOpen] = React.useState(false);
@@ -2504,6 +2578,12 @@ export function PreviewCard({
         }
       : null,
   });
+  const supplierCreateRaw = supplierSearchResult?.raw ?? supplierSearchInput.trim();
+  const canShowSupplierCreatePanel =
+    supplierCreateRaw.length > 0 &&
+    (supplierSearchCreateOpen || supplierSearchResult?.status === "not_found");
+  const canShowSupplierSuggestions =
+    supplierSearchResult !== null && !supplierSearchCreateOpen;
   const productCreateRaw = productSearchResult?.raw ?? productSearchInput.trim();
   const canShowProductCreatePanel =
     productCreateRaw.length > 0 &&
@@ -2533,6 +2613,62 @@ export function PreviewCard({
     setCustomerSearchError(null);
     setCustomerSearchCreateOpen(false);
     setCreateCustomerError(null);
+  }
+
+  function clearSupplierSearchState() {
+    setSupplierSearchOpen(false);
+    setSupplierSearchInput("");
+    setSupplierSearchResult(null);
+    setSupplierSearchError(null);
+    setSupplierSearchLoading(false);
+    setSupplierSearchCreateOpen(false);
+    setCreateSupplierError(null);
+  }
+
+  function handleOpenSupplierSearch() {
+    setSupplierSearchOpen(true);
+    setSupplierSearchInput(entityName ?? counterparty?.raw ?? "");
+    setSupplierSearchResult(null);
+    setSupplierSearchError(null);
+    setSupplierSearchCreateOpen(false);
+    setCreateSupplierError(null);
+  }
+
+  async function handleSearchSupplier() {
+    const name = supplierSearchInput.trim();
+
+    if (supplierSearchLoading) {
+      return;
+    }
+
+    if (!name) {
+      setSupplierSearchResult(null);
+      setSupplierSearchError(null);
+      setSupplierSearchCreateOpen(false);
+      return;
+    }
+
+    setSupplierSearchLoading(true);
+    setSupplierSearchError(null);
+    setSupplierSearchCreateOpen(false);
+
+    try {
+      const result = await searchSuppliersByName(name);
+
+      if (!result.ok) {
+        setSupplierSearchError(result.message);
+        setSupplierSearchResult(null);
+        return;
+      }
+
+      setSupplierSearchResult(result.data);
+    } catch (error) {
+      console.error("searchSuppliersByName failed", error);
+      setSupplierSearchError("Chưa tìm được nhà cung cấp, bác thử lại ạ.");
+      setSupplierSearchResult(null);
+    } finally {
+      setSupplierSearchLoading(false);
+    }
   }
 
   async function handleSearchCustomer() {
@@ -2592,7 +2728,12 @@ export function PreviewCard({
     const entityPatch = entityPatchFromCandidate(target.entity, candidate);
 
     applyEntityPatch(target, entityPatch);
-    clearCustomerSearchState();
+    if (target.type === "customer") {
+      clearCustomerSearchState();
+    }
+    if (target.type === "supplier") {
+      clearSupplierSearchState();
+    }
 
     if (shouldLearnAlias(target.entity.raw, candidate.name)) {
       void confirmAliasInBackground(
@@ -2600,6 +2741,41 @@ export function PreviewCard({
         candidate.id,
         target.entity.raw,
       );
+    }
+  }
+
+  async function handleCreateSupplier(rawName: string) {
+    const name = rawName.trim();
+
+    if (!name || isCreatingSupplier) {
+      return;
+    }
+
+    setIsCreatingSupplier(true);
+    setCreateSupplierError(null);
+
+    try {
+      const result = await createSupplier(name);
+
+      if (!result.ok) {
+        setCreateSupplierError(result.message);
+        return;
+      }
+
+      onPatchChange(
+        updateSupplierPatch(
+          latestPatchRef.current,
+          entityPatchFromCreatedSupplier(name, result.data),
+        ),
+      );
+      setForceCreateSupplier(false);
+      setDismissedSupplierCreate(false);
+      clearSupplierSearchState();
+    } catch (error) {
+      console.error("createSupplier failed", error);
+      setCreateSupplierError("Chưa thêm được nhà cung cấp, bác thử lại ạ.");
+    } finally {
+      setIsCreatingSupplier(false);
     }
   }
 
@@ -3461,6 +3637,29 @@ export function PreviewCard({
                   {customerSearchOpen ? "Đóng" : "Đổi khách"}
                 </Button>
               ) : null}
+              {canEditCounterpartyAndProducts && validated.intent === "create_purchase" ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-9 rounded border-ledgerBorder bg-surface px-3 text-[14px] font-semibold text-ink hover:bg-paperWarm"
+                  onClick={
+                    supplierSearchOpen
+                      ? clearSupplierSearchState
+                      : handleOpenSupplierSearch
+                  }
+                >
+                  {supplierSearchOpen ? (
+                    <X className="h-4 w-4" aria-hidden="true" />
+                  ) : (
+                    <Search className="h-4 w-4" aria-hidden="true" />
+                  )}
+                  {supplierSearchOpen
+                    ? "Đóng"
+                    : entityName
+                      ? "Đổi nhà cung cấp"
+                      : "Tìm nhà cung cấp"}
+                </Button>
+              ) : null}
             </div>
             {canChangeCustomerInEdit && customerSearchOpen ? (
               <div
@@ -3535,6 +3734,76 @@ export function PreviewCard({
               </div>
             ) : null}
             {canEditCounterpartyAndProducts &&
+            validated.intent === "create_purchase" &&
+            supplierSearchOpen ? (
+              <div
+                className="mt-2 rounded border border-stamp/25 bg-paperNote px-3 py-3"
+                data-testid="supplier-search"
+              >
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <label className="min-w-0 flex-1">
+                    <span className="sr-only">Tìm nhà cung cấp</span>
+                    <input
+                      type="text"
+                      value={supplierSearchInput}
+                      placeholder="Nhập tên nhà cung cấp"
+                      className="h-11 w-full rounded border border-stamp/35 bg-surface px-3 text-[16px] leading-6 text-textMain outline-none placeholder:text-textFaint focus:border-ink"
+                      onChange={(event) => {
+                        setSupplierSearchInput(event.target.value);
+                        setSupplierSearchResult(null);
+                        setSupplierSearchError(null);
+                        setSupplierSearchCreateOpen(false);
+                      }}
+                    />
+                  </label>
+                  <Button
+                    type="button"
+                    className="h-11 rounded bg-ink px-4 text-[16px] font-semibold text-paper hover:bg-inkDeep disabled:cursor-not-allowed disabled:opacity-55"
+                    disabled={supplierSearchLoading}
+                    onClick={() => void handleSearchSupplier()}
+                  >
+                    <Search className="h-4 w-4" aria-hidden="true" />
+                    {supplierSearchLoading ? "Đang tìm..." : "Tìm"}
+                  </Button>
+                </div>
+                {supplierSearchError ? (
+                  <p className="mt-2 text-[15px] leading-6 text-debt" role="alert">
+                    {supplierSearchError}
+                  </p>
+                ) : null}
+                {canShowSupplierSuggestions && supplierSearchResult ? (
+                  <EntityChoicePanel
+                    entity={supplierSearchResult}
+                    label="Nhà cung cấp"
+                    allowCreate
+                    createLabel="nhà cung cấp"
+                    onSelect={(candidate) =>
+                      handleSelectCandidate(
+                        { type: "supplier", entity: supplierSearchResult },
+                        candidate,
+                      )
+                    }
+                    onCreate={() => {
+                      setSupplierSearchCreateOpen(true);
+                      setCreateSupplierError(null);
+                    }}
+                  />
+                ) : null}
+                {canShowSupplierCreatePanel ? (
+                  <SupplierCreatePanel
+                    raw={supplierCreateRaw}
+                    isSaving={isCreatingSupplier}
+                    error={createSupplierError}
+                    onCreate={() => handleCreateSupplier(supplierCreateRaw)}
+                    onDismiss={() => {
+                      setSupplierSearchCreateOpen(false);
+                      setCreateSupplierError(null);
+                    }}
+                  />
+                ) : null}
+              </div>
+            ) : null}
+            {canEditCounterpartyAndProducts &&
             counterparty?.entity_type === "customer" &&
             (counterparty.status === "needs_confirmation" ||
               counterparty.status === "ambiguous") &&
@@ -3556,14 +3825,21 @@ export function PreviewCard({
             {canEditCounterpartyAndProducts &&
             counterparty?.entity_type === "supplier" &&
             (counterparty.status === "needs_confirmation" ||
-              counterparty.status === "ambiguous") ? (
+              counterparty.status === "ambiguous") &&
+            !forceCreateSupplier ? (
               <EntityChoicePanel
                 entity={counterparty}
                 label="Nhà cung cấp"
-                allowCreate={false}
+                allowCreate
+                createLabel="nhà cung cấp"
                 onSelect={(candidate) =>
                   handleSelectCandidate({ type: "supplier", entity: counterparty }, candidate)
                 }
+                onCreate={() => {
+                  setCreateSupplierError(null);
+                  setForceCreateSupplier(true);
+                  setDismissedSupplierCreate(false);
+                }}
               />
             ) : null}
             {canEditCounterpartyAndProducts &&
@@ -3581,6 +3857,24 @@ export function PreviewCard({
                   setForceCreateCustomer(false);
                   setDismissedCustomerCreate(true);
                   setCreateCustomerError(null);
+                }}
+              />
+            ) : null}
+            {canEditCounterpartyAndProducts &&
+            counterparty?.entity_type === "supplier" &&
+            counterparty.raw &&
+            !entityName &&
+            !dismissedSupplierCreate &&
+            (forceCreateSupplier || counterparty.status === "not_found") ? (
+              <SupplierCreatePanel
+                raw={counterparty.raw}
+                isSaving={isCreatingSupplier}
+                error={createSupplierError}
+                onCreate={() => handleCreateSupplier(counterparty.raw ?? "")}
+                onDismiss={() => {
+                  setForceCreateSupplier(false);
+                  setDismissedSupplierCreate(true);
+                  setCreateSupplierError(null);
                 }}
               />
             ) : null}

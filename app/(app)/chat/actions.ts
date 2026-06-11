@@ -66,6 +66,15 @@ type CustomerSearchRow = CustomerRow & {
   aliases: string[] | null;
 };
 
+type SupplierRow = {
+  id: string;
+  name: string;
+};
+
+type SupplierSearchRow = SupplierRow & {
+  aliases: string[] | null;
+};
+
 type ProductRow = {
   id: string;
   name: string;
@@ -92,6 +101,7 @@ type ProductUpdateRow = {
 };
 
 export type CreatedCustomerView = CustomerRow;
+export type CreatedSupplierView = SupplierRow;
 export type CreatedProductView = {
   id: string;
   name: string;
@@ -610,6 +620,18 @@ function findCustomerByName(rows: CustomerRow[] | null, name: string) {
   ) ?? null;
 }
 
+function normalizeSupplierName(name: string) {
+  return name.trim().toLocaleLowerCase("vi-VN");
+}
+
+function findSupplierByName(rows: SupplierRow[] | null, name: string) {
+  const normalized = normalizeSupplierName(name);
+
+  return (rows ?? []).find(
+    (row) => normalizeSupplierName(row.name) === normalized,
+  ) ?? null;
+}
+
 function normalizeProductName(name: string) {
   return name.trim().toLocaleLowerCase("vi-VN");
 }
@@ -623,6 +645,16 @@ function findProductByName(rows: ProductRow[] | null, name: string) {
 }
 
 function normalizeCustomerSearchRows(rows: CustomerSearchRow[] | null): EntityRow[] {
+  return (rows ?? []).map((row) => ({
+    id: row.id,
+    name: row.name,
+    aliases: Array.isArray(row.aliases)
+      ? row.aliases.filter((alias): alias is string => typeof alias === "string")
+      : [],
+  }));
+}
+
+function normalizeSupplierSearchRows(rows: SupplierSearchRow[] | null): EntityRow[] {
   return (rows ?? []).map((row) => ({
     id: row.id,
     name: row.name,
@@ -1175,6 +1207,179 @@ export async function searchCustomersByName(
       trimmed,
       "customer",
       normalizeCustomerSearchRows(data as CustomerSearchRow[] | null),
+    ),
+  };
+}
+
+export async function createSupplier(
+  name: string,
+): Promise<ActionResult<CreatedSupplierView>> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return {
+      ok: false,
+      code: "unauthorized",
+      message: "Vui lòng đăng nhập lại ạ.",
+    };
+  }
+
+  if (typeof name !== "string") {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Tên nhà cung cấp chưa hợp lệ ạ.",
+    };
+  }
+
+  const trimmed = name.trim();
+
+  if (trimmed.length === 0) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Tên nhà cung cấp chưa hợp lệ ạ.",
+    };
+  }
+
+  const existingRead = await supabase
+    .from("suppliers")
+    .select("id,name")
+    .eq("owner_id", user.id)
+    .eq("is_active", true)
+    .is("deleted_at", null);
+
+  if (existingRead.error) {
+    return {
+      ok: false,
+      code: "db_error",
+      message: "Chưa kiểm được nhà cung cấp, bác thử lại ạ.",
+    };
+  }
+
+  const existing = findSupplierByName(
+    existingRead.data as SupplierRow[] | null,
+    trimmed,
+  );
+
+  if (existing) {
+    return {
+      ok: true,
+      data: existing,
+    };
+  }
+
+  const { data, error } = await supabase
+    .from("suppliers")
+    .insert({
+      owner_id: user.id,
+      name: trimmed,
+    })
+    .select("id,name")
+    .single();
+
+  if (error || !data) {
+    if (isUniqueViolation(error)) {
+      const retryRead = await supabase
+        .from("suppliers")
+        .select("id,name")
+        .eq("owner_id", user.id)
+        .eq("is_active", true)
+        .is("deleted_at", null);
+
+      if (!retryRead.error) {
+        const duplicate = findSupplierByName(
+          retryRead.data as SupplierRow[] | null,
+          trimmed,
+        );
+
+        if (duplicate) {
+          return {
+            ok: true,
+            data: duplicate,
+          };
+        }
+      }
+
+      return {
+        ok: false,
+        code: "validation_failed",
+        message: "Nhà cung cấp này có rồi ạ.",
+      };
+    }
+
+    return {
+      ok: false,
+      code: "db_error",
+      message: "Chưa thêm được nhà cung cấp, bác thử lại ạ.",
+    };
+  }
+
+  return {
+    ok: true,
+    data: data as SupplierRow,
+  };
+}
+
+export async function searchSuppliersByName(
+  name: string,
+): Promise<ActionResult<ResolvedEntity>> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return {
+      ok: false,
+      code: "unauthorized",
+      message: "Vui lòng đăng nhập lại ạ.",
+    };
+  }
+
+  if (typeof name !== "string") {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Tên nhà cung cấp chưa hợp lệ ạ.",
+    };
+  }
+
+  const trimmed = name.trim();
+
+  if (trimmed.length === 0) {
+    return {
+      ok: true,
+      data: resolveOne(null, "supplier", []),
+    };
+  }
+
+  const { data, error } = await supabase
+    .from("suppliers")
+    .select("id,name,aliases")
+    .eq("owner_id", user.id)
+    .eq("is_active", true)
+    .is("deleted_at", null);
+
+  if (error) {
+    return {
+      ok: false,
+      code: "db_error",
+      message: "Chưa tìm được nhà cung cấp, bác thử lại ạ.",
+    };
+  }
+
+  return {
+    ok: true,
+    data: resolveOne(
+      trimmed,
+      "supplier",
+      normalizeSupplierSearchRows(data as SupplierSearchRow[] | null),
     ),
   };
 }

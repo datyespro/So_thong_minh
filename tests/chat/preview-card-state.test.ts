@@ -11,6 +11,7 @@ import {
   updateItemProductPatch,
   updateItemPricePatch,
   updateItemQuantityPatch,
+  updateSupplierPatch,
 } from "@/src/components/chat/preview-card/preview-state";
 import { createEmptyPreviewCardPatch } from "@/src/components/chat/preview-card";
 import {
@@ -207,6 +208,66 @@ describe("preview card patch state", () => {
       (issue) => issue.code === "missing_supplier",
     );
     expect(supplierIssue?.severity).toBe("warning");
+    expect(state.blockingCount).toBe(0);
+    expect(state.canConfirm).toBe(true);
+  });
+
+  it("removes supplier blocking issues after local supplier resolution", () => {
+    const validated = baseValidated({
+      intent: "create_purchase",
+      customer: null,
+      supplier: {
+        raw: "Song Hong",
+        entity_type: "supplier",
+        status: "needs_confirmation",
+        resolved_id: null,
+        resolved_name: null,
+        confidence: 0.73,
+        candidates: [
+          {
+            id: "supplier-song-hong",
+            name: "Sông Hồng",
+            score: 0.73,
+            matched_on: "fuzzy",
+            matched_value: "Sông Hồng",
+          },
+        ],
+      },
+      issues: [
+        {
+          code: "missing_supplier",
+          severity: "blocking",
+          message: "Chưa rõ nhập hàng từ nhà cung cấp nào ạ.",
+          field_path: "supplier",
+          item_index: null,
+        },
+        {
+          code: "supplier_unresolved",
+          severity: "blocking",
+          message: 'Có vài nhà cung cấp gần giống "Song Hong", cần chọn đúng.',
+          field_path: "supplier",
+          item_index: null,
+        },
+      ],
+      ready_for_preview: false,
+      blocking_count: 2,
+    });
+    const patch = updateSupplierPatch(createEmptyPreviewCardPatch(), {
+      entity_type: "supplier",
+      raw: "Song Hong",
+      resolved_id: "supplier-song-hong",
+      resolved_name: "Sông Hồng",
+    });
+
+    const state = getPatchedPreviewState(validated, patch);
+
+    expect(state.supplier?.resolved_name).toBe("Sông Hồng");
+    expect(
+      state.issues.some(
+        (issue) =>
+          issue.code === "missing_supplier" || issue.code === "supplier_unresolved",
+      ),
+    ).toBe(false);
     expect(state.blockingCount).toBe(0);
     expect(state.canConfirm).toBe(true);
   });

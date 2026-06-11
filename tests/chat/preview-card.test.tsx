@@ -746,6 +746,107 @@ describe("PreviewCard", () => {
     expect(html).toContain("anh Phát");
   });
 
+  it("offers supplier search on a supplierless purchase card", () => {
+    const html = renderCard(
+      baseValidated({
+        intent: "create_purchase",
+        customer: null,
+        supplier: null,
+        issues: [
+          {
+            code: "missing_supplier",
+            severity: "blocking",
+            message: "Chưa rõ nhập hàng từ nhà cung cấp nào ạ.",
+            field_path: "supplier",
+            item_index: null,
+          },
+        ],
+        ready_for_preview: false,
+        blocking_count: 1,
+      }),
+    );
+
+    expect(html).toContain("Đơn nhập hàng");
+    expect(html).toContain("Tìm nhà cung cấp");
+    expect(html).toContain("Ghi nhập hàng");
+    expect(html).not.toContain('disabled=""');
+  });
+
+  it("renders supplier candidate choices and create-new choice for unresolved supplier", () => {
+    const html = renderCard(
+      baseValidated({
+        intent: "create_purchase",
+        customer: null,
+        supplier: {
+          raw: "Song Hong",
+          entity_type: "supplier",
+          status: "needs_confirmation",
+          resolved_id: null,
+          resolved_name: null,
+          confidence: 0.73,
+          candidates: [
+            {
+              id: "supplier-song-hong",
+              name: "Sông Hồng",
+              score: 0.73,
+              matched_on: "fuzzy",
+              matched_value: "Sông Hồng",
+            },
+          ],
+        },
+        issues: [
+          {
+            code: "supplier_unresolved",
+            severity: "blocking",
+            message: 'Có vài nhà cung cấp gần giống "Song Hong", cần chọn đúng.',
+            field_path: "supplier",
+            item_index: null,
+          },
+        ],
+        ready_for_preview: false,
+        blocking_count: 1,
+      }),
+    );
+
+    expect(html).toContain('data-testid="supplier-confirm-panel"');
+    expect(html).toContain("Sông Hồng");
+    expect(html).toContain("Không phải, thêm nhà cung cấp mới");
+    expect(html).not.toContain("thêm khách mới");
+  });
+
+  it("renders create supplier panel for not_found supplier", () => {
+    const html = renderCard(
+      baseValidated({
+        intent: "create_purchase",
+        customer: null,
+        supplier: {
+          raw: "Minh Phát",
+          entity_type: "supplier",
+          status: "not_found",
+          resolved_id: null,
+          resolved_name: null,
+          confidence: 0,
+          candidates: [],
+        },
+        issues: [
+          {
+            code: "supplier_unresolved",
+            severity: "blocking",
+            message: 'Không tìm thấy nhà cung cấp "Minh Phát".',
+            field_path: "supplier",
+            item_index: null,
+          },
+        ],
+        ready_for_preview: false,
+        blocking_count: 1,
+      }),
+    );
+
+    expect(html).toContain('data-testid="supplier-create-panel"');
+    expect(html).toContain("Chưa có nhà cung cấp");
+    expect(html).toContain("Minh Phát");
+  });
+
   it("does not offer product creation for a not_found product", () => {
     const html = renderCard(
       baseValidated({

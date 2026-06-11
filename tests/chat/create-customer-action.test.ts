@@ -48,9 +48,11 @@ vi.mock("@/src/lib/supabase/server", () => ({
 
 const {
   createCustomer,
+  createSupplier,
   createProduct,
   createProductFromChat,
   searchCustomersByName,
+  searchSuppliersByName,
   searchProductsByName,
   updateProduct,
 } = await import("@/app/(app)/chat/actions");
@@ -227,6 +229,128 @@ describe("createCustomer", () => {
 
     expect(source).not.toContain("createAdminClient");
     expect(source).not.toContain("service_role");
+  });
+});
+
+describe("createSupplier", () => {
+  beforeEach(() => {
+    mocks.getUser.mockReset();
+    mocks.from.mockReset();
+    mocks.readSelect.mockReset();
+    mocks.readEq.mockReset();
+    mocks.readIs.mockReset();
+    mocks.insert.mockReset();
+    mocks.insertSelect.mockReset();
+    mocks.single.mockReset();
+
+    mocks.getUser.mockResolvedValue({
+      data: { user: { id: "user-a" } },
+      error: null,
+    });
+    mocks.readSelect.mockReturnValue(readChain);
+    mocks.readEq.mockReturnValue(readChain);
+    mocks.readIs.mockResolvedValue({ data: [], error: null });
+    mocks.insert.mockReturnValue({ select: mocks.insertSelect });
+    mocks.insertSelect.mockReturnValue({ single: mocks.single });
+    mocks.single.mockResolvedValue({
+      data: { id: "supplier-minh-phat", name: "Minh Phát" },
+      error: null,
+    });
+    mocks.from.mockReturnValueOnce(readChain).mockReturnValueOnce(insertChain);
+  });
+
+  it("inserts a supplier scoped to the authenticated owner", async () => {
+    const result = await createSupplier("  Minh Phát  ");
+
+    expect(result).toEqual({
+      ok: true,
+      data: { id: "supplier-minh-phat", name: "Minh Phát" },
+    });
+    expect(mocks.from).toHaveBeenNthCalledWith(1, "suppliers");
+    expect(mocks.from).toHaveBeenNthCalledWith(2, "suppliers");
+    expect(mocks.insert).toHaveBeenCalledWith({
+      owner_id: "user-a",
+      name: "Minh Phát",
+    });
+    expect(mocks.insertSelect).toHaveBeenCalledWith("id,name");
+  });
+
+  it("returns an existing supplier on duplicate name without inserting", async () => {
+    mocks.readIs.mockResolvedValue({
+      data: [{ id: "supplier-existing", name: "Minh Phát" }],
+      error: null,
+    });
+
+    const result = await createSupplier("minh phát");
+
+    expect(result).toEqual({
+      ok: true,
+      data: { id: "supplier-existing", name: "Minh Phát" },
+    });
+    expect(mocks.insert).not.toHaveBeenCalled();
+  });
+
+  it("retries the dedup read after a supplier unique violation", async () => {
+    mocks.readIs
+      .mockResolvedValueOnce({ data: [], error: null })
+      .mockResolvedValueOnce({
+        data: [{ id: "supplier-existing", name: "Minh Phát" }],
+        error: null,
+      });
+    mocks.single.mockResolvedValue({
+      data: null,
+      error: { code: "23505", message: "duplicate key value violates unique constraint" },
+    });
+    mocks.from
+      .mockReset()
+      .mockReturnValueOnce(readChain)
+      .mockReturnValueOnce(insertChain)
+      .mockReturnValueOnce(readChain);
+
+    const result = await createSupplier("Minh Phát");
+
+    expect(result).toEqual({
+      ok: true,
+      data: { id: "supplier-existing", name: "Minh Phát" },
+    });
+    expect(mocks.from).toHaveBeenNthCalledWith(3, "suppliers");
+    expect(mocks.insert).toHaveBeenCalledTimes(1);
+  });
+
+  it("searches suppliers by exact name without writing", async () => {
+    mocks.readIs.mockResolvedValue({
+      data: [
+        { id: "supplier-minh-phat", name: "Minh Phát", aliases: [] },
+        { id: "supplier-song-hong", name: "Sông Hồng", aliases: [] },
+      ],
+      error: null,
+    });
+    mocks.from.mockReset();
+    mocks.from.mockReturnValue(readChain);
+
+    const result = await searchSuppliersByName("Minh Phát");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data).toMatchObject({
+        raw: "Minh Phát",
+        entity_type: "supplier",
+        status: "resolved",
+        resolved_id: "supplier-minh-phat",
+        resolved_name: "Minh Phát",
+        candidates: [
+          {
+            id: "supplier-minh-phat",
+            name: "Minh Phát",
+            matched_on: "name_exact",
+          },
+        ],
+      });
+    }
+    expect(mocks.from).toHaveBeenCalledTimes(1);
+    expect(mocks.from).toHaveBeenCalledWith("suppliers");
+    expect(mocks.readSelect).toHaveBeenCalledWith("id,name,aliases");
+    expect(mocks.insert).not.toHaveBeenCalled();
   });
 });
 
