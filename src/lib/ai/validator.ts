@@ -33,6 +33,12 @@ export type ValidationMasters = {
 
 type WritableIntent = "create_order" | "record_payment" | "create_purchase";
 
+type ItemPricingContext = {
+  amount: number | null;
+  itemCount: number;
+  paymentStatus: ResolvedIntent["payment_status"];
+};
+
 const WRITABLE_INTENTS = new Set<IntentName>([
   "create_order",
   "record_payment",
@@ -174,6 +180,7 @@ function validateItem(
   itemIndex: number,
   masters: ValidationMasters,
   intent: "create_order" | "create_purchase",
+  pricing: ItemPricingContext,
 ): ValidatedLineItem {
   const itemIssues: ValidationIssue[] = [];
   const productId =
@@ -215,36 +222,79 @@ function validateItem(
   let effectiveUnitPrice = item.unit_price;
 
   if (effectiveUnitPrice === null) {
-    const masterPrice =
-      intent === "create_order" ? master?.sell_price : master?.cost_price;
+    const totalPricing =
+      pricing.amount !== null &&
+      pricing.amount > 0 &&
+      pricing.itemCount === 1 &&
+      effectiveQuantity !== null &&
+      effectiveQuantity > 0 &&
+      pricing.paymentStatus !== "paid" &&
+      pricing.paymentStatus !== "partial"
+        ? {
+            amount: pricing.amount,
+            quantity: effectiveQuantity,
+            unitPrice: pricing.amount / effectiveQuantity,
+          }
+      : null;
+    const displayUnit = item.unit ?? "đơn vị";
 
-    if (masterPrice !== undefined && masterPrice !== null) {
-      effectiveUnitPrice = masterPrice;
+    if (totalPricing !== null && Number.isInteger(totalPricing.unitPrice)) {
+      effectiveUnitPrice = totalPricing.unitPrice;
       itemIssues.push(
         issue({
-          code: "price_autofilled",
+          code: "price_from_total",
           severity: "warning",
-          message:
-            intent === "create_order"
-              ? `Dùng giá niêm yết ${formatMoney(masterPrice)}đ cho "${name}".`
-              : `Dùng giá nhập đã lưu ${formatMoney(masterPrice)}đ cho "${name}".`,
+          message: `Tính đơn giá ${formatMoney(totalPricing.unitPrice)}đ từ tổng ${formatMoney(
+            totalPricing.amount,
+          )}đ cho ${formatMoney(totalPricing.quantity)} ${displayUnit}.`,
+          field_path: `items[${itemIndex}].unit_price`,
+          item_index: itemIndex,
+        }),
+      );
+    } else if (totalPricing !== null) {
+      itemIssues.push(
+        issue({
+          code: "total_not_divisible",
+          severity: "blocking",
+          message: `Tổng ${formatMoney(totalPricing.amount)}đ không chia đều cho ${formatMoney(
+            totalPricing.quantity,
+          )} ${displayUnit} — bác cho giá từng ${displayUnit} ạ?`,
           field_path: `items[${itemIndex}].unit_price`,
           item_index: itemIndex,
         }),
       );
     } else {
-      itemIssues.push(
-        issue({
-          code: "missing_price",
-          severity: "blocking",
-          message:
-            intent === "create_order"
-              ? `Hàng "${name}" chưa có giá. Bác cho biết giá bán ạ?`
-              : `Hàng "${name}" chưa có giá nhập. Bác cho biết giá nhập ạ?`,
-          field_path: `items[${itemIndex}].unit_price`,
-          item_index: itemIndex,
-        }),
-      );
+      const masterPrice =
+        intent === "create_order" ? master?.sell_price : master?.cost_price;
+
+      if (masterPrice !== undefined && masterPrice !== null) {
+        effectiveUnitPrice = masterPrice;
+        itemIssues.push(
+          issue({
+            code: "price_autofilled",
+            severity: "warning",
+            message:
+              intent === "create_order"
+                ? `Dùng giá niêm yết ${formatMoney(masterPrice)}đ cho "${name}".`
+                : `Dùng giá nhập đã lưu ${formatMoney(masterPrice)}đ cho "${name}".`,
+            field_path: `items[${itemIndex}].unit_price`,
+            item_index: itemIndex,
+          }),
+        );
+      } else {
+        itemIssues.push(
+          issue({
+            code: "missing_price",
+            severity: "blocking",
+            message:
+              intent === "create_order"
+                ? `Hàng "${name}" chưa có giá. Bác cho biết giá bán ạ?`
+                : `Hàng "${name}" chưa có giá nhập. Bác cho biết giá nhập ạ?`,
+            field_path: `items[${itemIndex}].unit_price`,
+            item_index: itemIndex,
+          }),
+        );
+      }
     }
   }
 
@@ -281,6 +331,11 @@ function validateItems(
   intent: "create_order" | "create_purchase",
 ) {
   const issues: ValidationIssue[] = [];
+  const pricing: ItemPricingContext = {
+    amount: resolved.amount ?? null,
+    itemCount: resolved.items.length,
+    paymentStatus: resolved.payment_status,
+  };
 
   if (resolved.items.length === 0) {
     issues.push(
@@ -297,10 +352,29 @@ function validateItems(
     );
   }
 
+  if (
+    pricing.amount !== null &&
+    pricing.amount > 0 &&
+    pricing.itemCount > 1 &&
+    pricing.paymentStatus !== "paid" &&
+    pricing.paymentStatus !== "partial"
+  ) {
+    issues.push(
+      issue({
+        code: "total_with_multiple_items",
+        severity: "warning",
+        message:
+          "Câu có tổng tiền nhưng nhiều mặt hàng, em chưa chia tự động được ạ.",
+        field_path: "amount",
+        item_index: null,
+      }),
+    );
+  }
+
   return {
     issues,
     items: resolved.items.map((item, index) =>
-      validateItem(item, index, masters, intent),
+      validateItem(item, index, masters, intent, pricing),
     ),
   };
 }

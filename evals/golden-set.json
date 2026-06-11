@@ -222,6 +222,22 @@
     "mode": "assert"
   },
   {
+    "id": "A13",
+    "group": "A",
+    "text": "anh Hùng mua 20 bao xi măng, tổng 1tr6",
+    "expect": {
+      "intent": "create_order",
+      "fields": [
+        {
+          "path": "entities.amount",
+          "match": "number",
+          "value": 1600000
+        }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
     "id": "B1",
     "group": "B",
     "text": "nhập 100 bao xi măng từ Minh Phát",

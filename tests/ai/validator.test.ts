@@ -283,6 +283,146 @@ describe("validateResolvedIntent create_order", () => {
     expect(hasIssue(result, "payment_status_unknown")).toBe(true);
     expect(result.ready_for_preview).toBe(true);
   });
+
+  it("infers an integer unit price from a one-item order total", () => {
+    const result = validateResolvedIntent(
+      baseResolved({
+        amount: 1600000,
+        payment_status: "unknown",
+        items: [productItem({ quantity: 20, unit_price: null })],
+      }),
+      masters,
+    );
+
+    expect(result.items[0].effective_unit_price).toBe(80000);
+    expect(result.items[0].line_total).toBe(1600000);
+    expect(hasIssue(result, "price_from_total")).toBe(true);
+    expect(hasIssue(result, "price_autofilled")).toBe(false);
+    expect(result.ready_for_preview).toBe(true);
+  });
+
+  it("infers an integer VND price for a decimal quantity", () => {
+    const result = validateResolvedIntent(
+      baseResolved({
+        amount: 1600000,
+        payment_status: "unknown",
+        items: [productItem({ quantity: 0.5, unit: "khối", unit_price: null })],
+      }),
+      masters,
+    );
+
+    expect(result.items[0].effective_unit_price).toBe(3200000);
+    expect(result.items[0].line_total).toBe(1600000);
+    expect(hasIssue(result, "price_from_total")).toBe(true);
+  });
+
+  it("blocks a total that would produce a fractional VND unit price", () => {
+    const result = validateResolvedIntent(
+      baseResolved({
+        amount: 100000,
+        payment_status: "unknown",
+        items: [productItem({ quantity: 5.5, unit: null, unit_price: null })],
+      }),
+      masters,
+    );
+
+    expect(result.items[0].effective_unit_price).toBeNull();
+    expect(result.items[0].line_total).toBeNull();
+    expect(hasIssue(result, "total_not_divisible")).toBe(true);
+    expect(hasIssue(result, "price_autofilled")).toBe(false);
+    expect(result.items[0].issues[0].message).toContain("5,5 đơn vị");
+    expect(result.ready_for_preview).toBe(false);
+  });
+
+  it.each(["paid", "partial"] as const)(
+    "keeps master-price autofill when payment status is %s",
+    (paymentStatus) => {
+      const result = validateResolvedIntent(
+        baseResolved({
+          amount: 1600000,
+          payment_status: paymentStatus,
+          items: [productItem({ quantity: 20, unit_price: null })],
+        }),
+        masters,
+      );
+
+      expect(result.items[0].effective_unit_price).toBe(85000);
+      expect(hasIssue(result, "price_autofilled")).toBe(true);
+      expect(hasIssue(result, "price_from_total")).toBe(false);
+      expect(hasIssue(result, "total_not_divisible")).toBe(false);
+    },
+  );
+
+  it("warns without splitting a total across multiple items", () => {
+    const result = validateResolvedIntent(
+      baseResolved({
+        amount: 1600000,
+        payment_status: "unknown",
+        items: [
+          productItem({ quantity: 10, unit_price: null }),
+          productItem({ quantity: 5, unit_price: null }),
+        ],
+      }),
+      masters,
+    );
+
+    expect(hasIssue(result, "total_with_multiple_items")).toBe(true);
+    expect(hasIssue(result, "price_autofilled")).toBe(true);
+    expect(result.items.map((item) => item.effective_unit_price)).toEqual([
+      85000, 85000,
+    ]);
+  });
+
+  it("does not warn about a multi-item total when payment status is paid", () => {
+    const result = validateResolvedIntent(
+      baseResolved({
+        amount: 1600000,
+        payment_status: "paid",
+        items: [
+          productItem({ quantity: 10, unit_price: null }),
+          productItem({ quantity: 5, unit_price: null }),
+        ],
+      }),
+      masters,
+    );
+
+    expect(hasIssue(result, "total_with_multiple_items")).toBe(false);
+    expect(hasIssue(result, "price_autofilled")).toBe(true);
+  });
+
+  it("keeps an explicit unit price ahead of the stated total", () => {
+    const result = validateResolvedIntent(
+      baseResolved({
+        amount: 1600000,
+        payment_status: "unknown",
+        items: [productItem({ quantity: 20, unit_price: 90000 })],
+      }),
+      masters,
+    );
+
+    expect(result.items[0].effective_unit_price).toBe(90000);
+    expect(result.items[0].line_total).toBe(1800000);
+    expect(hasIssue(result, "price_from_total")).toBe(false);
+    expect(hasIssue(result, "total_not_divisible")).toBe(false);
+    expect(hasIssue(result, "price_autofilled")).toBe(false);
+  });
+
+  it("keeps the existing master-price flow when amount is null", () => {
+    const result = validateResolvedIntent(
+      baseResolved({
+        amount: null,
+        payment_status: "unknown",
+        items: [productItem({ quantity: 5, unit_price: null })],
+      }),
+      masters,
+    );
+
+    expect(result.items[0].effective_unit_price).toBe(85000);
+    expect(result.items[0].line_total).toBe(425000);
+    expect(hasIssue(result, "price_autofilled")).toBe(true);
+    expect(hasIssue(result, "price_from_total")).toBe(false);
+    expect(hasIssue(result, "total_not_divisible")).toBe(false);
+  });
 });
 
 describe("validateResolvedIntent record_payment", () => {
@@ -386,6 +526,26 @@ describe("validateResolvedIntent create_purchase", () => {
 
     expect(hasIssue(result, "price_autofilled")).toBe(true);
     expect(result.items[0].effective_unit_price).toBe(78000);
+  });
+
+  it("infers an integer unit cost from a one-item purchase total", () => {
+    const result = validateResolvedIntent(
+      baseResolved({
+        intent: "create_purchase",
+        amount: 1600000,
+        payment_status: "unknown",
+        customer: null,
+        supplier: supplierResolved,
+        items: [productItem({ quantity: 20, unit_price: null })],
+      }),
+      masters,
+    );
+
+    expect(result.items[0].effective_unit_price).toBe(80000);
+    expect(result.items[0].line_total).toBe(1600000);
+    expect(hasIssue(result, "price_from_total")).toBe(true);
+    expect(hasIssue(result, "price_autofilled")).toBe(false);
+    expect(result.ready_for_preview).toBe(true);
   });
 });
 
