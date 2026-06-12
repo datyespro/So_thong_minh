@@ -85,8 +85,50 @@ function formatPaymentDate(value: string | null) {
     : "—";
 }
 
+function formatPaymentDay(value: string | null) {
+  if (!value) {
+    return "—";
+  }
+
+  const parsed = dayjs(value);
+
+  return parsed.isValid()
+    ? parsed.tz(APP_TIME_ZONE).format("DD/MM/YYYY")
+    : "—";
+}
+
 function formatQuantity(value: number | string) {
   return String(value);
+}
+
+function shouldShowDebtFooter(
+  total: number,
+  summary: CustomerDebtSummary,
+) {
+  return (
+    summary.reconciles &&
+    summary.paidTotal > 0 &&
+    total === summary.totalPurchase
+  );
+}
+
+function paymentSortTime(value: string | null) {
+  if (!value) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const parsed = dayjs(value);
+
+  return parsed.isValid() ? parsed.valueOf() : Number.POSITIVE_INFINITY;
+}
+
+function sortedPaymentsByPaidAt(payments: CustomerPaymentRow[]) {
+  return [...payments].sort((left, right) => {
+    const timeDiff =
+      paymentSortTime(left.paid_at) - paymentSortTime(right.paid_at);
+
+    return timeDiff === 0 ? left.id.localeCompare(right.id) : timeDiff;
+  });
 }
 
 function normalizedPhoneHref(phone: string) {
@@ -245,7 +287,96 @@ function MobileHistoryCard({ row }: Readonly<{ row: CustomerPurchaseHistoryRow }
   );
 }
 
-function MobileHistoryTotal({ total }: Readonly<{ total: number }>) {
+function SettlementSummaryPanel({
+  total,
+  summary,
+  payments,
+  className = "",
+}: Readonly<{
+  total: number;
+  summary: CustomerDebtSummary;
+  payments: CustomerPaymentRow[];
+  className?: string;
+}>) {
+  const orderedPayments = sortedPaymentsByPaidAt(payments);
+  const panelClassName = [
+    "rounded border border-ledgerBorder bg-paperWarm px-4 py-3",
+    className,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <div className={panelClassName}>
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-4">
+        <p className="font-display text-[18px] font-semibold text-inkDeep">
+          Tổng mua
+        </p>
+        <p className="break-words text-right font-mono text-[20px] font-bold leading-tight text-inkDeep">
+          {formatMoneyValue(total)}
+        </p>
+      </div>
+
+      <div className="mt-2 space-y-2">
+        {orderedPayments.map((payment) => (
+          <div
+            key={payment.id}
+            className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-4"
+          >
+            <p className="font-display text-[17px] font-semibold text-paid">
+              − Trả {formatPaymentDay(payment.paid_at)}
+            </p>
+            <p className="break-words text-right font-mono text-[18px] font-bold leading-tight text-paid">
+              {formatMoneyValue(payment.amount)}
+            </p>
+          </div>
+        ))}
+        {summary.paidImmediate > 0 ? (
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-4">
+            <p className="font-display text-[17px] font-semibold text-paid">
+              − Trả ngay khi mua
+            </p>
+            <p className="break-words text-right font-mono text-[18px] font-bold leading-tight text-paid">
+              {formatMoneyValue(summary.paidImmediate)}
+            </p>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-4 border-t border-dashed border-ledgerBorder pt-3">
+        <p className="font-display text-[19px] font-semibold text-debt">
+          = Còn nợ
+        </p>
+        <p className="break-words text-right font-mono text-[22px] font-bold leading-tight text-debt">
+          {formatMoneyValue(summary.debtTotal)}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function MobileHistoryTotal({
+  total,
+  summary,
+  payments,
+}: Readonly<{
+  total: number;
+  summary: CustomerDebtSummary;
+  payments: CustomerPaymentRow[];
+}>) {
+  const showDebtFooter = shouldShowDebtFooter(total, summary);
+
+  if (showDebtFooter) {
+    return (
+      <SettlementSummaryPanel
+        total={total}
+        summary={summary}
+        payments={payments}
+        className="shadow-[var(--shadow-card)]"
+      />
+    );
+  }
+
   return (
     <div className="rounded border border-ledgerBorder bg-paperWarm px-3 py-4 shadow-[var(--shadow-card)]">
       <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-stamp">
@@ -261,12 +392,16 @@ function MobileHistoryTotal({ total }: Readonly<{ total: number }>) {
 function PurchaseHistoryTable({
   rows,
   total,
+  summary,
+  payments,
   customerId,
   sort,
   nextSort,
 }: Readonly<{
   rows: CustomerPurchaseHistoryRow[];
   total: number;
+  summary: CustomerDebtSummary;
+  payments: CustomerPaymentRow[];
   customerId: string;
   sort: CustomerPurchaseHistorySortDirection;
   nextSort: CustomerPurchaseHistorySortDirection;
@@ -274,6 +409,8 @@ function PurchaseHistoryTable({
   if (rows.length === 0) {
     return <PurchaseHistoryEmptyState />;
   }
+
+  const showDebtFooter = shouldShowDebtFooter(total, summary);
 
   return (
     <>
@@ -334,17 +471,30 @@ function PurchaseHistoryTable({
             ))}
           </tbody>
           <tfoot className="border-t-2 border-ledgerBorder bg-paperWarm">
-            <tr>
-              <td
-                colSpan={5}
-                className="px-3 py-3 text-right font-display text-[18px] font-semibold text-inkDeep"
-              >
-                Tổng cộng
-              </td>
-              <td className="px-3 py-3 text-right font-mono text-[18px] font-bold text-inkDeep">
-                {formatMoneyValue(total)}
-              </td>
-            </tr>
+            {showDebtFooter ? (
+              <tr>
+                <td colSpan={6} className="px-3 py-3">
+                  <SettlementSummaryPanel
+                    total={total}
+                    summary={summary}
+                    payments={payments}
+                    className="ml-auto w-full max-w-md"
+                  />
+                </td>
+              </tr>
+            ) : (
+              <tr>
+                <td
+                  colSpan={5}
+                  className="px-3 py-3 text-right font-display text-[18px] font-semibold text-inkDeep"
+                >
+                  Tổng cộng
+                </td>
+                <td className="px-3 py-3 text-right font-mono text-[18px] font-bold text-inkDeep">
+                  {formatMoneyValue(total)}
+                </td>
+              </tr>
+            )}
           </tfoot>
         </table>
       </div>
@@ -356,7 +506,11 @@ function PurchaseHistoryTable({
             row={row}
           />
         ))}
-        <MobileHistoryTotal total={total} />
+        <MobileHistoryTotal
+          total={total}
+          summary={summary}
+          payments={payments}
+        />
       </div>
     </>
   );
@@ -564,6 +718,8 @@ export default async function CustomerDetailPage({
           <PurchaseHistoryTable
             rows={historyRows}
             total={historyTotal}
+            summary={debtSummary}
+            payments={payments}
             customerId={customer.id}
             sort={sort}
             nextSort={nextSort}
