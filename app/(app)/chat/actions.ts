@@ -104,6 +104,10 @@ type ProductUpdateRow = {
   sell_price: number | string | null;
 };
 
+type ProductDeleteRow = ProductUpdateRow & {
+  name: string;
+};
+
 export type CreatedCustomerView = CustomerRow;
 export type CreatedSupplierView = SupplierRow;
 export type CreatedProductView = {
@@ -741,11 +745,17 @@ function nullableProductMoney(value: number | string | null | undefined) {
 
 function productManagementTarget(
   productManagement: ProductManagement | null,
-): {
-  action: ProductManagementUpdateAction;
-  productRaw: string;
-  target: ProductManagementTarget;
-} | null {
+):
+  | {
+      action: ProductManagementUpdateAction;
+      productRaw: string;
+      target: ProductManagementTarget;
+    }
+  | {
+      action: "delete";
+      productRaw: string;
+    }
+  | null {
   const productRaw = productManagement?.product_raw.trim() ?? "";
 
   if (!productManagement || productRaw.length === 0) {
@@ -774,6 +784,13 @@ function productManagementTarget(
           target: { sell_price: Math.round(sellPrice) },
         }
       : null;
+  }
+
+  if (productManagement.action === "delete") {
+    return {
+      action: "delete",
+      productRaw,
+    };
   }
 
   return null;
@@ -925,12 +942,19 @@ async function resolveProductManagementPreview({
     if (product) {
       return {
         ok: true,
-        data: {
-          status: "ready",
-          action: target.action,
-          product,
-          target: target.target,
-        },
+        data:
+          target.action === "delete"
+            ? {
+                status: "confirm_delete",
+                action: "delete",
+                product,
+              }
+            : {
+                status: "ready",
+                action: target.action,
+                product,
+                target: target.target,
+              },
       };
     }
   }
@@ -952,13 +976,21 @@ async function resolveProductManagementPreview({
 
   return {
     ok: true,
-    data: {
-      status: "needs_choice",
-      action: target.action,
-      product_raw: target.productRaw,
-      candidates,
-      target: target.target,
-    },
+    data:
+      target.action === "delete"
+        ? {
+            status: "needs_choice",
+            action: "delete",
+            product_raw: target.productRaw,
+            candidates,
+          }
+        : {
+            status: "needs_choice",
+            action: target.action,
+            product_raw: target.productRaw,
+            candidates,
+            target: target.target,
+          },
   };
 }
 
@@ -1825,6 +1857,116 @@ export async function updateProduct(
       unit: updated.unit,
       sell_price: nullableProductMoney(updated.sell_price),
     },
+  };
+}
+
+export async function deleteProduct(
+  productId: string,
+): Promise<ActionResult<ProductManagementProduct>> {
+  if (typeof productId !== "string" || productId.trim().length === 0) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Không tìm thấy hàng để xóa.",
+    };
+  }
+
+  const user = await getAuthenticatedUser();
+  const supabase = await createClient();
+  const trimmedProductId = productId.trim();
+
+  const { data: beforeData, error: beforeError } = await supabase
+    .from("products")
+    .select("id,name,unit,sell_price")
+    .eq("owner_id", user.id)
+    .eq("id", trimmedProductId)
+    .eq("is_active", true)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (beforeError) {
+    return {
+      ok: false,
+      code: "db_error",
+      message: "Chưa đọc được hàng, bác thử lại ạ.",
+    };
+  }
+
+  if (!beforeData) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Không tìm thấy hàng để xóa.",
+    };
+  }
+
+  const before = beforeData as ProductDeleteRow;
+  const deletedAt = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("products")
+    .update({
+      deleted_at: deletedAt,
+      is_active: false,
+    })
+    .eq("owner_id", user.id)
+    .eq("id", trimmedProductId)
+    .eq("is_active", true)
+    .is("deleted_at", null)
+    .select("id,name,unit,sell_price")
+    .maybeSingle();
+
+  if (error) {
+    return {
+      ok: false,
+      code: "db_error",
+      message: "Chưa xóa được hàng, bác thử lại ạ.",
+    };
+  }
+
+  if (!data) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Không tìm thấy hàng để xóa.",
+    };
+  }
+
+  const deleted = data as ProductDeleteRow;
+  const beforeAudit = {
+    name: before.name,
+    unit: before.unit,
+    sell_price: nullableProductMoney(before.sell_price),
+  };
+
+  const { error: auditError } = await supabase.from("audit_log").insert({
+    owner_id: user.id,
+    actor_id: user.id,
+    entity_type: "product",
+    entity_id: deleted.id,
+    action: "delete",
+    before_data: beforeAudit,
+    after_data: { deleted: true },
+    metadata: {
+      deleted_at: deletedAt,
+    },
+  });
+
+  if (auditError) {
+    console.error("audit_log insert failed for deleteProduct", auditError);
+
+    return {
+      ok: false,
+      code: "db_error",
+      message: "Đã xóa hàng nhưng chưa ghi được nhật ký, bác tải lại kiểm tra giúp em ạ.",
+    };
+  }
+
+  return {
+    ok: true,
+    data: productManagementProductFromRow({
+      ...deleted,
+      aliases: null,
+    }),
   };
 }
 

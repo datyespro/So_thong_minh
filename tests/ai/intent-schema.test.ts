@@ -195,6 +195,39 @@ describe("ExtractedIntentSchema", () => {
     );
 
     expect(create.entities.product_management?.action).toBe("create");
+
+  });
+
+  it("accepts a manage_product delete output with nullable fields", () => {
+    const deleteProduct = ExtractedIntentSchema.parse(
+      baseIntent({
+        intent: "manage_product",
+        raw_text: "xóa sản phẩm fff",
+        normalized_text: "xóa sản phẩm fff",
+        entities: {
+          ...baseIntent().entities,
+          customer_name: null,
+          product_name: "fff",
+          product_management: {
+            action: "delete",
+            product_raw: "fff",
+            unit: null,
+            sell_price: null,
+          },
+          items: [],
+          amount: null,
+          payment_status: "unknown",
+        },
+        needs_confirmation: false,
+      }),
+    );
+
+    expect(deleteProduct.entities.product_management).toEqual({
+      action: "delete",
+      product_raw: "fff",
+      unit: null,
+      sell_price: null,
+    });
   });
 
   it("defaults missing internal product_management to null", () => {

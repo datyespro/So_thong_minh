@@ -5,7 +5,7 @@ import { loadEnvConfig } from "@next/env";
 import { z } from "zod";
 import type { ExtractedIntent } from "@/src/lib/ai/intent-schema";
 
-const EXPECTED_CASE_COUNT = 57;
+const EXPECTED_CASE_COUNT = 59;
 const CONCURRENCY = 3;
 const REQUEST_TIMEOUT_MS = 30_000;
 const OWNER_ID = "tip-27-eval";

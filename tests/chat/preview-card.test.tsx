@@ -408,6 +408,68 @@ describe("PreviewCard", () => {
     expect(html).not.toContain("Tạo hàng");
   });
 
+  it("renders a confirm_delete product-management card with Ghi and Bỏ", () => {
+    const html = renderCard(
+      baseValidated({
+        intent: "manage_product",
+        kind: "none",
+        items: [],
+        effective_amount: null,
+        ready_for_preview: false,
+      }),
+      {
+        productManagementPreview: {
+          status: "confirm_delete",
+          action: "delete",
+          product: {
+            id: "product-fff",
+            name: "fff",
+            unit: "cái",
+            sell_price: 12000,
+          },
+        },
+      },
+    );
+
+    expect(html).toContain('data-testid="product-management-confirm_delete"');
+    expect(html).toContain("Xác nhận xóa hàng");
+    expect(html).toContain("fff");
+    expect(html).toContain("cái");
+    expect(html).toContain("12.000");
+    expect(html).toContain(">Ghi</button>");
+    expect(html).toContain(">Bỏ</button>");
+    expect(html).not.toContain(">Lưu</button>");
+  });
+
+  it("renders a deleted product-management success state without controls", () => {
+    const html = renderCard(
+      baseValidated({
+        intent: "manage_product",
+        kind: "none",
+        items: [],
+        effective_amount: null,
+        ready_for_preview: false,
+      }),
+      {
+        productManagementPreview: {
+          status: "deleted",
+          action: "delete",
+          product: {
+            id: "product-fff",
+            name: "fff",
+            unit: "cái",
+            sell_price: 12000,
+          },
+        },
+      },
+    );
+
+    expect(html).toContain('data-testid="product-management-deleted"');
+    expect(html).toContain("Đã xóa hàng fff khỏi danh sách.");
+    expect(html).not.toContain(">Ghi</button>");
+    expect(html).not.toContain(">Bỏ</button>");
+  });
+
   it("renders a debt answer on a query card", () => {
     const html = renderCard(
       baseValidated({

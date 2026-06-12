@@ -3,6 +3,7 @@ import type { ProductManagementPreview } from "@/src/components/chat/preview-car
 
 const mocks = vi.hoisted(() => ({
   createProductFromChat: vi.fn(),
+  deleteProduct: vi.fn(),
   updateProduct: vi.fn(),
 }));
 
@@ -14,6 +15,7 @@ vi.mock("@/app/(app)/chat/actions", () => ({
   createSupplier: vi.fn(),
   createProduct: vi.fn(),
   createProductFromChat: mocks.createProductFromChat,
+  deleteProduct: mocks.deleteProduct,
   getCustomerDebt: vi.fn(),
   persistDismissedPreviewMessage: vi.fn(),
   recreateSaleOrder: vi.fn(),
@@ -29,6 +31,7 @@ const {
   productManagementCreateFormFromPreview,
   productManagementProductFromCandidate,
   saveProductManagementCreatePreview,
+  saveProductManagementDeletePreview,
   saveProductManagementPreview,
   validateProductManagementCreateForm,
 } = await import("@/src/components/chat/preview-card/preview-card");
@@ -53,6 +56,7 @@ function readyPreview(
 describe("product-management preview helpers", () => {
   beforeEach(() => {
     mocks.createProductFromChat.mockReset();
+    mocks.deleteProduct.mockReset();
     mocks.updateProduct.mockReset();
   });
 
@@ -176,6 +180,44 @@ describe("product-management preview helpers", () => {
     expect(result).toEqual({
       ok: false,
       message: "Không tìm thấy hàng để sửa.",
+    });
+  });
+
+  it("deletes a confirmed product and returns the deleted preview", async () => {
+    mocks.deleteProduct.mockResolvedValue({
+      ok: true,
+      data: {
+        id: "product-fff",
+        name: "fff",
+        unit: "cái",
+        sell_price: 12000,
+      },
+    });
+
+    const result = await saveProductManagementDeletePreview({
+      status: "confirm_delete",
+      action: "delete",
+      product: {
+        id: "product-fff",
+        name: "fff",
+        unit: "cái",
+        sell_price: 12000,
+      },
+    });
+
+    expect(mocks.deleteProduct).toHaveBeenCalledWith("product-fff");
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        status: "deleted",
+        action: "delete",
+        product: {
+          id: "product-fff",
+          name: "fff",
+          unit: "cái",
+          sell_price: 12000,
+        },
+      },
     });
   });
 

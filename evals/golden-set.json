@@ -238,6 +238,48 @@
     "mode": "assert"
   },
   {
+    "id": "A14",
+    "group": "A",
+    "text": "xóa sản phẩm fff",
+    "expect": {
+      "intent": "manage_product",
+      "fields": [
+        {
+          "path": "entities.product_management.action",
+          "match": "exact",
+          "value": "delete"
+        },
+        {
+          "path": "entities.product_management.product_raw",
+          "match": "name",
+          "value": "fff"
+        }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "A15",
+    "group": "A",
+    "text": "bỏ hàng xi măng khỏi danh sách",
+    "expect": {
+      "intent": "manage_product",
+      "fields": [
+        {
+          "path": "entities.product_management.action",
+          "match": "exact",
+          "value": "delete"
+        },
+        {
+          "path": "entities.product_management.product_raw",
+          "match": "name",
+          "value": "xi măng"
+        }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
     "id": "B1",
     "group": "B",
     "text": "nhập 100 bao xi măng từ Minh Phát",

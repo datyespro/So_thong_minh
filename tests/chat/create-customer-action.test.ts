@@ -51,6 +51,7 @@ const {
   createSupplier,
   createProduct,
   createProductFromChat,
+  deleteProduct,
   searchCustomersByName,
   searchSuppliersByName,
   searchProductsByName,
@@ -956,6 +957,119 @@ describe("updateProduct", () => {
     });
     expect(mocks.readEq).toHaveBeenCalledWith("owner_id", "user-a");
     expect(mocks.readEq).toHaveBeenCalledWith("id", "other-owner-product");
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.insert).not.toHaveBeenCalled();
+  });
+});
+
+describe("deleteProduct", () => {
+  beforeEach(() => {
+    mocks.getUser.mockReset();
+    mocks.from.mockReset();
+    mocks.readSelect.mockReset();
+    mocks.readEq.mockReset();
+    mocks.readIs.mockReset();
+    mocks.readMaybeSingle.mockReset();
+    mocks.update.mockReset();
+    mocks.updateEq.mockReset();
+    mocks.updateIs.mockReset();
+    mocks.updateSelect.mockReset();
+    mocks.updateMaybeSingle.mockReset();
+    mocks.insert.mockReset();
+
+    mocks.getUser.mockResolvedValue({
+      data: { user: { id: "user-a" } },
+      error: null,
+    });
+    mocks.readSelect.mockReturnValue(readChain);
+    mocks.readEq.mockReturnValue(readChain);
+    mocks.readIs.mockReturnValue(readChain);
+    mocks.readMaybeSingle.mockResolvedValue({
+      data: {
+        id: "product-fff",
+        name: "fff",
+        unit: "cái",
+        sell_price: "12000",
+      },
+      error: null,
+    });
+    mocks.update.mockReturnValue(updateChain);
+    mocks.updateEq.mockReturnValue(updateChain);
+    mocks.updateIs.mockReturnValue(updateChain);
+    mocks.updateSelect.mockReturnValue(updateChain);
+    mocks.updateMaybeSingle.mockResolvedValue({
+      data: {
+        id: "product-fff",
+        name: "fff",
+        unit: "cái",
+        sell_price: "12000",
+      },
+      error: null,
+    });
+    mocks.insert.mockResolvedValue({ error: null });
+    mocks.from
+      .mockReturnValueOnce(readChain)
+      .mockReturnValueOnce(updateChain)
+      .mockReturnValueOnce(insertChain);
+  });
+
+  it("soft-deletes both flags for the authenticated owner and writes a snapshot audit", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-12T09:30:00.000Z"));
+
+    const result = await deleteProduct("product-fff");
+
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        id: "product-fff",
+        name: "fff",
+        unit: "cái",
+        sell_price: 12000,
+      },
+    });
+    expect(mocks.update).toHaveBeenCalledWith({
+      deleted_at: "2026-06-12T09:30:00.000Z",
+      is_active: false,
+    });
+    expect(mocks.updateEq).toHaveBeenCalledWith("owner_id", "user-a");
+    expect(mocks.updateEq).toHaveBeenCalledWith("id", "product-fff");
+    expect(mocks.updateEq).toHaveBeenCalledWith("is_active", true);
+    expect(mocks.updateIs).toHaveBeenCalledWith("deleted_at", null);
+    expect(mocks.insert).toHaveBeenCalledWith({
+      owner_id: "user-a",
+      actor_id: "user-a",
+      entity_type: "product",
+      entity_id: "product-fff",
+      action: "delete",
+      before_data: {
+        name: "fff",
+        unit: "cái",
+        sell_price: 12000,
+      },
+      after_data: { deleted: true },
+      metadata: {
+        deleted_at: "2026-06-12T09:30:00.000Z",
+      },
+    });
+
+    vi.useRealTimers();
+  });
+
+  it("returns not_found for a wrong-owner or already-deleted product", async () => {
+    mocks.readMaybeSingle.mockResolvedValue({ data: null, error: null });
+
+    const result = await deleteProduct("other-owner-product");
+
+    expect(result).toEqual({
+      ok: false,
+      code: "validation_failed",
+      message: "Không tìm thấy hàng để xóa.",
+    });
+    expect(mocks.readEq).toHaveBeenCalledWith("owner_id", "user-a");
+    expect(mocks.readEq).toHaveBeenCalledWith("id", "other-owner-product");
+    expect(mocks.readEq).toHaveBeenCalledWith("is_active", true);
+    expect(mocks.readIs).toHaveBeenCalledWith("deleted_at", null);
     expect(mocks.update).not.toHaveBeenCalled();
     expect(mocks.insert).not.toHaveBeenCalled();
   });

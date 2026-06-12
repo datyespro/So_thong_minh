@@ -63,5 +63,11 @@ describe("buildExtractIntentPrompt", () => {
     expect(prompt).toContain('product_management: { action: "set_price", product_raw: "cát vàng", unit: null, sell_price: 250000 }');
     expect(prompt).toContain('User: "thêm hàng cát vàng"');
     expect(prompt).toContain('product_management: { action: "create", product_raw: "cát vàng", unit: null, sell_price: null }');
+    expect(prompt).toContain('"tạo hàng mới: gạch block 12k một viên" => manage_product, action=create, product_raw="gạch block", unit="viên", sell_price=12000');
+    expect(prompt).toContain('User: "xóa sản phẩm fff"');
+    expect(prompt).toContain('product_management: { action: "delete", product_raw: "fff", unit: null, sell_price: null }');
+    expect(prompt).toContain('User: "bỏ hàng xi măng khỏi danh sách"');
+    expect(prompt).toContain('product_management: { action: "delete", product_raw: "xi măng", unit: null, sell_price: null }');
+    expect(prompt).toContain('"bỏ/hủy đơn vừa ghi" là undo, KHÔNG phải delete sản phẩm');
   });
 });

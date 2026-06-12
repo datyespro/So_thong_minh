@@ -31,7 +31,11 @@ export type PreviewCardPatch = {
 
 export type ProductManagementUpdateAction = "set_unit" | "set_price";
 
-export type ProductManagementAction = ProductManagementUpdateAction | "create";
+export type ProductManagementLookupAction =
+  | ProductManagementUpdateAction
+  | "delete";
+
+export type ProductManagementAction = ProductManagementLookupAction | "create";
 
 export type ProductManagementTarget =
   | { unit: string; sell_price?: never }
@@ -56,6 +60,11 @@ export type ProductManagementPreview =
       product_raw: string;
     }
   | {
+      status: "not_found";
+      action: "delete";
+      product_raw: string;
+    }
+  | {
       status: "needs_choice";
       action: ProductManagementUpdateAction;
       product_raw: string;
@@ -63,10 +72,26 @@ export type ProductManagementPreview =
       target: ProductManagementTarget;
     }
   | {
+      status: "needs_choice";
+      action: "delete";
+      product_raw: string;
+      candidates: ProductManagementCandidate[];
+    }
+  | {
       status: "ready";
       action: ProductManagementUpdateAction;
       product: ProductManagementProduct;
       target: ProductManagementTarget;
+    }
+  | {
+      status: "confirm_delete";
+      action: "delete";
+      product: ProductManagementProduct;
+    }
+  | {
+      status: "deleted";
+      action: "delete";
+      product: ProductManagementProduct;
     }
   | {
       status: "saved";

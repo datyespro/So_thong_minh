@@ -29,7 +29,7 @@ INTENT:
 - create_order: ghi đơn bán hàng cho khách.
 - record_payment: ghi khách trả tiền.
 - create_purchase: ghi nhập hàng từ nhà cung cấp.
-- manage_product: quản lý danh mục hàng hóa, gồm đổi đơn vị mặc định, đặt giá bán mặc định, hoặc thêm tên hàng mới. Không phải đơn bán/nhập.
+- manage_product: quản lý danh mục hàng hóa, gồm đổi đơn vị mặc định, đặt giá bán mặc định, thêm tên hàng mới, hoặc xóa một mặt hàng khỏi danh mục. Không phải đơn bán/nhập.
 - query_debt: hỏi công nợ.
 - query_inventory: hỏi tồn kho.
 - query_sales: hỏi doanh thu hoặc bán hàng.
@@ -39,15 +39,20 @@ INTENT:
 - unknown: không hiểu hoặc thiếu ngữ cảnh nghiêm trọng.
 
 QUẢN LÝ HÀNG HÓA:
-- Dùng manage_product khi người dùng muốn đổi đơn vị mặc định, đặt giá bán mặc định, hoặc thêm một mặt hàng vào danh mục.
+- Dùng manage_product khi người dùng muốn đổi đơn vị mặc định, đặt giá bán mặc định, thêm một mặt hàng vào danh mục, hoặc xóa một mặt hàng khỏi danh mục.
 - manage_product KHÔNG phải giao dịch bán/nhập; để customer_name=null, supplier_name=null, items=[].
 - Điền entities.product_management với action:
   - set_unit: có product_raw và unit.
   - set_price: có product_raw và sell_price.
-  - create: có product_raw; unit/sell_price chỉ điền nếu người dùng nói rõ.
+  - create: có product_raw; nếu người dùng nói rõ đơn vị hoặc giá thì BẮT BUỘC điền unit/sell_price tương ứng.
+  - delete: có product_raw; luôn để unit=null và sell_price=null.
+- "thêm/đặt hàng X" là create; "xóa/bỏ hàng X khỏi danh sách" là delete.
+- "bỏ/hủy đơn vừa ghi" là undo, KHÔNG phải delete sản phẩm.
 - Ví dụ "đổi đơn vị thép phi 12 thành cây" => manage_product, action=set_unit, product_raw="thép phi 12", unit="cây".
 - Ví dụ "đặt giá xi măng 80k" => manage_product, action=set_price, product_raw="xi măng", sell_price=80000.
 - Ví dụ "thêm hàng cát vàng" => manage_product, action=create, product_raw="cát vàng".
+- Ví dụ "tạo hàng mới: gạch block 12k một viên" => manage_product, action=create, product_raw="gạch block", unit="viên", sell_price=12000.
+- Ví dụ "xóa sản phẩm fff" => manage_product, action=delete, product_raw="fff".
 
 PHÂN BIỆT BÁN HÀNG VS NHẬP HÀNG:
 - Bối cảnh mặc định là cửa hàng vật liệu BÁN hàng cho khách. Khi câu có "mua", "lấy", "lấy hàng" và chủ ngữ là tên người/khách, hãy hiểu là khách mua của cửa hàng => intent=create_order.
@@ -132,6 +137,24 @@ customer_name: null
 supplier_name: null
 product_name: "cát vàng"
 product_management: { action: "create", product_raw: "cát vàng", unit: null, sell_price: null }
+items: []
+next_stage_hint: resolve_entities
+
+User: "xóa sản phẩm fff"
+Intent: manage_product
+customer_name: null
+supplier_name: null
+product_name: "fff"
+product_management: { action: "delete", product_raw: "fff", unit: null, sell_price: null }
+items: []
+next_stage_hint: resolve_entities
+
+User: "bỏ hàng xi măng khỏi danh sách"
+Intent: manage_product
+customer_name: null
+supplier_name: null
+product_name: "xi măng"
+product_management: { action: "delete", product_raw: "xi măng", unit: null, sell_price: null }
 items: []
 next_stage_hint: resolve_entities
 

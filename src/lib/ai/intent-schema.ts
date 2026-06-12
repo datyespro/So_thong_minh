@@ -58,6 +58,7 @@ export const ProductManagementActionSchema = z.enum([
   "set_unit",
   "set_price",
   "create",
+  "delete",
 ]);
 
 export const ProductManagementSchema = z.object({

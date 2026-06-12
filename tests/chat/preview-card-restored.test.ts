@@ -20,6 +20,7 @@ vi.mock("@/app/(app)/chat/actions", () => ({
   createSupplier: vi.fn(),
   createProduct: vi.fn(),
   createProductFromChat: vi.fn(),
+  deleteProduct: vi.fn(),
   getCustomerDebt: vi.fn(),
   persistDismissedPreviewMessage: vi.fn(),
   recreateSaleOrder: vi.fn(),

@@ -214,6 +214,34 @@ function manageProductPipeline(
   };
 }
 
+function manageProductDeletePipeline(productRaw: string): ChatPipelineResult {
+  const pipeline = manageProductPipeline({
+    action: "delete",
+    product_raw: productRaw,
+    unit: null,
+    sell_price: null,
+  });
+
+  if (!pipeline.ok) {
+    return pipeline;
+  }
+
+  const rawText = `xóa sản phẩm ${productRaw}`;
+
+  return {
+    ...pipeline,
+    extracted: {
+      ...pipeline.extracted,
+      raw_text: rawText,
+      normalized_text: rawText,
+    },
+    validated: {
+      ...pipeline.validated,
+      raw_text: rawText,
+    },
+  };
+}
+
 describe("processMessage", () => {
   beforeEach(() => {
     mocks.createClient.mockReset();
@@ -674,6 +702,101 @@ describe("processMessage", () => {
           sell_price: 90000,
         }),
       ]);
+    }
+  });
+
+  it("attaches a not_found product-management preview for delete", async () => {
+    const productPipeline = manageProductDeletePipeline("fff");
+    mocks.runChatPipeline.mockResolvedValue(productPipeline);
+    mocks.readIs.mockResolvedValue({ data: [], error: null });
+    mocks.from
+      .mockReturnValueOnce(chatInsertChain)
+      .mockReturnValueOnce(productReadChain);
+
+    const result = await processMessage("xóa sản phẩm fff");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.productManagementPreview).toEqual({
+        status: "not_found",
+        action: "delete",
+        product_raw: "fff",
+      });
+    }
+  });
+
+  it("attaches a confirm_delete preview for one resolved product", async () => {
+    const productPipeline = manageProductDeletePipeline("fff");
+    mocks.runChatPipeline.mockResolvedValue(productPipeline);
+    mocks.readIs.mockResolvedValue({
+      data: [
+        {
+          id: "product-fff",
+          name: "fff",
+          aliases: [],
+          unit: "cái",
+          sell_price: "12000",
+        },
+      ],
+      error: null,
+    });
+    mocks.from
+      .mockReturnValueOnce(chatInsertChain)
+      .mockReturnValueOnce(productReadChain);
+
+    const result = await processMessage("xóa sản phẩm fff");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.productManagementPreview).toEqual({
+        status: "confirm_delete",
+        action: "delete",
+        product: {
+          id: "product-fff",
+          name: "fff",
+          unit: "cái",
+          sell_price: 12000,
+        },
+      });
+    }
+  });
+
+  it("attaches a needs_choice delete preview without a fake update target", async () => {
+    const productPipeline = manageProductDeletePipeline("xi măng");
+    mocks.runChatPipeline.mockResolvedValue(productPipeline);
+    mocks.readIs.mockResolvedValue({
+      data: [
+        {
+          id: "product-xi-mang-a",
+          name: "Xi măng A",
+          aliases: ["xi măng"],
+          unit: "bao",
+          sell_price: "80000",
+        },
+        {
+          id: "product-xi-mang-b",
+          name: "Xi măng B",
+          aliases: ["xi măng"],
+          unit: "bao",
+          sell_price: "90000",
+        },
+      ],
+      error: null,
+    });
+    mocks.from
+      .mockReturnValueOnce(chatInsertChain)
+      .mockReturnValueOnce(productReadChain);
+
+    const result = await processMessage("xóa hàng xi măng");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.productManagementPreview).toMatchObject({
+        status: "needs_choice",
+        action: "delete",
+        product_raw: "xi măng",
+      });
+      expect(result.productManagementPreview).not.toHaveProperty("target");
     }
   });
 

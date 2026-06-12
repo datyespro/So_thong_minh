@@ -11,6 +11,7 @@ import {
   createSupplier,
   createProduct,
   createProductFromChat,
+  deleteProduct,
   getCustomerDebt,
   persistDismissedPreviewMessage,
   recreateSaleOrder,
@@ -349,6 +350,18 @@ type ProductManagementUpdatePreview = Extract<
   ProductManagementPreview,
   { action: ProductManagementUpdateAction }
 >;
+type ProductManagementConfirmDeletePreview = Extract<
+  ProductManagementPreview,
+  { status: "confirm_delete" }
+>;
+type ProductManagementDeletedPreview = Extract<
+  ProductManagementPreview,
+  { status: "deleted" }
+>;
+type ProductManagementDeletePreview = Extract<
+  ProductManagementPreview,
+  { action: "delete" }
+>;
 type ProductManagementCreateFormState = {
   name: string;
   unit: string;
@@ -432,6 +445,28 @@ export async function saveProductManagementPreview(
       action: preview.action,
       product: preview.product,
       target: preview.target,
+    },
+  };
+}
+
+export async function saveProductManagementDeletePreview(
+  preview: ProductManagementConfirmDeletePreview,
+): Promise<
+  | { ok: true; data: ProductManagementDeletedPreview }
+  | { ok: false; message: string }
+> {
+  const result = await deleteProduct(preview.product.id);
+
+  if (!result.ok) {
+    return { ok: false, message: result.message };
+  }
+
+  return {
+    ok: true,
+    data: {
+      status: "deleted",
+      action: "delete",
+      product: result.data,
     },
   };
 }
@@ -1926,6 +1961,149 @@ function ProductManagementPreviewContent({
   );
 }
 
+function ProductManagementDeletePreviewContent({
+  preview,
+  isLive,
+  isSaving,
+  isDismissed,
+  error,
+  onSelectCandidate,
+  onSave,
+  onCancel,
+}: Readonly<{
+  preview: ProductManagementDeletePreview;
+  isLive: boolean;
+  isSaving: boolean;
+  isDismissed: boolean;
+  error: string | null;
+  onSelectCandidate: (candidate: ProductManagementCandidate) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}>) {
+  if (preview.status === "not_found") {
+    return (
+      <div className={cn("flex w-full justify-start", !isLive && "opacity-70")}>
+        <div
+          className="max-w-[86%] rounded border border-dashed border-ledgerBorder bg-paperWarm px-4 py-3 text-[16px] leading-7 text-textMute shadow-none sm:max-w-[78%]"
+          data-testid="product-management-delete-not-found"
+        >
+          Em chưa thấy hàng “{preview.product_raw}” trong danh sách ạ.
+        </div>
+      </div>
+    );
+  }
+
+  const product =
+    preview.status === "confirm_delete" || preview.status === "deleted"
+      ? preview.product
+      : null;
+  const interactive =
+    isLive && preview.status === "confirm_delete" && !isDismissed;
+
+  return (
+    <div className={cn("flex w-full justify-start", !interactive && "opacity-70")}>
+      <article
+        className={cn(
+          "w-full max-w-[94%] rounded border px-4 py-4 text-textMain shadow-[var(--shadow-card)] sm:max-w-[88%]",
+          interactive
+            ? "border-ledgerBorder bg-surface"
+            : "border-ledgerBorder bg-paperWarm shadow-none",
+        )}
+        data-testid={`product-management-${preview.status}`}
+      >
+        <div className="border-b border-ledgerBorder pb-3">
+          <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-stamp">
+            manage_product
+          </p>
+          <h2 className="mt-1 font-display text-2xl font-semibold tracking-normal text-inkDeep">
+            {preview.status === "needs_choice"
+              ? "Chọn hàng cần xóa"
+              : "Xác nhận xóa hàng"}
+          </h2>
+        </div>
+
+        {preview.status === "needs_choice" ? (
+          <div className="mt-3">
+            <p className="text-[16px] leading-7 text-textMute">
+              Bác chọn đúng hàng cần xóa giúp em ạ.
+            </p>
+            <EntityChoicePanel
+              entity={productManagementChoiceEntity(preview)}
+              label="Hàng"
+              allowCreate={false}
+              onSelect={(candidate) =>
+                onSelectCandidate(candidate as ProductManagementCandidate)
+              }
+            />
+          </div>
+        ) : null}
+
+        {product ? (
+          <div className="mt-4 rounded border border-ledgerBorder bg-paper px-3 py-3">
+            <div className="grid gap-2 text-[16px] leading-7 sm:grid-cols-[140px_1fr]">
+              <p className="font-semibold text-textMute">Hàng</p>
+              <p className="font-semibold text-inkDeep">{product.name}</p>
+              <p className="font-semibold text-textMute">Đơn vị</p>
+              <p className="font-semibold">{product.unit ?? "—"}</p>
+              <p className="font-semibold text-textMute">Giá bán</p>
+              <p className="font-semibold">
+                {formatProductManagementPrice(product.sell_price)}
+              </p>
+            </div>
+          </div>
+        ) : null}
+
+        {preview.status === "deleted" && product ? (
+          <p
+            className="mt-4 flex items-center gap-2 border-t border-ledgerBorder pt-3 text-[16px] font-semibold leading-6 text-paid"
+            data-testid="product-management-deleted"
+          >
+            <Check className="h-5 w-5 shrink-0" aria-hidden="true" />
+            Đã xóa hàng {product.name} khỏi danh sách.
+          </p>
+        ) : null}
+
+        {isDismissed ? (
+          <p
+            className="mt-4 border-t border-ledgerBorder pt-3 text-[16px] font-semibold leading-6 text-textMute"
+            data-testid="product-management-delete-dismissed"
+          >
+            Đã bỏ
+          </p>
+        ) : null}
+
+        {interactive ? (
+          <div className="mt-4 flex flex-wrap gap-2 border-t border-ledgerBorder pt-3">
+            <Button
+              type="button"
+              disabled={isSaving}
+              className="h-12 rounded bg-ink px-5 text-[16px] font-semibold text-paper hover:bg-inkDeep disabled:cursor-not-allowed disabled:opacity-55"
+              onClick={onSave}
+            >
+              {isSaving ? "Đang xóa..." : "Ghi"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isSaving}
+              className="h-12 rounded border-ledgerBorder bg-surface px-5 text-[16px] font-semibold text-textMute hover:bg-paperWarm hover:text-ink disabled:cursor-not-allowed disabled:opacity-55"
+              onClick={onCancel}
+            >
+              Bỏ
+            </Button>
+          </div>
+        ) : null}
+
+        {error ? (
+          <p className="mt-2 text-[15px] leading-6 text-debt" role="alert">
+            {error}
+          </p>
+        ) : null}
+      </article>
+    </div>
+  );
+}
+
 function ProductManagementCanceledNotice({ isLive }: Readonly<{ isLive: boolean }>) {
   return (
     <div className={cn("flex w-full justify-start", !isLive && "opacity-70")}>
@@ -2152,6 +2330,8 @@ export function PreviewCard({
     );
   const [productManagementDismissed, setProductManagementDismissed] =
     React.useState(false);
+  const [productManagementDeleteDismissed, setProductManagementDeleteDismissed] =
+    React.useState(false);
   const [isSavingProductManagement, setIsSavingProductManagement] =
     React.useState(false);
   const [productManagementError, setProductManagementError] =
@@ -2254,6 +2434,7 @@ export function PreviewCard({
         : { name: "", unit: "cái", sellPriceInput: "" },
     );
     setProductManagementDismissed(false);
+    setProductManagementDeleteDismissed(false);
     setIsSavingProductManagement(false);
     setProductManagementError(null);
   }, [productManagementPreview]);
@@ -2295,12 +2476,22 @@ export function PreviewCard({
       return;
     }
 
-    setProductManagementState({
-      status: "ready",
-      action: productManagementState.action,
-      product: productManagementProductFromCandidate(candidate),
-      target: productManagementState.target,
-    });
+    const product = productManagementProductFromCandidate(candidate);
+
+    setProductManagementState(
+      productManagementState.action === "delete"
+        ? {
+            status: "confirm_delete",
+            action: "delete",
+            product,
+          }
+        : {
+            status: "ready",
+            action: productManagementState.action,
+            product,
+            target: productManagementState.target,
+          },
+    );
     setProductManagementError(null);
 
     if (shouldLearnAlias(productManagementState.product_raw, candidate.name)) {
@@ -2381,6 +2572,36 @@ export function PreviewCard({
     }
   }
 
+  async function handleDeleteProductManagement() {
+    if (
+      productManagementState?.status !== "confirm_delete" ||
+      isSavingProductManagement
+    ) {
+      return;
+    }
+
+    setIsSavingProductManagement(true);
+    setProductManagementError(null);
+
+    try {
+      const result = await saveProductManagementDeletePreview(
+        productManagementState,
+      );
+
+      if (!result.ok) {
+        setProductManagementError(result.message);
+        return;
+      }
+
+      setProductManagementState(result.data);
+    } catch (error) {
+      console.error("deleteProduct from chat preview failed", error);
+      setProductManagementError("Chưa xóa được hàng, bác thử lại ạ.");
+    } finally {
+      setIsSavingProductManagement(false);
+    }
+  }
+
   function handleCancelProductManagement() {
     if (isSavingProductManagement) {
       return;
@@ -2390,11 +2611,35 @@ export function PreviewCard({
     setProductManagementError(null);
   }
 
+  function handleCancelProductManagementDelete() {
+    if (isSavingProductManagement) {
+      return;
+    }
+
+    setProductManagementDeleteDismissed(true);
+    setProductManagementError(null);
+  }
+
   if (productManagementPreview && productManagementDismissed) {
     return <ProductManagementCanceledNotice isLive={liveInteractions} />;
   }
 
   if (productManagementState) {
+    if (productManagementState.action === "delete") {
+      return (
+        <ProductManagementDeletePreviewContent
+          preview={productManagementState}
+          isLive={liveInteractions}
+          isSaving={isSavingProductManagement}
+          isDismissed={productManagementDeleteDismissed}
+          error={productManagementError}
+          onSelectCandidate={handleSelectProductManagementCandidate}
+          onSave={() => void handleDeleteProductManagement()}
+          onCancel={handleCancelProductManagementDelete}
+        />
+      );
+    }
+
     if (
       productManagementState.status === "create_draft" ||
       productManagementState.status === "create_duplicate" ||
