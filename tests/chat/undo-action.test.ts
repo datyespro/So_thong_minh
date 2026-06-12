@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   rpc: vi.fn(),
   from: vi.fn(),
   insert: vi.fn(),
+  updateAiInteractionOutcome: vi.fn(),
 }));
 
 vi.mock("@/src/lib/supabase/server", () => ({
@@ -15,6 +16,16 @@ vi.mock("@/src/lib/supabase/server", () => ({
   })),
 }));
 
+vi.mock("@/src/lib/ai/interaction-log", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/src/lib/ai/interaction-log")>();
+
+  return {
+    ...actual,
+    updateAiInteractionOutcome: mocks.updateAiInteractionOutcome,
+  };
+});
+
 const { undoCommit } = await import("@/app/(app)/chat/actions");
 
 describe("undoCommit", () => {
@@ -23,6 +34,7 @@ describe("undoCommit", () => {
     mocks.rpc.mockReset();
     mocks.from.mockReset();
     mocks.insert.mockReset();
+    mocks.updateAiInteractionOutcome.mockReset();
 
     mocks.getUser.mockResolvedValue({
       data: { user: { id: "user-a" } },
@@ -34,6 +46,7 @@ describe("undoCommit", () => {
     });
     mocks.insert.mockResolvedValue({ error: null });
     mocks.from.mockReturnValue({ insert: mocks.insert });
+    mocks.updateAiInteractionOutcome.mockResolvedValue(undefined);
   });
 
   it("routes order/payment/purchase to the right rpc and logs undo telemetry", async () => {
@@ -52,6 +65,18 @@ describe("undoCommit", () => {
     expect(mocks.insert).toHaveBeenLastCalledWith({
       owner_id: "user-a",
       event_type: "undo",
+    });
+  });
+
+  it("marks the AI interaction undone when aiTurnId is present", async () => {
+    const result = await undoCommit("order", "order-1", "turn-order");
+
+    expect(result.ok).toBe(true);
+    expect(mocks.updateAiInteractionOutcome).toHaveBeenCalledWith({
+      supabase: expect.objectContaining({ from: mocks.from }),
+      ownerId: "user-a",
+      aiTurnId: "turn-order",
+      outcome: "undone",
     });
   });
 

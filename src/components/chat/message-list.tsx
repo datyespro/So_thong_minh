@@ -162,6 +162,7 @@ export function MessageList({
                   answer={turn.answer ?? null}
                   productManagementPreview={turn.productManagementPreview ?? null}
                   terminalText={turn.terminalText ?? null}
+                  aiTurnId={turn.aiTurnId ?? null}
                   patched={turn.patched}
                   ownerId={ownerId}
                   isLive={turn.id === activeTurnId}

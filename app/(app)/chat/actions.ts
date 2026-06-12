@@ -19,7 +19,10 @@ import {
   runChatPipeline,
   type ChatPipelineResult,
 } from "@/src/lib/ai/chat-pipeline";
-import { logAiInteraction } from "@/src/lib/ai/interaction-log";
+import {
+  logAiInteraction,
+  updateAiInteractionOutcome,
+} from "@/src/lib/ai/interaction-log";
 import {
   answerQuery,
   type QueryAnswer,
@@ -194,6 +197,7 @@ export async function persistDismissedPreviewMessage(
     intent: string;
     content: string;
     card: unknown;
+    ai_turn_id?: string;
   }>,
 ): Promise<ActionResult<null>> {
   const supabase = await createClient();
@@ -227,6 +231,13 @@ export async function persistDismissedPreviewMessage(
     intent: input.intent,
     metadata: card ? { card } : undefined,
     source: "tip_22_dismiss",
+  });
+
+  await updateAiInteractionOutcome({
+    supabase,
+    ownerId: user.id,
+    aiTurnId: input.ai_turn_id,
+    outcome: "dismissed",
   });
 
   return { ok: true, data: null };
@@ -1831,6 +1842,7 @@ export type CommitOrderInput = Readonly<{
   customer_name?: string | null;
   raw_input: string;
   business_date?: string | null;
+  ai_turn_id?: string;
   items: CommitOrderItemInput[];
 }>;
 
@@ -2051,6 +2063,13 @@ export async function commitOrder(
     .from("usage_events")
     .insert({ owner_id: user.id, event_type: "order_created" });
 
+  await updateAiInteractionOutcome({
+    supabase,
+    ownerId: user.id,
+    aiTurnId: input.ai_turn_id,
+    outcome: "committed",
+  });
+
   if (telemetry.error) {
     console.error("usage_events insert failed", telemetry.error);
   }
@@ -2263,6 +2282,7 @@ export type CommitPaymentInput = Readonly<{
   customer_name?: string | null;
   amount: number;
   raw_input: string;
+  ai_turn_id?: string;
 }>;
 
 export type CommitPaymentView = {
@@ -2329,6 +2349,13 @@ export async function commitPayment(
     .from("usage_events")
     .insert({ owner_id: user.id, event_type: "payment_created" });
 
+  await updateAiInteractionOutcome({
+    supabase,
+    ownerId: user.id,
+    aiTurnId: input.ai_turn_id,
+    outcome: "committed",
+  });
+
   if (telemetry.error) {
     console.error("usage_events insert failed", telemetry.error);
   }
@@ -2380,6 +2407,7 @@ export type CommitPurchaseInput = Readonly<{
   supplier_name?: string | null;
   raw_input: string;
   business_date?: string | null;
+  ai_turn_id?: string;
   items: CommitPurchaseItemInput[];
 }>;
 
@@ -2502,6 +2530,13 @@ export async function commitPurchase(
     .from("usage_events")
     .insert({ owner_id: user.id, event_type: "purchase_created" });
 
+  await updateAiInteractionOutcome({
+    supabase,
+    ownerId: user.id,
+    aiTurnId: input.ai_turn_id,
+    outcome: "committed",
+  });
+
   if (telemetry.error) {
     console.error("usage_events insert failed", telemetry.error);
   }
@@ -2595,6 +2630,7 @@ type UndoRpcResult = {
 export async function undoCommit(
   target: UndoTarget,
   id: string,
+  aiTurnId?: string,
 ): Promise<ActionResult<UndoView>> {
   const supabase = await createClient();
   const {
@@ -2628,6 +2664,13 @@ export async function undoCommit(
   const telemetry = await supabase
     .from("usage_events")
     .insert({ owner_id: user.id, event_type: "undo" });
+
+  await updateAiInteractionOutcome({
+    supabase,
+    ownerId: user.id,
+    aiTurnId,
+    outcome: "undone",
+  });
 
   if (telemetry.error) {
     console.error("usage_events insert failed", telemetry.error);

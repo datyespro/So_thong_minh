@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   rpc: vi.fn(),
   from: vi.fn(),
   insert: vi.fn(),
+  updateAiInteractionOutcome: vi.fn(),
 }));
 
 vi.mock("@/src/lib/supabase/server", () => ({
@@ -14,6 +15,16 @@ vi.mock("@/src/lib/supabase/server", () => ({
     from: mocks.from,
   })),
 }));
+
+vi.mock("@/src/lib/ai/interaction-log", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/src/lib/ai/interaction-log")>();
+
+  return {
+    ...actual,
+    updateAiInteractionOutcome: mocks.updateAiInteractionOutcome,
+  };
+});
 
 const { commitPayment } = await import("@/app/(app)/chat/actions");
 
@@ -51,6 +62,7 @@ describe("commitPayment", () => {
     mocks.rpc.mockReset();
     mocks.from.mockReset();
     mocks.insert.mockReset();
+    mocks.updateAiInteractionOutcome.mockReset();
 
     mocks.getUser.mockResolvedValue({
       data: { user: { id: "user-a" } },
@@ -65,6 +77,7 @@ describe("commitPayment", () => {
       },
       error: null,
     });
+    mocks.updateAiInteractionOutcome.mockResolvedValue(undefined);
     historyPaymentBuilder = makeMaybeSingleBuilder({
       data: {
         customer_id: "cust-1",
@@ -143,6 +156,21 @@ describe("commitPayment", () => {
     });
   });
 
+  it("marks the AI interaction committed when ai_turn_id is present", async () => {
+    const result = await commitPayment({
+      ...validInput,
+      ai_turn_id: "turn-payment",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(mocks.updateAiInteractionOutcome).toHaveBeenCalledWith({
+      supabase: expect.objectContaining({ from: mocks.from }),
+      ownerId: "user-a",
+      aiTurnId: "turn-payment",
+      outcome: "committed",
+    });
+  });
+
   it("does not persist assistant text when the rpc reuses an existing payment", async () => {
     mocks.rpc.mockResolvedValue({
       data: {
@@ -154,7 +182,10 @@ describe("commitPayment", () => {
       error: null,
     });
 
-    const result = await commitPayment(validInput);
+    const result = await commitPayment({
+      ...validInput,
+      ai_turn_id: "turn-payment-reuse",
+    });
 
     expect(result).toEqual({
       ok: true,
@@ -162,6 +193,12 @@ describe("commitPayment", () => {
     });
     expect(mocks.from).not.toHaveBeenCalledWith("chat_messages");
     expect(mocks.insert).toHaveBeenCalledTimes(1);
+    expect(mocks.updateAiInteractionOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({
+        aiTurnId: "turn-payment-reuse",
+        outcome: "committed",
+      }),
+    );
   });
 
   it("maps the overpayment guard to a friendly blocking message", async () => {

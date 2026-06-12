@@ -146,6 +146,7 @@ export function ChatContainer({
           answer: result.answer ?? null,
           productManagementPreview: result.productManagementPreview ?? null,
           terminalText: result.terminalText ?? null,
+          aiTurnId: result.turnId ?? null,
           patched: createEmptyPreviewCardPatch(),
         },
       ]);

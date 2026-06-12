@@ -101,6 +101,7 @@ type PreviewCardProps = Readonly<{
   answer?: QueryAnswer | null;
   productManagementPreview?: ProductManagementPreview | null;
   terminalText?: string | null;
+  aiTurnId?: string | null;
   patched: PreviewCardPatch;
   ownerId?: string;
   isLive: boolean;
@@ -2076,6 +2077,7 @@ export function PreviewCard({
   answer = null,
   productManagementPreview = null,
   terminalText = null,
+  aiTurnId = null,
   patched,
   ownerId,
   isLive,
@@ -3009,6 +3011,7 @@ export function PreviewCard({
 
     try {
       const result = await commitOrder({
+        ...(aiTurnId ? { ai_turn_id: aiTurnId } : {}),
         idempotency_key: idempotencyKey,
         customer_id: customerId,
         customer_name: entityName,
@@ -3070,6 +3073,7 @@ export function PreviewCard({
 
     try {
       const result = await commitPayment({
+        ...(aiTurnId ? { ai_turn_id: aiTurnId } : {}),
         idempotency_key: idempotencyKey,
         customer_id: customerId,
         customer_name: entityName,
@@ -3142,6 +3146,7 @@ export function PreviewCard({
       const supplierName = counterpartyName(state.supplier);
 
       const result = await commitPurchase({
+        ...(aiTurnId ? { ai_turn_id: aiTurnId } : {}),
         idempotency_key: idempotencyKey,
         supplier_id: state.supplier?.resolved_id ?? null,
         supplier_name: supplierName,
@@ -3246,6 +3251,7 @@ export function PreviewCard({
     }
 
     void persistDismissedPreviewMessage({
+      ...(aiTurnId ? { ai_turn_id: aiTurnId } : {}),
       intent,
       content,
       card,
@@ -3431,7 +3437,11 @@ export function PreviewCard({
     setResaveError(null);
 
     try {
-      const result = await undoCommit(target, committedInfo.id);
+      const result = await undoCommit(
+        target,
+        committedInfo.id,
+        aiTurnId ?? undefined,
+      );
 
       if (!result.ok) {
         setUndoError(result.message);

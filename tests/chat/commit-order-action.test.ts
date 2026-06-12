@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   dateSelect: vi.fn(),
   dateEq: vi.fn(),
   dateMaybeSingle: vi.fn(),
+  updateAiInteractionOutcome: vi.fn(),
 }));
 
 vi.mock("@/src/lib/supabase/server", () => ({
@@ -17,6 +18,16 @@ vi.mock("@/src/lib/supabase/server", () => ({
     from: mocks.from,
   })),
 }));
+
+vi.mock("@/src/lib/ai/interaction-log", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/src/lib/ai/interaction-log")>();
+
+  return {
+    ...actual,
+    updateAiInteractionOutcome: mocks.updateAiInteractionOutcome,
+  };
+});
 
 const { commitOrder } = await import("@/app/(app)/chat/actions");
 
@@ -81,6 +92,7 @@ describe("commitOrder", () => {
     mocks.dateSelect.mockReset();
     mocks.dateEq.mockReset();
     mocks.dateMaybeSingle.mockReset();
+    mocks.updateAiInteractionOutcome.mockReset();
 
     const dateBuilder = {
       select: mocks.dateSelect,
@@ -108,6 +120,7 @@ describe("commitOrder", () => {
       data: { business_date: "2026-06-02" },
       error: null,
     });
+    mocks.updateAiInteractionOutcome.mockResolvedValue(undefined);
     historyOrderBuilder = makeMaybeSingleBuilder({
       data: {
         customer_id: "cust-1",
@@ -247,6 +260,21 @@ describe("commitOrder", () => {
     });
   });
 
+  it("marks the AI interaction committed when ai_turn_id is present", async () => {
+    const result = await commitOrder({
+      ...validInput,
+      ai_turn_id: "turn-order",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(mocks.updateAiInteractionOutcome).toHaveBeenCalledWith({
+      supabase: expect.objectContaining({ from: mocks.from }),
+      ownerId: "user-a",
+      aiTurnId: "turn-order",
+      outcome: "committed",
+    });
+  });
+
   it("keeps assistant text metadata when history card snapshot build fails", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     historyOrderBuilder.maybeSingle.mockResolvedValueOnce({
@@ -286,7 +314,10 @@ describe("commitOrder", () => {
       error: null,
     });
 
-    const result = await commitOrder(validInput);
+    const result = await commitOrder({
+      ...validInput,
+      ai_turn_id: "turn-order-reuse",
+    });
 
     expect(result).toEqual({
       ok: true,
@@ -303,6 +334,12 @@ describe("commitOrder", () => {
       owner_id: "user-a",
       event_type: "order_created",
     });
+    expect(mocks.updateAiInteractionOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({
+        aiTurnId: "turn-order-reuse",
+        outcome: "committed",
+      }),
+    );
   });
 
   it("keeps the committed response ok when assistant persistence fails", async () => {

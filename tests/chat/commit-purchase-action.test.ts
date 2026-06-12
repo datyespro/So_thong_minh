@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   dateSelect: vi.fn(),
   dateEq: vi.fn(),
   dateMaybeSingle: vi.fn(),
+  updateAiInteractionOutcome: vi.fn(),
 }));
 
 vi.mock("@/src/lib/supabase/server", () => ({
@@ -17,6 +18,16 @@ vi.mock("@/src/lib/supabase/server", () => ({
     from: mocks.from,
   })),
 }));
+
+vi.mock("@/src/lib/ai/interaction-log", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/src/lib/ai/interaction-log")>();
+
+  return {
+    ...actual,
+    updateAiInteractionOutcome: mocks.updateAiInteractionOutcome,
+  };
+});
 
 const { commitPurchase } = await import("@/app/(app)/chat/actions");
 
@@ -80,6 +91,7 @@ describe("commitPurchase", () => {
     mocks.dateSelect.mockReset();
     mocks.dateEq.mockReset();
     mocks.dateMaybeSingle.mockReset();
+    mocks.updateAiInteractionOutcome.mockReset();
 
     const dateBuilder = {
       select: mocks.dateSelect,
@@ -106,6 +118,7 @@ describe("commitPurchase", () => {
       data: { business_date: "2026-06-02" },
       error: null,
     });
+    mocks.updateAiInteractionOutcome.mockResolvedValue(undefined);
     historyPurchaseBuilder = makeMaybeSingleBuilder({
       data: {
         supplier_id: null,
@@ -238,6 +251,21 @@ describe("commitPurchase", () => {
     });
   });
 
+  it("marks the AI interaction committed when ai_turn_id is present", async () => {
+    const result = await commitPurchase({
+      ...validInput,
+      ai_turn_id: "turn-purchase",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(mocks.updateAiInteractionOutcome).toHaveBeenCalledWith({
+      supabase: expect.objectContaining({ from: mocks.from }),
+      ownerId: "user-a",
+      aiTurnId: "turn-purchase",
+      outcome: "committed",
+    });
+  });
+
   it("passes a supplier id through when present", async () => {
     historyPurchaseBuilder.maybeSingle.mockResolvedValueOnce({
       data: {
@@ -297,7 +325,10 @@ describe("commitPurchase", () => {
       error: null,
     });
 
-    const result = await commitPurchase(validInput);
+    const result = await commitPurchase({
+      ...validInput,
+      ai_turn_id: "turn-purchase-reuse",
+    });
 
     expect(result).toEqual({
       ok: true,
@@ -309,6 +340,12 @@ describe("commitPurchase", () => {
     });
     expect(mocks.from).not.toHaveBeenCalledWith("chat_messages");
     expect(mocks.insert).toHaveBeenCalledTimes(1);
+    expect(mocks.updateAiInteractionOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({
+        aiTurnId: "turn-purchase-reuse",
+        outcome: "committed",
+      }),
+    );
   });
 
   it("rejects an empty purchase without calling the rpc", async () => {

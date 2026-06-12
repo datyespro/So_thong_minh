@@ -103,6 +103,7 @@ export type PipelineTurnView = {
   answer?: QueryAnswer | null;
   productManagementPreview?: ProductManagementPreview | null;
   terminalText?: string | null;
+  aiTurnId?: string | null;
   patched: PreviewCardPatch;
 };
 

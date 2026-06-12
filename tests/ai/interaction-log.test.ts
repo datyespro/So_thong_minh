@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatPipelineResult } from "@/src/lib/ai/chat-pipeline";
 import type { ExtractedIntent } from "@/src/lib/ai/intent-schema";
 import type { ValidatedIntent } from "@/src/lib/ai/validate-schema";
-import { logAiInteraction } from "@/src/lib/ai/interaction-log";
+import {
+  logAiInteraction,
+  updateAiInteractionOutcome,
+} from "@/src/lib/ai/interaction-log";
 
 const originalAiModel = process.env.AI_MODEL;
 type SuccessfulPipeline = Extract<ChatPipelineResult, { ok: true }>;
@@ -214,6 +217,103 @@ describe("logAiInteraction", () => {
     expect(warnSpy).toHaveBeenCalledWith(
       "Failed to log AI interaction",
       insertError,
+    );
+  });
+});
+
+describe("updateAiInteractionOutcome", () => {
+  const update = vi.fn();
+  const eq = vi.fn();
+  const builder = { update, eq };
+  const from = vi.fn(() => builder);
+  const supabase = {
+    from,
+  } as unknown as Parameters<typeof updateAiInteractionOutcome>[0]["supabase"];
+
+  beforeEach(() => {
+    update.mockReset();
+    eq.mockReset();
+    from.mockClear();
+    update.mockReturnValue(builder);
+    eq.mockReturnValueOnce(builder).mockResolvedValueOnce({ error: null });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("updates outcome with owner and turn scopes", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-12T04:30:00.000Z"));
+
+    await updateAiInteractionOutcome({
+      supabase,
+      ownerId: "owner-a",
+      aiTurnId: "turn-a",
+      outcome: "committed",
+    });
+
+    expect(from).toHaveBeenCalledWith("ai_interactions");
+    expect(update).toHaveBeenCalledWith({
+      outcome: "committed",
+      outcome_at: "2026-06-12T04:30:00.000Z",
+    });
+    expect(eq).toHaveBeenNthCalledWith(1, "owner_id", "owner-a");
+    expect(eq).toHaveBeenNthCalledWith(2, "turn_id", "turn-a");
+  });
+
+  it("skips the update when aiTurnId is missing", async () => {
+    await updateAiInteractionOutcome({
+      supabase,
+      ownerId: "owner-a",
+      aiTurnId: null,
+      outcome: "dismissed",
+    });
+
+    expect(from).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("warns without throwing when Supabase returns an update error", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    eq.mockReset();
+    eq.mockReturnValueOnce(builder).mockResolvedValueOnce({
+      error: { code: "42501", message: "RLS denied" },
+    });
+
+    await expect(
+      updateAiInteractionOutcome({
+        supabase,
+        ownerId: "owner-a",
+        aiTurnId: "turn-a",
+        outcome: "undone",
+      }),
+    ).resolves.toBeUndefined();
+    expect(warnSpy).toHaveBeenCalledWith(
+      "Failed to update AI interaction outcome",
+      { code: "42501", message: "RLS denied" },
+    );
+  });
+
+  it("warns without throwing when the update throws", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const updateError = new Error("network unavailable");
+    update.mockImplementationOnce(() => {
+      throw updateError;
+    });
+
+    await expect(
+      updateAiInteractionOutcome({
+        supabase,
+        ownerId: "owner-a",
+        aiTurnId: "turn-a",
+        outcome: "dismissed",
+      }),
+    ).resolves.toBeUndefined();
+    expect(warnSpy).toHaveBeenCalledWith(
+      "Failed to update AI interaction outcome",
+      updateError,
     );
   });
 });

@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   getUser: vi.fn(),
   from: vi.fn(),
   insert: vi.fn(),
+  updateAiInteractionOutcome: vi.fn(),
 }));
 
 vi.mock("@/src/lib/supabase/server", () => ({
@@ -12,6 +13,16 @@ vi.mock("@/src/lib/supabase/server", () => ({
     from: mocks.from,
   })),
 }));
+
+vi.mock("@/src/lib/ai/interaction-log", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/src/lib/ai/interaction-log")>();
+
+  return {
+    ...actual,
+    updateAiInteractionOutcome: mocks.updateAiInteractionOutcome,
+  };
+});
 
 const { persistDismissedPreviewMessage } = await import("@/app/(app)/chat/actions");
 
@@ -32,6 +43,7 @@ describe("persistDismissedPreviewMessage", () => {
     mocks.getUser.mockReset();
     mocks.from.mockReset();
     mocks.insert.mockReset();
+    mocks.updateAiInteractionOutcome.mockReset();
 
     mocks.getUser.mockResolvedValue({
       data: { user: { id: "user-a" } },
@@ -39,6 +51,7 @@ describe("persistDismissedPreviewMessage", () => {
     });
     mocks.from.mockReturnValue({ insert: mocks.insert });
     mocks.insert.mockResolvedValue({ error: null });
+    mocks.updateAiInteractionOutcome.mockResolvedValue(undefined);
   });
 
   it("requires auth and does not insert", async () => {
@@ -79,6 +92,23 @@ describe("persistDismissedPreviewMessage", () => {
         card: validCard,
         source: "tip_22_dismiss",
       },
+    });
+  });
+
+  it("marks the AI interaction dismissed when ai_turn_id is present", async () => {
+    const result = await persistDismissedPreviewMessage({
+      intent: "record_payment",
+      content: "Đã bỏ thu nợ của chị Lan",
+      card: validCard,
+      ai_turn_id: "turn-payment",
+    });
+
+    expect(result).toEqual({ ok: true, data: null });
+    expect(mocks.updateAiInteractionOutcome).toHaveBeenCalledWith({
+      supabase: expect.objectContaining({ from: mocks.from }),
+      ownerId: "user-a",
+      aiTurnId: "turn-payment",
+      outcome: "dismissed",
     });
   });
 

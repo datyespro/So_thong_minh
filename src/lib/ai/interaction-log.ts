@@ -64,3 +64,39 @@ export async function logAiInteraction({
 
   return turnId;
 }
+
+export async function updateAiInteractionOutcome({
+  supabase,
+  ownerId,
+  aiTurnId,
+  outcome,
+}: {
+  supabase: InteractionLogSupabaseClient;
+  ownerId: string;
+  aiTurnId: string | null | undefined;
+  outcome: "committed" | "dismissed" | "undone";
+}): Promise<void> {
+  if (!aiTurnId) {
+    return;
+  }
+
+  try {
+    const { error } = await supabase
+      .from("ai_interactions")
+      .update({
+        outcome,
+        outcome_at: new Date().toISOString(),
+      })
+      .eq("owner_id", ownerId)
+      .eq("turn_id", aiTurnId);
+
+    if (error) {
+      console.warn("Failed to update AI interaction outcome", {
+        code: error.code,
+        message: error.message,
+      });
+    }
+  } catch (error) {
+    console.warn("Failed to update AI interaction outcome", error);
+  }
+}
