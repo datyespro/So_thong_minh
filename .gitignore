@@ -27,6 +27,8 @@ key.txt
 
 # local notes / handoff drafts
 /y tuong/
+/temps/
+/.claude/launch.json
 
 # Supabase local runtime
 supabase/.branches/

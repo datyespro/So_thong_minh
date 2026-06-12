@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   select: vi.fn(),
   single: vi.fn(),
   runChatPipeline: vi.fn(),
+  logAiInteraction: vi.fn(),
   answerQuery: vi.fn(),
   generateSmallTalkReply: vi.fn(),
 }));
@@ -43,6 +44,10 @@ vi.mock("@/src/lib/ai/chat-pipeline", async (importOriginal) => {
     runChatPipeline: mocks.runChatPipeline,
   };
 });
+
+vi.mock("@/src/lib/ai/interaction-log", () => ({
+  logAiInteraction: mocks.logAiInteraction,
+}));
 
 vi.mock("@/src/lib/ai/answer-query", async (importOriginal) => {
   const actual =
@@ -136,6 +141,7 @@ describe("processMessage small_talk LLM branch (tip 25b)", () => {
     mocks.select.mockReset();
     mocks.single.mockReset();
     mocks.runChatPipeline.mockReset();
+    mocks.logAiInteraction.mockReset();
     mocks.answerQuery.mockReset();
     mocks.generateSmallTalkReply.mockReset();
 
@@ -152,6 +158,7 @@ describe("processMessage small_talk LLM branch (tip 25b)", () => {
       error: null,
     });
     mocks.generateSmallTalkReply.mockResolvedValue(null);
+    mocks.logAiInteraction.mockResolvedValue(undefined);
   });
 
   it("persists the LLM reply with tip_25b source and returns terminalText", async () => {

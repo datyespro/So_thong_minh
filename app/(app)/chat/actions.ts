@@ -19,6 +19,7 @@ import {
   runChatPipeline,
   type ChatPipelineResult,
 } from "@/src/lib/ai/chat-pipeline";
+import { logAiInteraction } from "@/src/lib/ai/interaction-log";
 import {
   answerQuery,
   type QueryAnswer,
@@ -122,6 +123,7 @@ export type ProcessMessageResult =
       answer?: QueryAnswer | null;
       productManagementPreview?: ProductManagementPreview | null;
       terminalText?: string | null;
+      turnId?: string;
     }
   | { ok: false; code: string; message: string };
 
@@ -2667,10 +2669,19 @@ export async function processMessage(
     };
   }
 
+  const t0 = Date.now();
   const pipeline = await runChatPipeline({
     rawText: saved.data.content,
     ownerId: user.id,
     supabase,
+  });
+  const latencyMs = Date.now() - t0;
+  const turnId = await logAiInteraction({
+    supabase,
+    ownerId: user.id,
+    rawText: saved.data.content,
+    pipeline,
+    latencyMs,
   });
 
   const answer =
@@ -2714,5 +2725,6 @@ export async function processMessage(
       ? { productManagementPreview: productManagementPreviewResult.data }
       : {}),
     ...(terminalText ? { terminalText } : {}),
+    ...(turnId ? { turnId } : {}),
   };
 }

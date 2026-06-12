@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   readIs: vi.fn(),
   single: vi.fn(),
   runChatPipeline: vi.fn(),
+  logAiInteraction: vi.fn(),
   answerQuery: vi.fn(),
 }));
 
@@ -51,6 +52,10 @@ vi.mock("@/src/lib/ai/chat-pipeline", async (importOriginal) => {
     runChatPipeline: mocks.runChatPipeline,
   };
 });
+
+vi.mock("@/src/lib/ai/interaction-log", () => ({
+  logAiInteraction: mocks.logAiInteraction,
+}));
 
 vi.mock("@/src/lib/ai/answer-query", async (importOriginal) => {
   const actual =
@@ -222,6 +227,7 @@ describe("processMessage", () => {
     mocks.readIs.mockReset();
     mocks.single.mockReset();
     mocks.runChatPipeline.mockReset();
+    mocks.logAiInteraction.mockReset();
     mocks.answerQuery.mockReset();
 
     mocks.createClient.mockResolvedValue(supabase);
@@ -240,6 +246,7 @@ describe("processMessage", () => {
       error: null,
     });
     mocks.runChatPipeline.mockResolvedValue(pipelineResult);
+    mocks.logAiInteraction.mockResolvedValue(undefined);
   });
 
   it("returns the save failure and does not run pipeline", async () => {
@@ -280,6 +287,26 @@ describe("processMessage", () => {
       supabase,
     });
     expect(mocks.answerQuery).not.toHaveBeenCalled();
+  });
+
+  it("returns turnId from the best-effort interaction log", async () => {
+    mocks.logAiInteraction.mockResolvedValue("turn-123");
+
+    const result = await processMessage("anh Hùng mua 20 bao xi măng");
+
+    expect(result).toEqual({
+      ok: true,
+      userMessage,
+      pipeline: pipelineResult,
+      turnId: "turn-123",
+    });
+    expect(mocks.logAiInteraction).toHaveBeenCalledWith({
+      supabase,
+      ownerId: "user-a",
+      rawText: "anh Hùng mua 20 bao xi măng",
+      pipeline: pipelineResult,
+      latencyMs: expect.any(Number),
+    });
   });
 
   it("keeps the saved user message when pipeline returns a friendly error", async () => {
@@ -472,6 +499,36 @@ describe("processMessage", () => {
     expect(mocks.readEq).toHaveBeenCalledWith("is_active", true);
     expect(mocks.readIs).toHaveBeenCalledWith("deleted_at", null);
     expect(mocks.insert).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs the pipeline before a product-management preview failure returns", async () => {
+    const productPipeline = manageProductPipeline({
+      action: "set_unit",
+      product_raw: "xi măng",
+      unit: "bao",
+      sell_price: null,
+    });
+    mocks.runChatPipeline.mockResolvedValue(productPipeline);
+    mocks.logAiInteraction.mockResolvedValue("turn-before-preview-error");
+    mocks.readIs.mockResolvedValue({
+      data: null,
+      error: { code: "42501", message: "RLS denied" },
+    });
+    mocks.from
+      .mockReturnValueOnce(chatInsertChain)
+      .mockReturnValueOnce(productReadChain);
+
+    const result = await processMessage("đổi đơn vị xi măng thành bao");
+
+    expect(result).toEqual({
+      ok: false,
+      code: "db_error",
+      message: "Chưa tìm được hàng, bác thử lại ạ.",
+    });
+    expect(mocks.logAiInteraction).toHaveBeenCalledTimes(1);
+    expect(mocks.logAiInteraction.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.readIs.mock.invocationCallOrder[0],
+    );
   });
 
   it("attaches a ready product-management preview for a 1-match set_unit", async () => {
