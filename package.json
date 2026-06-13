@@ -2,6 +2,10 @@
   "name": "so-thong-minh",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22.13 <23"
+  },
+  "packageManager": "pnpm@11.4.0",
   "scripts": {
     "dev": "next dev",
     "build": "node scripts/safe-next-build.mjs",
