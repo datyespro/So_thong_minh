@@ -375,4 +375,86 @@ describe("MessageList", () => {
 
     expect(html).toContain("Khách lẻ");
   });
+
+  it("renders a persisted manage_product card as one read-only card", () => {
+    const message: ChatMessageView = {
+      id: "message-product",
+      role: "assistant",
+      content: "Đã xóa hàng fff khỏi danh sách.",
+      created_at: "2026-06-12T09:37:31.000Z",
+      metadata: {
+        source: "tip_33_product",
+        card: {
+          v: 1,
+          kind: "manage_product",
+          action: "delete",
+          status: "deleted",
+          product_name: "fff",
+          product_raw: null,
+          unit: "m³",
+          sell_price: null,
+        },
+      },
+    };
+    const html = renderMessageList({
+      messages: [message],
+      pipelineTurns: [
+        {
+          id: "turn-product",
+          userMessageId: message.id,
+          validated: baseValidated({
+            intent: "manage_product",
+            kind: "none",
+            items: [],
+            effective_amount: null,
+            ready_for_preview: false,
+          }),
+          productManagementPreview: {
+            status: "confirm_delete",
+            action: "delete",
+            product: {
+              id: "product-fff",
+              name: "fff",
+              unit: "m³",
+              sell_price: null,
+            },
+          },
+          patched: createEmptyPreviewCardPatch(),
+        },
+      ],
+      activeTurnId: "turn-product",
+    });
+
+    expect(html).toContain('data-testid="history-product-card"');
+    expect(html).toContain("Đã xóa hàng fff khỏi danh sách.");
+    expect(html).not.toContain('data-testid="product-management-confirm_delete"');
+    expect(html.match(/data-testid="history-product-card"/g) ?? []).toHaveLength(1);
+    expect(html).not.toContain(">Ghi</button>");
+    expect(html).not.toContain(">Bỏ</button>");
+  });
+
+  it("keeps invalid manage_product card metadata as a normal bubble", () => {
+    const html = renderMessageList({
+      messages: [
+        {
+          id: "message-product-invalid",
+          role: "assistant",
+          content: "Đã bỏ, chưa lưu vào danh sách.",
+          created_at: "2026-06-12T09:40:00.000Z",
+          metadata: {
+            source: "tip_33_product",
+            card: {
+              v: 1,
+              kind: "manage_product",
+              action: "delete",
+              status: "confirm_delete",
+            },
+          },
+        },
+      ],
+    });
+
+    expect(html).not.toContain('data-testid="history-product-card"');
+    expect(html).toContain("Đã bỏ, chưa lưu vào danh sách.");
+  });
 });

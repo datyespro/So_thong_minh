@@ -526,7 +526,26 @@ describe("processMessage", () => {
     expect(mocks.readEq).toHaveBeenCalledWith("owner_id", "user-a");
     expect(mocks.readEq).toHaveBeenCalledWith("is_active", true);
     expect(mocks.readIs).toHaveBeenCalledWith("deleted_at", null);
-    expect(mocks.insert).toHaveBeenCalledTimes(1);
+    expect(mocks.insert).toHaveBeenCalledTimes(2);
+    expect(mocks.insert.mock.calls[1][0]).toEqual({
+      owner_id: "user-a",
+      role: "assistant",
+      content: "Em chưa thấy hàng 'gạch siêu lạ' trong danh sách ạ.",
+      intent: "manage_product",
+      metadata: {
+        card: {
+          v: 1,
+          kind: "manage_product",
+          action: "set_unit",
+          status: "not_found",
+          product_name: null,
+          product_raw: "gạch siêu lạ",
+          unit: null,
+          sell_price: null,
+        },
+        source: "tip_33_product",
+      },
+    });
   });
 
   it("logs the pipeline before a product-management preview failure returns", async () => {
@@ -844,7 +863,26 @@ describe("processMessage", () => {
     expect(mocks.readEq).toHaveBeenCalledWith("owner_id", "user-a");
     expect(mocks.readEq).toHaveBeenCalledWith("is_active", true);
     expect(mocks.readIs).toHaveBeenCalledWith("deleted_at", null);
-    expect(mocks.insert).toHaveBeenCalledTimes(1);
+    expect(mocks.insert).toHaveBeenCalledTimes(2);
+    expect(mocks.insert.mock.calls[1][0]).toEqual({
+      owner_id: "user-a",
+      role: "assistant",
+      content: "Hàng 'Gạch đỏ' đã có trong danh sách.",
+      intent: "manage_product",
+      metadata: {
+        card: {
+          v: 1,
+          kind: "manage_product",
+          action: "create",
+          status: "create_duplicate",
+          product_name: "Gạch đỏ",
+          product_raw: "gạch đỏ",
+          unit: "viên",
+          sell_price: 2000,
+        },
+        source: "tip_33_product",
+      },
+    });
   });
 
   it("attaches a create_draft product-management preview for a new product", async () => {

@@ -4,6 +4,7 @@ import type { ProductManagementPreview } from "@/src/components/chat/preview-car
 const mocks = vi.hoisted(() => ({
   createProductFromChat: vi.fn(),
   deleteProduct: vi.fn(),
+  persistProductManagementMessage: vi.fn(),
   updateProduct: vi.fn(),
 }));
 
@@ -18,6 +19,7 @@ vi.mock("@/app/(app)/chat/actions", () => ({
   deleteProduct: mocks.deleteProduct,
   getCustomerDebt: vi.fn(),
   persistDismissedPreviewMessage: vi.fn(),
+  persistProductManagementMessage: mocks.persistProductManagementMessage,
   recreateSaleOrder: vi.fn(),
   searchCustomersByName: vi.fn(),
   searchSuppliersByName: vi.fn(),
@@ -30,6 +32,9 @@ const {
   productManagementChoiceEntity,
   productManagementCreateFormFromPreview,
   productManagementProductFromCandidate,
+  historyProductCardFromDismissedPreview,
+  historyProductCardFromResult,
+  persistProductManagementHistory,
   saveProductManagementCreatePreview,
   saveProductManagementDeletePreview,
   saveProductManagementPreview,
@@ -57,7 +62,12 @@ describe("product-management preview helpers", () => {
   beforeEach(() => {
     mocks.createProductFromChat.mockReset();
     mocks.deleteProduct.mockReset();
+    mocks.persistProductManagementMessage.mockReset();
     mocks.updateProduct.mockReset();
+    mocks.persistProductManagementMessage.mockResolvedValue({
+      ok: true,
+      data: null,
+    });
   });
 
   it("saves set_unit through updateProduct with only the unit patch", async () => {
@@ -363,5 +373,104 @@ describe("product-management preview helpers", () => {
       ok: false,
       message: "Hàng này có thể đã tồn tại. Bác kiểm tra lại danh sách hàng nhé.",
     });
+  });
+
+  it("builds persisted cards only from completed product results", () => {
+    expect(
+      historyProductCardFromResult({
+        status: "saved",
+        action: "set_unit",
+        product: {
+          id: "product-xi-mang",
+          name: "xi măng",
+          unit: "bao",
+          sell_price: 100000,
+        },
+        target: { unit: "tấn" },
+      }),
+    ).toEqual({
+      v: 1,
+      kind: "manage_product",
+      action: "set_unit",
+      status: "saved",
+      product_name: "xi măng",
+      product_raw: null,
+      unit: "tấn",
+      sell_price: 100000,
+    });
+
+    expect(
+      historyProductCardFromDismissedPreview({
+        status: "confirm_delete",
+        action: "delete",
+        product: {
+          id: "product-xi-mang",
+          name: "xi măng",
+          unit: "bao",
+          sell_price: 100000,
+        },
+      }),
+    ).toEqual({
+      v: 1,
+      kind: "manage_product",
+      action: "delete",
+      status: "dismissed",
+      product_name: "xi măng",
+      product_raw: null,
+      unit: "bao",
+      sell_price: 100000,
+    });
+
+    expect(
+      historyProductCardFromDismissedPreview({
+        status: "needs_choice",
+        action: "delete",
+        product_raw: "xi",
+        candidates: [],
+      }),
+    ).toBeNull();
+  });
+
+  it("persists a canonical terminal product card after a client action", async () => {
+    const card = historyProductCardFromResult({
+      status: "deleted",
+      action: "delete",
+      product: {
+        id: "product-fff",
+        name: "fff",
+        unit: "m³",
+        sell_price: null,
+      },
+    });
+
+    await persistProductManagementHistory(card);
+
+    expect(mocks.persistProductManagementMessage).toHaveBeenCalledWith({
+      card,
+      content: "Đã xóa hàng fff khỏi danh sách.",
+    });
+  });
+
+  it("does not throw when client-side history persistence fails", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    mocks.persistProductManagementMessage.mockRejectedValue(
+      new Error("network down"),
+    );
+
+    await expect(
+      persistProductManagementHistory({
+        v: 1,
+        kind: "manage_product",
+        action: "create",
+        status: "created",
+        product_name: "cát vàng",
+        product_raw: null,
+        unit: "m³",
+        sell_price: null,
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
   });
 });

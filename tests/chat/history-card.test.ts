@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { parseHistoryCommitCard } from "@/src/lib/chat/history-card";
+import {
+  historyProductCardContent,
+  parseHistoryCommitCard,
+  parseHistoryProductCard,
+} from "@/src/lib/chat/history-card";
 
 const validCard = {
   v: 1,
@@ -52,5 +56,56 @@ describe("parseHistoryCommitCard", () => {
   it("returns null for garbage metadata", () => {
     expect(parseHistoryCommitCard("not-json")).toBeNull();
     expect(parseHistoryCommitCard({ card: "not-a-card" })).toBeNull();
+  });
+});
+
+describe("parseHistoryProductCard", () => {
+  const productCard = {
+    v: 1,
+    kind: "manage_product",
+    action: "delete",
+    status: "deleted",
+    product_name: "fff",
+    product_raw: null,
+    unit: "m³",
+    sell_price: null,
+  } as const;
+
+  it("parses a valid product result card", () => {
+    expect(parseHistoryProductCard({ card: productCard })).toEqual(productCard);
+  });
+
+  it("returns null for malformed product cards", () => {
+    expect(
+      parseHistoryProductCard({ card: { ...productCard, status: "ready" } }),
+    ).toBeNull();
+    expect(
+      parseHistoryProductCard({ card: { ...productCard, kind: "create_order" } }),
+    ).toBeNull();
+    expect(parseHistoryProductCard({ card: null })).toBeNull();
+  });
+
+  it("builds canonical persisted content for product terminal states", () => {
+    expect(historyProductCardContent(productCard)).toBe(
+      "Đã xóa hàng fff khỏi danh sách.",
+    );
+    expect(
+      historyProductCardContent({
+        ...productCard,
+        action: "create",
+        status: "create_duplicate",
+        product_name: "xi măng",
+        unit: "bao",
+        sell_price: 100000,
+      }),
+    ).toBe("Hàng 'xi măng' đã có trong danh sách.");
+    expect(
+      historyProductCardContent({
+        ...productCard,
+        action: "set_unit",
+        status: "dismissed",
+        product_name: "xi măng",
+      }),
+    ).toBe("Đã bỏ, chưa lưu vào danh sách.");
   });
 });

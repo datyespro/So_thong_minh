@@ -14,6 +14,7 @@ import {
   deleteProduct,
   getCustomerDebt,
   persistDismissedPreviewMessage,
+  persistProductManagementMessage,
   recreateSaleOrder,
   searchCustomersByName,
   searchSuppliersByName,
@@ -29,6 +30,10 @@ import {
 import { cn } from "@/src/lib/utils";
 import { Button } from "@/src/components/ui/button";
 import { HistoryCommitCard } from "@/src/components/chat/history-commit-card";
+import {
+  historyProductCardContent,
+  type HistoryProductCard as HistoryProductCardData,
+} from "@/src/lib/chat/history-card";
 import { confirmAliasInBackground } from "@/src/components/chat/preview-card/alias-client";
 import {
   buildDismissedPreviewCardFromState,
@@ -379,6 +384,132 @@ function productManagementTitle(action: ProductManagementUpdateAction) {
 
 function formatProductManagementPrice(value: number | null) {
   return value === null ? "—" : formatVietnameseMoney(value);
+}
+
+type ProductManagementPersistedResult = Extract<
+  ProductManagementPreview,
+  { status: "created" | "saved" | "deleted" }
+>;
+
+export function historyProductCardFromResult(
+  preview: ProductManagementPersistedResult,
+): HistoryProductCardData {
+  if (preview.status === "created") {
+    return {
+      v: 1,
+      kind: "manage_product",
+      action: "create",
+      status: "created",
+      product_name: preview.product.name,
+      product_raw: null,
+      unit: preview.product.unit,
+      sell_price: preview.product.sell_price,
+    };
+  }
+
+  if (preview.status === "deleted") {
+    return {
+      v: 1,
+      kind: "manage_product",
+      action: "delete",
+      status: "deleted",
+      product_name: preview.product.name,
+      product_raw: null,
+      unit: preview.product.unit,
+      sell_price: preview.product.sell_price,
+    };
+  }
+
+  const unit =
+    preview.action === "set_unit"
+      ? targetUnit(preview)
+      : preview.product.unit;
+  const sellPrice =
+    preview.action === "set_price"
+      ? targetSellPrice(preview)
+      : preview.product.sell_price;
+
+  return {
+    v: 1,
+    kind: "manage_product",
+    action: preview.action,
+    status: "saved",
+    product_name: preview.product.name,
+    product_raw: null,
+    unit,
+    sell_price: sellPrice,
+  };
+}
+
+export function historyProductCardFromDismissedPreview(
+  preview: ProductManagementPreview,
+): HistoryProductCardData | null {
+  if (preview.status === "create_draft") {
+    return {
+      v: 1,
+      kind: "manage_product",
+      action: "create",
+      status: "dismissed",
+      product_name: preview.draft.name,
+      product_raw: preview.product_raw,
+      unit: preview.draft.unit,
+      sell_price: preview.draft.sell_price,
+    };
+  }
+
+  if (preview.status === "ready") {
+    return {
+      v: 1,
+      kind: "manage_product",
+      action: preview.action,
+      status: "dismissed",
+      product_name: preview.product.name,
+      product_raw: null,
+      unit:
+        preview.action === "set_unit"
+          ? targetUnit(preview)
+          : preview.product.unit,
+      sell_price:
+        preview.action === "set_price"
+          ? targetSellPrice(preview)
+          : preview.product.sell_price,
+    };
+  }
+
+  if (preview.status === "confirm_delete") {
+    return {
+      v: 1,
+      kind: "manage_product",
+      action: "delete",
+      status: "dismissed",
+      product_name: preview.product.name,
+      product_raw: null,
+      unit: preview.product.unit,
+      sell_price: preview.product.sell_price,
+    };
+  }
+
+  return null;
+}
+
+export async function persistProductManagementHistory(
+  card: HistoryProductCardData,
+) {
+  try {
+    const result = await persistProductManagementMessage({
+      card,
+      content: historyProductCardContent(card),
+    });
+
+    if (!result.ok) {
+      console.warn("Failed to persist product-management history card", {
+        code: result.code,
+        message: result.message,
+      });
+    }
+  } catch (error) {
+    console.warn("Failed to persist product-management history card", error);
+  }
 }
 
 function targetUnit(preview: { target: ProductManagementTarget }) {
@@ -2068,7 +2199,7 @@ function ProductManagementDeletePreviewContent({
             className="mt-4 border-t border-ledgerBorder pt-3 text-[16px] font-semibold leading-6 text-textMute"
             data-testid="product-management-delete-dismissed"
           >
-            Đã bỏ
+            Đã bỏ, chưa lưu vào danh sách.
           </p>
         ) : null}
 
@@ -2111,7 +2242,7 @@ function ProductManagementCanceledNotice({ isLive }: Readonly<{ isLive: boolean 
         className="max-w-[86%] rounded border border-dashed border-ledgerBorder bg-paperWarm px-4 py-3 text-[16px] leading-7 text-textMute shadow-none sm:max-w-[78%]"
         data-testid="product-management-canceled"
       >
-        Đã hủy thay đổi, chưa lưu vào danh sách.
+        Đã bỏ, chưa lưu vào danh sách.
       </div>
     </div>
   );
@@ -2536,6 +2667,9 @@ export function PreviewCard({
       }
 
       setProductManagementState(result.data);
+      await persistProductManagementHistory(
+        historyProductCardFromResult(result.data),
+      );
     } catch (error) {
       console.error("createProduct from chat preview failed", error);
       setProductManagementError("Chưa tạo được hàng, bác thử lại ạ.");
@@ -2564,6 +2698,9 @@ export function PreviewCard({
       }
 
       setProductManagementState(result.data);
+      await persistProductManagementHistory(
+        historyProductCardFromResult(result.data),
+      );
     } catch (error) {
       console.error("updateProduct from chat preview failed", error);
       setProductManagementError("Chưa lưu được thay đổi, bác thử lại ạ.");
@@ -2594,6 +2731,9 @@ export function PreviewCard({
       }
 
       setProductManagementState(result.data);
+      await persistProductManagementHistory(
+        historyProductCardFromResult(result.data),
+      );
     } catch (error) {
       console.error("deleteProduct from chat preview failed", error);
       setProductManagementError("Chưa xóa được hàng, bác thử lại ạ.");
@@ -2602,22 +2742,44 @@ export function PreviewCard({
     }
   }
 
-  function handleCancelProductManagement() {
+  async function handleCancelProductManagement() {
     if (isSavingProductManagement) {
       return;
+    }
+
+    const card = productManagementState
+      ? historyProductCardFromDismissedPreview(productManagementState)
+      : null;
+
+    setIsSavingProductManagement(true);
+    setProductManagementError(null);
+
+    if (card) {
+      await persistProductManagementHistory(card);
     }
 
     setProductManagementDismissed(true);
-    setProductManagementError(null);
+    setIsSavingProductManagement(false);
   }
 
-  function handleCancelProductManagementDelete() {
+  async function handleCancelProductManagementDelete() {
     if (isSavingProductManagement) {
       return;
     }
 
-    setProductManagementDeleteDismissed(true);
+    const card = productManagementState
+      ? historyProductCardFromDismissedPreview(productManagementState)
+      : null;
+
+    setIsSavingProductManagement(true);
     setProductManagementError(null);
+
+    if (card) {
+      await persistProductManagementHistory(card);
+    }
+
+    setProductManagementDeleteDismissed(true);
+    setIsSavingProductManagement(false);
   }
 
   if (productManagementPreview && productManagementDismissed) {
@@ -2635,7 +2797,7 @@ export function PreviewCard({
           error={productManagementError}
           onSelectCandidate={handleSelectProductManagementCandidate}
           onSave={() => void handleDeleteProductManagement()}
-          onCancel={handleCancelProductManagementDelete}
+          onCancel={() => void handleCancelProductManagementDelete()}
         />
       );
     }
@@ -2654,7 +2816,7 @@ export function PreviewCard({
           draft={productManagementCreateDraft}
           onDraftChange={handleProductManagementCreateDraftChange}
           onSave={() => void handleSaveProductManagementCreate()}
-          onCancel={handleCancelProductManagement}
+          onCancel={() => void handleCancelProductManagement()}
         />
       );
     }
@@ -2667,7 +2829,7 @@ export function PreviewCard({
         error={productManagementError}
         onSelectCandidate={handleSelectProductManagementCandidate}
         onSave={() => void handleSaveProductManagement()}
-        onCancel={handleCancelProductManagement}
+        onCancel={() => void handleCancelProductManagement()}
       />
     );
   }

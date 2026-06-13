@@ -4,8 +4,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ActionResult } from "@/src/types/action-result";
 import type { ChatMessageView } from "@/src/components/chat/types";
 import {
+  historyProductCardContent,
   parseHistoryCommitCard,
+  parseHistoryProductCard,
   type HistoryCommitCard,
+  type HistoryProductCard,
 } from "@/src/lib/chat/history-card";
 import type {
   ProductManagementCandidate,
@@ -242,6 +245,49 @@ export async function persistDismissedPreviewMessage(
     ownerId: user.id,
     aiTurnId: input.ai_turn_id,
     outcome: "dismissed",
+  });
+
+  return { ok: true, data: null };
+}
+
+export async function persistProductManagementMessage(
+  input: Readonly<{
+    card: unknown;
+    content: string;
+  }>,
+): Promise<ActionResult<null>> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return {
+      ok: false,
+      code: "unauthorized",
+      message: "Vui lòng đăng nhập lại ạ.",
+    };
+  }
+
+  const card = parseHistoryProductCard({ card: input.card });
+  const content = input.content.trim();
+
+  if (!card || content.length === 0) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Thẻ quản lý hàng chưa hợp lệ ạ.",
+    };
+  }
+
+  await persistAssistantTerminalMessage({
+    supabase,
+    ownerId: user.id,
+    content,
+    intent: "manage_product",
+    metadata: { card },
+    source: "tip_33_product",
   });
 
   return { ok: true, data: null };
@@ -992,6 +1038,63 @@ async function resolveProductManagementPreview({
             target: target.target,
           },
   };
+}
+
+function terminalHistoryProductCard(
+  preview: ProductManagementPreview | null,
+): HistoryProductCard | null {
+  if (preview?.status === "create_duplicate") {
+    return {
+      v: 1,
+      kind: "manage_product",
+      action: "create",
+      status: "create_duplicate",
+      product_name: preview.product.name,
+      product_raw: preview.product_raw,
+      unit: preview.product.unit,
+      sell_price: preview.product.sell_price,
+    };
+  }
+
+  if (preview?.status === "not_found") {
+    return {
+      v: 1,
+      kind: "manage_product",
+      action: preview.action,
+      status: "not_found",
+      product_name: null,
+      product_raw: preview.product_raw,
+      unit: null,
+      sell_price: null,
+    };
+  }
+
+  return null;
+}
+
+async function persistTerminalProductManagementPreview({
+  supabase,
+  ownerId,
+  preview,
+}: {
+  supabase: Pick<SupabaseClient, "from">;
+  ownerId: string;
+  preview: ProductManagementPreview | null;
+}) {
+  const card = terminalHistoryProductCard(preview);
+
+  if (!card) {
+    return;
+  }
+
+  await persistAssistantTerminalMessage({
+    supabase,
+    ownerId,
+    content: historyProductCardContent(card),
+    intent: "manage_product",
+    metadata: { card },
+    source: "tip_33_product",
+  });
 }
 
 function createdProductView(row: ProductRow): CreatedProductView {
@@ -2893,6 +2996,12 @@ export async function processMessage(
   if (!productManagementPreviewResult.ok) {
     return productManagementPreviewResult;
   }
+
+  await persistTerminalProductManagementPreview({
+    supabase,
+    ownerId: user.id,
+    preview: productManagementPreviewResult.data,
+  });
 
   const terminalText = await persistTerminalAssistantResponse({
     supabase,

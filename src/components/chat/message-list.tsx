@@ -3,12 +3,16 @@
 import * as React from "react";
 import { CapabilityChipRow } from "@/src/components/chat/capability-chip-row";
 import { HistoryCommitCard } from "@/src/components/chat/history-commit-card";
+import { HistoryProductCard } from "@/src/components/chat/history-product-card";
 import { MessageBubble } from "@/src/components/chat/message-bubble";
 import { PreviewCard } from "@/src/components/chat/preview-card";
 import { SamplePromptNotes } from "@/src/components/chat/sample-prompt-notes";
 import { TypingIndicator } from "@/src/components/chat/typing-indicator";
 import type { ChatMessageView } from "@/src/components/chat/types";
-import { parseHistoryCommitCard } from "@/src/lib/chat/history-card";
+import {
+  parseHistoryCommitCard,
+  parseHistoryProductCard,
+} from "@/src/lib/chat/history-card";
 import { parseCapabilityChips } from "@/src/lib/ai/capability-help";
 import type {
   PipelineTurnView,
@@ -126,8 +130,12 @@ export function MessageList({
             message.role === "assistant"
               ? parseHistoryCommitCard(message.metadata)
               : null;
-          const capabilityChips =
+          const historyProductCard =
             message.role === "assistant" && !historyCard
+              ? parseHistoryProductCard(message.metadata)
+              : null;
+          const capabilityChips =
+            message.role === "assistant" && !historyCard && !historyProductCard
               ? parseCapabilityChips(message.metadata)
               : null;
 
@@ -143,6 +151,11 @@ export function MessageList({
                       : "committed"
                   }
                 />
+              ) : historyProductCard ? (
+                <HistoryProductCard
+                  card={historyProductCard}
+                  confirmationText={message.content}
+                />
               ) : capabilityChips ? (
                 <div>
                   <MessageBubble message={message} />
@@ -156,7 +169,7 @@ export function MessageList({
               ) : (
                 <MessageBubble message={message} />
               )}
-              {turn ? (
+              {turn && !historyCard && !historyProductCard ? (
                 <PreviewCard
                   validated={turn.validated}
                   answer={turn.answer ?? null}
