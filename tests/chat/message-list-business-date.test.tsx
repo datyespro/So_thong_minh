@@ -40,6 +40,7 @@ describe("MessageList restored draft business date", () => {
         restoredDraft,
         onPickSample: () => undefined,
         onPatchTurn: () => undefined,
+        onPatchRestoredDraft: () => undefined,
         onClearRestoredDraft: () => undefined,
       }),
     );

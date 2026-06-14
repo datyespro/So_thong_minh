@@ -32,6 +32,7 @@ function renderMessageList({
       restoredDraft: null,
       onPickSample: () => undefined,
       onPatchTurn: () => undefined,
+      onPatchRestoredDraft: () => undefined,
       onClearRestoredDraft: () => undefined,
     }),
   );

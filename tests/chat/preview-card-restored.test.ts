@@ -33,8 +33,12 @@ vi.mock("@/app/(app)/chat/actions", () => ({
 }));
 
 const {
+  clearRestoredPreviewDraft,
   commitRestoredPreviewDraft,
+  previewCommitTarget,
+  resaveRestoredPreviewDraft,
   resolvedIntentForPreviewDraft,
+  saveCurrentPreviewDraft,
 } = await import("@/src/components/chat/preview-card/preview-card");
 
 function installStorage() {
@@ -80,6 +84,35 @@ function draftFixture(): PreviewDraft {
     resolved,
     patched,
   };
+}
+
+function unresolvedValidated() {
+  return baseValidated({
+    items: [
+      item({
+        resolution: {
+          raw: "xi măng",
+          entity_type: "product",
+          status: "not_found",
+          resolved_id: null,
+          resolved_name: null,
+          confidence: 0,
+          candidates: [],
+        },
+        issues: [
+          {
+            code: "product_unresolved",
+            severity: "blocking",
+            message: 'Không tìm thấy hàng "xi măng".',
+            field_path: "items[0].product_name",
+            item_index: 0,
+          },
+        ],
+      }),
+    ],
+    ready_for_preview: false,
+    blocking_count: 1,
+  });
 }
 
 describe("restored preview draft commit", () => {
@@ -128,6 +161,84 @@ describe("restored preview draft commit", () => {
     );
     expect(result.ok).toBe(true);
     expect(loadDraft("owner-1")).toBeNull();
+  });
+
+  it("keeps restored confirmation on the restored commit route", () => {
+    expect(previewCommitTarget("restored", "create_order")).toBe("restored");
+    expect(previewCommitTarget("restored", "record_payment")).toBe("restored");
+    expect(previewCommitTarget("live", "create_order")).toBe("create_order");
+  });
+
+  it("persists an unresolved draft, re-saves its inline patch, and keeps one idempotency key across two reloads", async () => {
+    const validated = unresolvedValidated();
+    const patched = createEmptyPreviewCardPatch();
+
+    saveCurrentPreviewDraft({
+      ownerId: "owner-1",
+      validated,
+      patched,
+      idempotencyKey: "idem-two-reloads",
+    });
+
+    const firstReload = loadDraft("owner-1");
+
+    expect(firstReload?.resolved.items[0]?.resolution.status).toBe("not_found");
+    expect(firstReload?.validated?.blocking_count).toBe(1);
+
+    const resolvedPatch = {
+      ...patched,
+      itemProducts: {
+        0: {
+          entity_type: "product" as const,
+          raw: "xi măng",
+          resolved_id: "product-xi-mang",
+          resolved_name: "xi măng",
+        },
+      },
+    };
+    const updated = resaveRestoredPreviewDraft(firstReload!, resolvedPatch);
+
+    expect(updated?.patched.itemProducts[0]?.resolved_id).toBe(
+      "product-xi-mang",
+    );
+
+    const secondReload = loadDraft("owner-1");
+
+    expect(secondReload?.idempotencyKey).toBe("idem-two-reloads");
+    expect(secondReload?.resolved.items[0]?.resolution.resolved_id).toBe(
+      "product-xi-mang",
+    );
+
+    vi.mocked(fetch).mockResolvedValue(
+      jsonResponse({ ok: true, data: baseValidated() }),
+    );
+    mocks.commitOrder.mockResolvedValue({
+      ok: true,
+      data: {
+        order_id: "order-once",
+        total_amount: 1600000,
+        debt_amount: 1600000,
+        business_date: "2026-06-05",
+      },
+    });
+
+    const result = await commitRestoredPreviewDraft(secondReload!);
+
+    expect(result.ok).toBe(true);
+    expect(mocks.commitOrder).toHaveBeenCalledTimes(1);
+    expect(mocks.commitOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotency_key: "idem-two-reloads" }),
+    );
+    expect(loadDraft("owner-1")).toBeNull();
+  });
+
+  it("clears a restored draft through the dismiss path helper", () => {
+    const draft = draftFixture();
+    saveDraft(draft.ownerId, draft);
+
+    clearRestoredPreviewDraft(draft);
+
+    expect(loadDraft(draft.ownerId)).toBeNull();
   });
 
   it("does not commit and re-saves the same draft when revalidation blocks confirmation", async () => {

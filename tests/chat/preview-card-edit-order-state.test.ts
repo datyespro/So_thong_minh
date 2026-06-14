@@ -49,6 +49,38 @@ describe("PreviewCard edit-order interaction flags", () => {
     expect(locked.canShowUndoButton).toBe(false);
   });
 
+  it("keeps restored drafts editable without exposing committed live-only actions", () => {
+    const restoredDraft = getPreviewCardInteractionFlags({
+      intent: "create_order",
+      isLive: true,
+      isRestored: true,
+      hasCommitted: false,
+      undone: false,
+      isEditing: false,
+      isResaving: false,
+      canConfirm: false,
+    });
+    const restoredCommitted = getPreviewCardInteractionFlags({
+      intent: "create_order",
+      isLive: true,
+      isRestored: true,
+      hasCommitted: true,
+      undone: false,
+      isEditing: false,
+      isResaving: false,
+      canConfirm: true,
+    });
+
+    expect(restoredDraft.interactive).toBe(true);
+    expect(restoredDraft.canEditCounterpartyAndProducts).toBe(true);
+    expect(restoredDraft.canShowEditOrderButton).toBe(false);
+    expect(restoredDraft.canShowUndoButton).toBe(false);
+    expect(restoredCommitted.interactive).toBe(false);
+    expect(restoredCommitted.canShowEditOrderButton).toBe(false);
+    expect(restoredCommitted.canShowUndoButton).toBe(false);
+    expect(restoredCommitted.canShowResaveControls).toBe(false);
+  });
+
   it("reopens quantity and price editing while exposing only the edit-customer flag", () => {
     const editing = getPreviewCardInteractionFlags({
       intent: "create_order",

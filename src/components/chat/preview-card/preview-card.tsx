@@ -97,6 +97,7 @@ import { parseProductSellPriceInput } from "@/src/lib/products/update";
 import {
   clearDraft,
   saveDraft,
+  validatedIntentForPreviewDraft,
   type PreviewDraft,
   type PreviewDraftIntent,
 } from "@/src/lib/chat/preview-draft";
@@ -133,6 +134,7 @@ type EntityTarget =
 type PreviewCardInteractionInput = Readonly<{
   intent: ValidatedIntent["intent"];
   isLive: boolean;
+  isRestored?: boolean;
   hasCommitted: boolean;
   undone: boolean;
   isEditing: boolean;
@@ -147,10 +149,11 @@ type CommittedInfo = Readonly<{
 }>;
 
 export function getPreviewCardInteractionFlags(input: PreviewCardInteractionInput) {
+  const liveCommittedActions = input.isLive && !input.isRestored;
   const isReopeningSaleOrder =
     input.intent === "create_order" &&
     input.isEditing &&
-    input.isLive &&
+    liveCommittedActions &&
     input.hasCommitted &&
     !input.undone;
   const interactive = input.isLive && (!input.hasCommitted || isReopeningSaleOrder);
@@ -160,15 +163,18 @@ export function getPreviewCardInteractionFlags(input: PreviewCardInteractionInpu
   const canShowEditOrderButton =
     input.intent === "create_order" &&
     input.hasCommitted &&
-    input.isLive &&
+    liveCommittedActions &&
     !input.undone &&
     !input.isEditing;
   const canShowUndoButton =
-    input.hasCommitted && input.isLive && !input.undone && !input.isEditing;
+    input.hasCommitted &&
+    liveCommittedActions &&
+    !input.undone &&
+    !input.isEditing;
   const canShowResaveControls =
     input.intent === "create_order" &&
     input.hasCommitted &&
-    input.isLive &&
+    liveCommittedActions &&
     !input.undone &&
     input.isEditing;
 
@@ -1128,40 +1134,13 @@ export function resolvedIntentForPreviewDraft(
   };
 }
 
-function isStateResolvedForDraft(
-  intent: PreviewDraftIntent,
-  state: ReturnType<typeof getPatchedPreviewState>,
-) {
-  if (
-    (intent === "create_order" || intent === "record_payment") &&
-    state.customer?.status !== "resolved"
-  ) {
-    return false;
-  }
-
-  if (
-    intent === "create_purchase" &&
-    state.supplier !== null &&
-    state.supplier.status !== "resolved"
-  ) {
-    return false;
-  }
-
-  return state.items.every((item) => item.resolution.status === "resolved");
-}
-
-function saveCurrentPreviewDraft(input: Readonly<{
+export function saveCurrentPreviewDraft(input: Readonly<{
   ownerId: string | undefined;
   validated: ValidatedIntent;
   patched: PreviewCardPatch;
-  state: ReturnType<typeof getPatchedPreviewState>;
   idempotencyKey: string;
 }>) {
   if (!input.ownerId || !isPreviewDraftIntent(input.validated.intent)) {
-    return;
-  }
-
-  if (!isStateResolvedForDraft(input.validated.intent, input.state)) {
     return;
   }
 
@@ -1174,9 +1153,60 @@ function saveCurrentPreviewDraft(input: Readonly<{
   saveDraft(input.ownerId, {
     intent: input.validated.intent,
     idempotencyKey: input.idempotencyKey,
+    validated: input.validated,
     resolved,
     patched: input.patched,
   });
+}
+
+export function resaveRestoredPreviewDraft(
+  draft: PreviewDraft,
+  patched: PreviewCardPatch,
+): PreviewDraft | null {
+  const validated = validatedIntentForPreviewDraft(draft);
+  const resolved = resolvedIntentForPreviewDraft(validated, patched);
+
+  if (!resolved) {
+    return null;
+  }
+
+  saveDraft(draft.ownerId, {
+    intent: draft.intent,
+    idempotencyKey: draft.idempotencyKey,
+    validated,
+    resolved,
+    patched,
+  });
+
+  return {
+    ...draft,
+    validated,
+    resolved,
+    patched,
+  };
+}
+
+export function clearRestoredPreviewDraft(draft: PreviewDraft) {
+  clearDraft(draft.ownerId);
+}
+
+export function previewCommitTarget(
+  mode: PreviewCardMode,
+  intent: ValidatedIntent["intent"],
+) {
+  if (mode === "restored") {
+    return "restored" as const;
+  }
+
+  if (
+    intent === "create_order" ||
+    intent === "record_payment" ||
+    intent === "create_purchase"
+  ) {
+    return intent;
+  }
+
+  return "unsupported" as const;
 }
 
 function entityNameForState(
@@ -2566,7 +2596,7 @@ export function PreviewCard({
   const latestPatchRef = React.useRef(patched);
   const dismissingPreviewRef = React.useRef(false);
   const state = getPatchedPreviewState(validated, patched);
-  const liveInteractions = isLiveMode && isLive;
+  const liveInteractions = isRestored || (isLiveMode && isLive);
   const canDismissPreview = isPreviewDraftIntent(validated.intent);
 
   React.useEffect(() => {
@@ -2626,7 +2656,6 @@ export function PreviewCard({
       ownerId,
       validated,
       patched,
-      state,
       idempotencyKey,
     });
   }, [
@@ -2639,7 +2668,6 @@ export function PreviewCard({
     isLiveMode,
     ownerId,
     patched,
-    state,
     undone,
     validated,
   ]);
@@ -3010,6 +3038,7 @@ export function PreviewCard({
   } = getPreviewCardInteractionFlags({
     intent: validated.intent,
     isLive: liveInteractions,
+    isRestored,
     hasCommitted: committedInfo !== null,
     undone,
     isEditing,
@@ -3508,7 +3537,6 @@ export function PreviewCard({
       ownerId,
       validated,
       patched,
-      state,
       idempotencyKey,
     });
   }
@@ -3776,7 +3804,7 @@ export function PreviewCard({
 
     if (isRestored) {
       if (restoredDraft) {
-        clearDraft(restoredDraft.ownerId);
+        clearRestoredPreviewDraft(restoredDraft);
       }
 
       onRestoredDismiss?.(payload);
@@ -3801,22 +3829,24 @@ export function PreviewCard({
   }
 
   function handleConfirmClick() {
-    if (isRestored) {
+    const target = previewCommitTarget(mode, validated.intent);
+
+    if (target === "restored") {
       void handleCommitRestoredDraft();
       return;
     }
 
-    if (validated.intent === "create_order") {
+    if (target === "create_order") {
       void handleCommitOrder();
       return;
     }
 
-    if (validated.intent === "record_payment") {
+    if (target === "record_payment") {
       void handleCommitPayment();
       return;
     }
 
-    if (validated.intent === "create_purchase") {
+    if (target === "create_purchase") {
       void handleCommitPurchase();
       return;
     }
@@ -4879,11 +4909,12 @@ export function PreviewCard({
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
+                data-testid="restored-confirm-button"
                 disabled={restoredCommitDisabled}
                 title={
                   state.canConfirm
                     ? "Ghi vào sổ ạ"
-                    : "Còn thiếu thông tin, bác bỏ nháp rồi tạo lại giúp em ạ."
+                    : "Còn thiếu thông tin, bác bổ sung trên thẻ giúp em ạ."
                 }
                 className="h-12 rounded bg-ink px-5 text-[16px] font-semibold text-paper hover:bg-inkDeep disabled:cursor-not-allowed disabled:opacity-55"
                 onClick={handleConfirmClick}
@@ -4902,7 +4933,7 @@ export function PreviewCard({
             </div>
             {!state.canConfirm ? (
               <p className="mt-2 text-[15px] leading-6 text-textMute">
-                Còn thiếu thông tin, bác bỏ nháp rồi tạo lại giúp em ạ.
+                Còn thiếu thông tin, bác bổ sung trên thẻ rồi ghi lại giúp em ạ.
               </p>
             ) : null}
             {commitError ? (

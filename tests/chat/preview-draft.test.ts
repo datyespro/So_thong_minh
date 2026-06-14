@@ -5,7 +5,15 @@ import {
   PREVIEW_DRAFT_SCHEMA_VERSION,
   loadDraft,
   saveDraft,
+  validatedIntentForPreviewDraft,
 } from "@/src/lib/chat/preview-draft";
+import {
+  baseValidated,
+  customerUnresolvedIssue,
+  item,
+  needsConfirmationCustomer,
+  productUnresolvedIssue,
+} from "@/tests/chat/preview-card-fixtures";
 
 const STORAGE_KEY = "sotm:preview_draft:owner-1";
 
@@ -64,6 +72,31 @@ function resolvedIntent(): ResolvedIntent {
   };
 }
 
+function unresolvedIntent(): ResolvedIntent {
+  const resolved = resolvedIntent();
+
+  return {
+    ...resolved,
+    customer: needsConfirmationCustomer,
+    items: [
+      {
+        ...resolved.items[0],
+        resolution: {
+          raw: "xi măng",
+          entity_type: "product",
+          status: "not_found",
+          resolved_id: null,
+          resolved_name: null,
+          confidence: 0,
+          candidates: [],
+        },
+      },
+    ],
+    overall_status: "has_unresolved",
+    needs_confirmation: false,
+  };
+}
+
 function installStorage() {
   const store = new Map<string, string>();
   const localStorage = {
@@ -105,6 +138,48 @@ describe("preview draft storage", () => {
     expect(draft?.businessDate).toBe("2026-06-05");
     expect(draft?.idempotencyKey).toBe("idem-draft");
     expect(draft?.resolved.intent).toBe("create_order");
+    expect(draft?.validated).toBeUndefined();
+    expect(validatedIntentForPreviewDraft(draft!)).toMatchObject({
+      ready_for_preview: true,
+      blocking_count: 0,
+    });
+  });
+
+  it("round-trips unresolved entities and their validated blocking snapshot", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-05T09:00:00+07:00"));
+    installStorage();
+    const unresolvedProduct = unresolvedIntent().items[0].resolution;
+    const validated = baseValidated({
+      customer: needsConfirmationCustomer,
+      items: [
+        item({
+          resolution: unresolvedProduct,
+          issues: [productUnresolvedIssue()],
+        }),
+      ],
+      issues: [customerUnresolvedIssue()],
+      ready_for_preview: false,
+      blocking_count: 2,
+    });
+
+    saveDraft("owner-1", {
+      intent: "create_order",
+      idempotencyKey: "idem-unresolved",
+      validated,
+      resolved: unresolvedIntent(),
+      patched: emptyPatch(),
+    });
+
+    const draft = loadDraft("owner-1");
+
+    expect(draft?.resolved.customer?.status).toBe("needs_confirmation");
+    expect(draft?.resolved.customer?.candidates[0]?.id).toBe("customer-lan");
+    expect(draft?.resolved.items[0]?.resolution.status).toBe("not_found");
+    expect(draft?.validated?.blocking_count).toBe(2);
+    expect(draft?.validated?.items[0]?.issues[0]?.code).toBe(
+      "product_unresolved",
+    );
   });
 
   it("returns null and clears malformed JSON", () => {

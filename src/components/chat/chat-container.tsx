@@ -9,6 +9,7 @@ import {
   type PipelineTurnView,
   type PreviewCardPatch,
 } from "@/src/components/chat/preview-card";
+import { resaveRestoredPreviewDraft } from "@/src/components/chat/preview-card/preview-card";
 import type { ChatMessageView } from "@/src/components/chat/types";
 import {
   isDuplicateDismissedPreviewMessage,
@@ -183,6 +184,21 @@ export function ChatContainer({
     [],
   );
 
+  const handlePatchRestoredDraft = React.useCallback(
+    (patch: PreviewCardPatch) => {
+      if (!restoredDraft) {
+        return;
+      }
+
+      const nextDraft = resaveRestoredPreviewDraft(restoredDraft, patch);
+
+      if (nextDraft) {
+        setRestoredDraft(nextDraft);
+      }
+    },
+    [restoredDraft],
+  );
+
   const handleClearRestoredDraft = React.useCallback(
     (payload: DismissedPreviewPayload) => {
       clearDraft(ownerId);
@@ -243,6 +259,7 @@ export function ChatContainer({
           restoredDraft={visibleRestoredDraft}
           onPickSample={handlePickSample}
           onPatchTurn={handlePatchTurn}
+          onPatchRestoredDraft={handlePatchRestoredDraft}
           onClearRestoredDraft={handleClearRestoredDraft}
         />
 

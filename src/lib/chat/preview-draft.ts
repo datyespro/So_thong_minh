@@ -3,6 +3,11 @@ import {
   ResolvedIntentSchema,
   type ResolvedIntent,
 } from "@/src/lib/ai/resolve-schema";
+import {
+  ValidatedIntentSchema,
+  type ValidatedIntent,
+  type ValidatedLineItem,
+} from "@/src/lib/ai/validate-schema";
 import { APP_TIME_ZONE, businessDateVN, dayjs } from "@/src/lib/dayjs";
 
 export const PREVIEW_DRAFT_SCHEMA_VERSION = 1;
@@ -20,6 +25,7 @@ export type PreviewDraft = Readonly<{
   ownerId: string;
   intent: PreviewDraftIntent;
   idempotencyKey: string;
+  validated?: ValidatedIntent;
   resolved: ResolvedIntent;
   patched: PreviewCardPatch;
 }>;
@@ -27,6 +33,7 @@ export type PreviewDraft = Readonly<{
 export type SavePreviewDraftInput = Readonly<{
   intent: PreviewDraftIntent;
   idempotencyKey: string;
+  validated?: ValidatedIntent;
   resolved: ResolvedIntent;
   patched: PreviewCardPatch;
 }>;
@@ -147,6 +154,52 @@ function savedDateVN(savedAt: string) {
   return parsed.tz(APP_TIME_ZONE).format("YYYY-MM-DD");
 }
 
+function legacyRestoredLineItem(
+  item: ResolvedIntent["items"][number],
+): ValidatedLineItem {
+  const lineTotal =
+    item.quantity !== null && item.unit_price !== null
+      ? item.quantity * item.unit_price
+      : item.line_total;
+
+  return {
+    ...item,
+    effective_quantity: item.quantity,
+    effective_unit: item.unit,
+    effective_unit_price: item.unit_price,
+    line_total: lineTotal,
+    issues: [],
+  };
+}
+
+export function validatedIntentForPreviewDraft(
+  draft: PreviewDraft,
+): ValidatedIntent {
+  if (draft.validated) {
+    return draft.validated;
+  }
+
+  // Legacy #19 drafts were only persisted after every entity resolved. Keep
+  // them loadable without pretending this fallback can represent F2 blockers.
+  return {
+    intent: draft.intent,
+    kind: "writable",
+    raw_text: draft.resolved.raw_text,
+    ...(draft.resolved.business_date != null
+      ? { business_date: draft.resolved.business_date }
+      : {}),
+    customer: draft.resolved.customer,
+    supplier: draft.resolved.supplier,
+    items: draft.resolved.items.map(legacyRestoredLineItem),
+    effective_amount:
+      draft.intent === "record_payment" ? draft.resolved.amount ?? null : null,
+    issues: [],
+    ready_for_preview: true,
+    blocking_count: 0,
+    warning_count: 0,
+  };
+}
+
 function parseDraft(ownerId: string, value: unknown): PreviewDraft | null {
   if (!isObject(value)) {
     return null;
@@ -173,9 +226,19 @@ function parseDraft(ownerId: string, value: unknown): PreviewDraft | null {
   }
 
   const resolved = ResolvedIntentSchema.safeParse(value.resolved);
+  const validated =
+    value.validated === undefined
+      ? null
+      : ValidatedIntentSchema.safeParse(value.validated);
   const patched = parsePatched(value.patched);
 
-  if (!resolved.success || !patched || resolved.data.intent !== value.intent) {
+  if (
+    !resolved.success ||
+    !patched ||
+    resolved.data.intent !== value.intent ||
+    (validated !== null &&
+      (!validated.success || validated.data.intent !== value.intent))
+  ) {
     return null;
   }
 
@@ -187,6 +250,7 @@ function parseDraft(ownerId: string, value: unknown): PreviewDraft | null {
     ownerId,
     intent: value.intent as PreviewDraftIntent,
     idempotencyKey: value.idempotencyKey,
+    ...(validated?.success ? { validated: validated.data } : {}),
     resolved: resolved.data,
     patched,
   };
@@ -208,6 +272,7 @@ export function saveDraft(ownerId: string, input: SavePreviewDraftInput) {
     ownerId,
     intent: input.intent,
     idempotencyKey: input.idempotencyKey,
+    ...(input.validated ? { validated: input.validated } : {}),
     resolved: input.resolved,
     patched: input.patched,
   };

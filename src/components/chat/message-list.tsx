@@ -19,8 +19,11 @@ import type {
   PreviewCardPatch,
 } from "@/src/components/chat/preview-card";
 import type { DismissedPreviewPayload } from "@/src/components/chat/preview-card/dismissed-preview-card";
-import type { PreviewDraft } from "@/src/lib/chat/preview-draft";
-import type { ValidatedIntent, ValidatedLineItem } from "@/src/lib/ai/validate-schema";
+import { getPatchedPreviewState } from "@/src/components/chat/preview-card/preview-state";
+import {
+  validatedIntentForPreviewDraft,
+  type PreviewDraft,
+} from "@/src/lib/chat/preview-draft";
 
 type MessageListProps = Readonly<{
   ownerId: string;
@@ -31,6 +34,7 @@ type MessageListProps = Readonly<{
   restoredDraft: PreviewDraft | null;
   onPickSample: (text: string) => void;
   onPatchTurn: (turnId: string, patch: PreviewCardPatch) => void;
+  onPatchRestoredDraft: (patch: PreviewCardPatch) => void;
   onClearRestoredDraft: (payload: DismissedPreviewPayload) => void;
 }>;
 
@@ -43,39 +47,15 @@ function isDismissedHistoryMessage(metadata: unknown) {
   );
 }
 
-function restoredLineItem(item: PreviewDraft["resolved"]["items"][number]): ValidatedLineItem {
-  const lineTotal =
-    item.quantity !== null && item.unit_price !== null
-      ? item.quantity * item.unit_price
-      : item.line_total;
+export function restoredValidatedSnapshot(draft: PreviewDraft) {
+  const validated = validatedIntentForPreviewDraft(draft);
+  const state = getPatchedPreviewState(validated, draft.patched);
 
   return {
-    ...item,
-    effective_quantity: item.quantity,
-    effective_unit: item.unit,
-    effective_unit_price: item.unit_price,
-    line_total: lineTotal,
-    issues: [],
-  };
-}
-
-function restoredValidatedSnapshot(draft: PreviewDraft): ValidatedIntent {
-  return {
-    intent: draft.intent,
-    kind: "writable",
-    raw_text: draft.resolved.raw_text,
-    ...(draft.resolved.business_date != null
-      ? { business_date: draft.resolved.business_date }
-      : {}),
-    customer: draft.resolved.customer,
-    supplier: draft.resolved.supplier,
-    items: draft.resolved.items.map(restoredLineItem),
-    effective_amount:
-      draft.intent === "record_payment" ? draft.resolved.amount ?? null : null,
-    issues: [],
-    ready_for_preview: true,
-    blocking_count: 0,
-    warning_count: 0,
+    ...validated,
+    ready_for_preview: state.canConfirm,
+    blocking_count: state.blockingCount,
+    warning_count: state.warningCount,
   };
 }
 
@@ -88,6 +68,7 @@ export function MessageList({
   restoredDraft,
   onPickSample,
   onPatchTurn,
+  onPatchRestoredDraft,
   onClearRestoredDraft,
 }: MessageListProps) {
   const bottomRef = React.useRef<HTMLDivElement | null>(null);
@@ -193,7 +174,7 @@ export function MessageList({
             patched={restoredDraft.patched}
             restoredDraft={restoredDraft}
             isLive={false}
-            onPatchChange={() => undefined}
+            onPatchChange={onPatchRestoredDraft}
             onPickSample={onPickSample}
             onRestoredDismiss={onClearRestoredDraft}
           />
