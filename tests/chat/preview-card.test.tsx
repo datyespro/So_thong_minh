@@ -1,8 +1,13 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PreviewCard } from "@/src/components/chat/preview-card/preview-card";
+import {
+  createProductPatchForItem,
+  PreviewCard,
+  ProductCreatePanel,
+} from "@/src/components/chat/preview-card/preview-card";
 import { createEmptyPreviewCardPatch } from "@/src/components/chat/preview-card";
+import { getPatchedPreviewState } from "@/src/components/chat/preview-card/preview-state";
 import type {
   PreviewCardPatch,
   ProductManagementPreview,
@@ -909,14 +914,21 @@ describe("PreviewCard", () => {
     expect(html).toContain("Minh Phát");
   });
 
-  it("does not offer product creation for a not_found product", () => {
+  it("renders inline product creation with order unit and sell-price prefill", () => {
     const html = renderCard(
       baseValidated({
         items: [
           item({
-            product_name: "đinh",
+            product_name: "xi măng",
+            quantity: 10,
+            unit: "bao",
+            unit_price: 85000,
+            effective_quantity: 10,
+            effective_unit: "bao",
+            effective_unit_price: 85000,
+            line_total: 850000,
             resolution: {
-              raw: "đinh",
+              raw: "xi măng",
               entity_type: "product",
               status: "not_found",
               resolved_id: null,
@@ -932,10 +944,127 @@ describe("PreviewCard", () => {
       }),
     );
 
-    expect(html).toContain('data-testid="product-not-found"');
-    expect(html).toContain("Chưa có hàng");
-    expect(html).not.toContain("Thêm hàng");
+    expect(html).toContain('data-testid="product-create-panel"');
+    expect(html).toContain("Chưa có mặt hàng");
+    expect(html).toContain('value="bao"');
+    expect(html).toContain('value="85000"');
+    expect(html).toContain("Tạo hàng");
     expect(html).toContain('disabled=""');
+  });
+
+  it("renders inline product creation for purchase without copying purchase price", () => {
+    const html = renderCard(
+      baseValidated({
+        intent: "create_purchase",
+        customer: null,
+        supplier: resolvedSupplier,
+        items: [
+          item({
+            product_name: "xi măng",
+            quantity: 100,
+            unit: "bao",
+            unit_price: 70000,
+            effective_quantity: 100,
+            effective_unit: "bao",
+            effective_unit_price: 70000,
+            line_total: 7000000,
+            resolution: {
+              raw: "xi măng",
+              entity_type: "product",
+              status: "not_found",
+              resolved_id: null,
+              resolved_name: null,
+              confidence: 0,
+              candidates: [],
+            },
+            issues: [productUnresolvedIssue()],
+          }),
+        ],
+        ready_for_preview: false,
+        blocking_count: 1,
+      }),
+    );
+    const panelHtml = renderToStaticMarkup(
+      createElement(ProductCreatePanel, {
+        raw: "xi măng",
+        defaultUnit: "bao",
+        defaultSellPrice: null,
+        isSaving: false,
+        error: null,
+        onCreate: () => undefined,
+        onDismiss: () => undefined,
+        onDraftChange: () => undefined,
+      }),
+    );
+
+    expect(html).toContain('data-testid="product-create-panel"');
+    expect(panelHtml).toContain('value="bao"');
+    expect(panelHtml).toContain('value=""');
+    expect(panelHtml).not.toContain('value="70000"');
+  });
+
+  it("keeps the row unresolved and shows its panel error when inline create fails", async () => {
+    const validated = baseValidated({
+      items: [
+        item({
+          product_name: "xi măng",
+          resolution: {
+            raw: "xi măng",
+            entity_type: "product",
+            status: "not_found",
+            resolved_id: null,
+            resolved_name: null,
+            confidence: 0,
+            candidates: [],
+          },
+          issues: [productUnresolvedIssue()],
+        }),
+      ],
+      ready_for_preview: false,
+      blocking_count: 1,
+    });
+    const patch = createEmptyPreviewCardPatch();
+    const createAction = vi.fn(async () => ({
+      ok: false as const,
+      code: "db_error" as const,
+      message: "server detail",
+    }));
+    const result = await createProductPatchForItem(
+      {
+        patch,
+        itemIndex: 0,
+        rawName: "xi măng",
+        draft: { unit: "bao", sell_price: 85000 },
+      },
+      createAction,
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      message: "Chưa thêm được mặt hàng, bác thử lại ạ.",
+    });
+    if (result.ok) {
+      throw new Error("Expected inline product creation to fail");
+    }
+    const panelHtml = renderToStaticMarkup(
+      createElement(ProductCreatePanel, {
+        raw: "xi măng",
+        defaultUnit: "bao",
+        defaultSellPrice: 85000,
+        isSaving: false,
+        error: result.message,
+        onCreate: () => undefined,
+        onDismiss: () => undefined,
+        onDraftChange: () => undefined,
+      }),
+    );
+    const state = getPatchedPreviewState(validated, patch);
+
+    expect(panelHtml).toContain("xi măng");
+    expect(panelHtml).toContain("Chưa thêm được mặt hàng, bác thử lại ạ.");
+    expect(state.items[0].resolution.status).toBe("not_found");
+    expect(state.items[0].resolution.resolved_id).toBeNull();
+    expect(state.canConfirm).toBe(false);
   });
 
   it("enables confirm when only warnings remain", () => {

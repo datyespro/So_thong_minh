@@ -6,6 +6,7 @@ import {
   canRemoveOrderItem,
   entityPatchFromCandidate,
   entityPatchFromCreatedCustomer,
+  entityPatchFromCreatedProduct,
   formatPreviewBusinessDate,
   formatDeleteOrderSummary,
   getPreviewBusinessDate,
@@ -345,6 +346,22 @@ describe("PreviewCard edit-order interaction flags", () => {
       unit: "cây",
       quantity: 1,
       unit_price: 80000,
+    });
+  });
+
+  it("maps a created product into a resolved patch for the original row", () => {
+    expect(
+      entityPatchFromCreatedProduct("xi măng", {
+        id: "product-xi-mang",
+        name: "Xi măng",
+        unit: "bao",
+        sell_price: 85000,
+      }),
+    ).toEqual({
+      entity_type: "product",
+      raw: "xi măng",
+      resolved_id: "product-xi-mang",
+      resolved_name: "Xi măng",
     });
   });
 

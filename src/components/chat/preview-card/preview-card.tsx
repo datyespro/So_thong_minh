@@ -87,6 +87,7 @@ import type {
   ResolvedItem,
 } from "@/src/lib/ai/resolve-schema";
 import type { QueryAnswer } from "@/src/lib/ai/answer-query";
+import type { ActionResult } from "@/src/types/action-result";
 import {
   ValidatedIntentSchema,
   type ValidatedIntent,
@@ -941,6 +942,65 @@ export function entityPatchFromCreatedSupplier(
   };
 }
 
+export function entityPatchFromCreatedProduct(
+  raw: string,
+  product: CreatedProductView,
+): PreviewResolvedEntityPatch {
+  return {
+    entity_type: "product",
+    raw,
+    resolved_id: product.id,
+    resolved_name: product.name,
+  };
+}
+
+type CreateProductForItemAction = (
+  name: string,
+  unit: string,
+  sellPrice: number | null,
+) => Promise<ActionResult<CreatedProductView>>;
+
+export async function createProductPatchForItem(
+  input: Readonly<{
+    patch: PreviewCardPatch;
+    itemIndex: number;
+    rawName: string;
+    draft: { unit: string; sell_price: number | null };
+  }>,
+  createProductAction: CreateProductForItemAction = createProduct,
+) {
+  const name = input.rawName.trim();
+
+  if (!name) {
+    return {
+      ok: false as const,
+      message: "Chưa thêm được mặt hàng, bác thử lại ạ.",
+    };
+  }
+
+  const result = await createProductAction(
+    name,
+    input.draft.unit,
+    input.draft.sell_price,
+  );
+
+  if (!result.ok) {
+    return {
+      ok: false as const,
+      message: "Chưa thêm được mặt hàng, bác thử lại ạ.",
+    };
+  }
+
+  return {
+    ok: true as const,
+    patch: updateItemProductPatch(
+      input.patch,
+      input.itemIndex,
+      entityPatchFromCreatedProduct(name, result.data),
+    ),
+  };
+}
+
 function shouldLearnAlias(raw: string | null, resolvedName: string) {
   if (!raw) {
     return false;
@@ -1611,8 +1671,11 @@ function SupplierCreatePanel({
   );
 }
 
-function ProductCreatePanel({
+export function ProductCreatePanel({
   raw,
+  defaultUnit,
+  defaultSellPrice,
+  submitLabel,
   isSaving,
   error,
   onCreate,
@@ -1620,21 +1683,28 @@ function ProductCreatePanel({
   onDraftChange,
 }: Readonly<{
   raw: string;
+  defaultUnit?: string;
+  defaultSellPrice?: number | null;
+  submitLabel?: string;
   isSaving: boolean;
   error: string | null;
   onCreate: (draft: { unit: string; sell_price: number | null }) => void;
   onDismiss: () => void;
   onDraftChange: () => void;
 }>) {
-  const [unitDraft, setUnitDraft] = React.useState("cái");
-  const [sellPriceDraft, setSellPriceDraft] = React.useState("");
+  const [unitDraft, setUnitDraft] = React.useState(
+    defaultUnit === undefined ? "cái" : defaultUnit,
+  );
+  const [sellPriceDraft, setSellPriceDraft] = React.useState(
+    defaultSellPrice == null ? "" : String(defaultSellPrice),
+  );
   const [localError, setLocalError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    setUnitDraft("cái");
-    setSellPriceDraft("");
+    setUnitDraft(defaultUnit === undefined ? "cái" : defaultUnit);
+    setSellPriceDraft(defaultSellPrice == null ? "" : String(defaultSellPrice));
     setLocalError(null);
-  }, [raw]);
+  }, [raw, defaultUnit, defaultSellPrice]);
 
   function handleDraftChange() {
     setLocalError(null);
@@ -1730,7 +1800,7 @@ function ProductCreatePanel({
           onClick={handleCreateClick}
         >
           <Plus className="h-4 w-4" aria-hidden="true" />
-          {isSaving ? "Đang thêm..." : `Thêm ${raw}`}
+          {isSaving ? "Đang thêm..." : (submitLabel ?? `Thêm ${raw}`)}
         </Button>
         <Button
           type="button"
@@ -1751,13 +1821,25 @@ function ProductCreatePanel({
   );
 }
 
-function ProductMissingNotice({ raw }: Readonly<{ raw: string }>) {
+function ProductMissingNotice({
+  raw,
+  onCreate,
+}: Readonly<{ raw: string; onCreate: () => void }>) {
   return (
     <div
       className="mt-2 rounded border border-debt/25 bg-red-50 px-3 py-2 text-[15px] leading-6 text-debt"
       data-testid="product-not-found"
     >
-      Chưa có hàng &quot;{raw}&quot; trong sổ. Bác vào mục Sản phẩm thêm hàng này sau ạ.
+      <p>Chưa có hàng &quot;{raw}&quot; trong sổ.</p>
+      <Button
+        type="button"
+        variant="outline"
+        className="mt-2 h-10 rounded border-debt/30 bg-surface px-3 text-[15px] font-semibold text-debt hover:bg-red-50"
+        onClick={onCreate}
+      >
+        <Plus className="h-4 w-4" aria-hidden="true" />
+        Tạo hàng
+      </Button>
     </div>
   );
 }
@@ -2426,6 +2508,11 @@ export function PreviewCard({
   const [supplierSearchCreateOpen, setSupplierSearchCreateOpen] = React.useState(false);
   const [isCreatingProduct, setIsCreatingProduct] = React.useState(false);
   const [createProductError, setCreateProductError] = React.useState<string | null>(null);
+  const [productCreateItemIndex, setProductCreateItemIndex] = React.useState<number | null>(
+    null,
+  );
+  const [dismissedProductCreateIndices, setDismissedProductCreateIndices] =
+    React.useState<number[]>([]);
   const [productSearchOpen, setProductSearchOpen] = React.useState(false);
   const [productSearchInput, setProductSearchInput] = React.useState("");
   const [productSearchResult, setProductSearchResult] =
@@ -3317,6 +3404,7 @@ export function PreviewCard({
       return;
     }
 
+    setProductCreateItemIndex(null);
     setIsCreatingProduct(true);
     setCreateProductError(null);
 
@@ -3337,6 +3425,45 @@ export function PreviewCard({
       clearProductSearchState();
     } catch (error) {
       console.error("createProduct failed", error);
+      setCreateProductError("Chưa thêm được mặt hàng, bác thử lại ạ.");
+    } finally {
+      setIsCreatingProduct(false);
+    }
+  }
+
+  async function handleCreateProductForItem(
+    itemIndex: number,
+    rawName: string,
+    draft: { unit: string; sell_price: number | null },
+  ) {
+    if (!rawName.trim() || isCreatingProduct) {
+      return;
+    }
+
+    setProductCreateItemIndex(itemIndex);
+    setIsCreatingProduct(true);
+    setCreateProductError(null);
+
+    try {
+      const result = await createProductPatchForItem({
+        patch: latestPatchRef.current,
+        itemIndex,
+        rawName,
+        draft,
+      });
+
+      if (!result.ok) {
+        setCreateProductError(result.message);
+        return;
+      }
+
+      onPatchChange(result.patch);
+      setDismissedProductCreateIndices((indices) =>
+        indices.filter((index) => index !== itemIndex),
+      );
+      setProductCreateItemIndex(null);
+    } catch (error) {
+      console.error("createProduct for item failed", error);
       setCreateProductError("Chưa thêm được mặt hàng, bác thử lại ạ.");
     } finally {
       setIsCreatingProduct(false);
@@ -4373,6 +4500,12 @@ export function PreviewCard({
                 const productNotFound =
                   canEditCounterpartyAndProducts &&
                   displayItem.resolution.status === "not_found";
+                const inlineProductRaw =
+                  displayItem.resolution.raw ??
+                  displayItem.item.product_name ??
+                  displayItem.item.raw;
+                const productCreateDismissed =
+                  dismissedProductCreateIndices.includes(displayItem.index);
                 const removeMode = getOrderItemRemoveMode({
                   itemCount: state.items.length,
                   isReopeningSaleOrder,
@@ -4412,13 +4545,51 @@ export function PreviewCard({
                           }
                         />
                       ) : null}
-                      {productNotFound ? (
+                      {productNotFound && productCreateDismissed ? (
                         <ProductMissingNotice
-                          raw={
-                            displayItem.resolution.raw ??
-                            displayItem.item.product_name ??
-                            displayItem.item.raw
+                          raw={inlineProductRaw}
+                          onCreate={() => {
+                            setDismissedProductCreateIndices((indices) =>
+                              indices.filter((index) => index !== displayItem.index),
+                            );
+                            setProductCreateItemIndex(displayItem.index);
+                            setCreateProductError(null);
+                          }}
+                        />
+                      ) : null}
+                      {productNotFound && !productCreateDismissed ? (
+                        <ProductCreatePanel
+                          raw={inlineProductRaw}
+                          defaultUnit={displayItem.unit ?? ""}
+                          defaultSellPrice={
+                            validated.intent === "create_order"
+                              ? displayItem.unitPrice
+                              : null
                           }
+                          submitLabel="Tạo hàng"
+                          isSaving={isCreatingProduct}
+                          error={
+                            productCreateItemIndex === displayItem.index
+                              ? createProductError
+                              : null
+                          }
+                          onCreate={(draft) =>
+                            void handleCreateProductForItem(
+                              displayItem.index,
+                              inlineProductRaw,
+                              draft,
+                            )
+                          }
+                          onDismiss={() => {
+                            setDismissedProductCreateIndices((indices) =>
+                              indices.includes(displayItem.index)
+                                ? indices
+                                : [...indices, displayItem.index],
+                            );
+                            setProductCreateItemIndex(null);
+                            setCreateProductError(null);
+                          }}
+                          onDraftChange={() => setCreateProductError(null)}
                         />
                       ) : null}
                     </div>
@@ -4585,7 +4756,9 @@ export function PreviewCard({
                       <ProductCreatePanel
                         raw={productCreateRaw}
                         isSaving={isCreatingProduct}
-                        error={createProductError}
+                        error={
+                          productCreateItemIndex === null ? createProductError : null
+                        }
                         onCreate={(draft) =>
                           void handleCreateProduct(productCreateRaw, draft)
                         }

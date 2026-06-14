@@ -57,6 +57,12 @@ const {
   searchProductsByName,
   updateProduct,
 } = await import("@/app/(app)/chat/actions");
+const { createProductPatchForItem } = await import(
+  "@/src/components/chat/preview-card/preview-card"
+);
+const { createEmptyPreviewCardPatch } = await import(
+  "@/src/components/chat/preview-card/types"
+);
 
 beforeEach(() => {
   mocks.readMaybeSingle.mockReset();
@@ -528,6 +534,42 @@ describe("createProduct", () => {
         sell_price: null,
       },
     });
+    expect(mocks.insert).not.toHaveBeenCalled();
+  });
+
+  it("patches an inline duplicate to the existing product id without inserting", async () => {
+    mocks.readIs.mockResolvedValue({
+      data: [
+        {
+          id: "product-existing",
+          name: "Xi măng Hoàng Thạch",
+          unit: "bao",
+          sell_price: 85000,
+        },
+      ],
+      error: null,
+    });
+
+    const result = await createProductPatchForItem(
+      {
+        patch: createEmptyPreviewCardPatch(),
+        itemIndex: 0,
+        rawName: "xi măng hoàng thạch",
+        draft: { unit: "bao", sell_price: 85000 },
+      },
+      createProduct,
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.patch.itemProducts[0]).toEqual({
+        entity_type: "product",
+        raw: "xi măng hoàng thạch",
+        resolved_id: "product-existing",
+        resolved_name: "Xi măng Hoàng Thạch",
+      });
+      expect(result.patch.itemsAdded).toEqual([]);
+    }
     expect(mocks.insert).not.toHaveBeenCalled();
   });
 
