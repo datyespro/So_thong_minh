@@ -28,6 +28,7 @@ export const ValidationCodeSchema = z.enum([
   "missing_amount",
   "invalid_amount",
   "overpayment",
+  "paid_exceeds_total",
   "payment_status_unknown",
   "payment_method_unknown",
 ]);
@@ -65,6 +66,7 @@ export const ValidatedIntentSchema = z.object({
   supplier: ResolvedEntitySchema.nullable(),
   items: z.array(ValidatedLineItemSchema),
   effective_amount: z.number().nullable(),
+  effective_paid: z.number().nullable(),
   issues: z.array(ValidationIssueSchema),
   ready_for_preview: z.boolean(),
   blocking_count: z.number().int().min(0),

@@ -280,6 +280,45 @@
     "mode": "assert"
   },
   {
+    "id": "A16",
+    "group": "A",
+    "text": "cô Lan mua 10 bao xi măng 85k trả trước 500k",
+    "expect": {
+      "intent": "create_order",
+      "fields": [
+        { "path": "entities.payment_status", "match": "exact", "value": "partial" },
+        { "path": "entities.paid_amount", "match": "number", "value": 500000 }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "A17",
+    "group": "A",
+    "text": "anh Hùng lấy 5 bao xi măng 80k trả đủ",
+    "expect": {
+      "intent": "create_order",
+      "fields": [
+        { "path": "entities.payment_status", "match": "exact", "value": "paid" },
+        { "path": "entities.paid_amount", "match": "exact", "value": null }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "A18",
+    "group": "A",
+    "text": "chị Mai mua 3 bao xi măng 90k đưa trước 100k",
+    "expect": {
+      "intent": "create_order",
+      "fields": [
+        { "path": "entities.payment_status", "match": "exact", "value": "partial" },
+        { "path": "entities.paid_amount", "match": "number", "value": 100000 }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
     "id": "B1",
     "group": "B",
     "text": "nhập 100 bao xi măng từ Minh Phát",

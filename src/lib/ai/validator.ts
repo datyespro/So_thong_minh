@@ -386,8 +386,42 @@ function validateCreateOrder(
   const issues = validateRequiredCustomer(resolved.customer);
   const itemResult = validateItems(resolved, masters, "create_order");
   issues.push(...itemResult.issues);
+  const orderTotal = itemResult.items.every((item) => item.line_total !== null)
+    ? itemResult.items.reduce((total, item) => total + (item.line_total ?? 0), 0)
+    : null;
+  let effectivePaid: number | null = null;
 
-  if (resolved.payment_status === "unknown" || !resolved.payment_status) {
+  if (resolved.payment_status === "paid") {
+    effectivePaid = orderTotal;
+  } else if (resolved.payment_status === "partial") {
+    const paidAmount = resolved.paid_amount ?? null;
+
+    if (paidAmount === null) {
+      issues.push(
+        issue({
+          code: "payment_status_unknown",
+          severity: "warning",
+          message: "Chưa rõ trả trước bao nhiêu ạ.",
+          field_path: "paid_amount",
+          item_index: null,
+        }),
+      );
+    } else if (orderTotal !== null && paidAmount > orderTotal) {
+      issues.push(
+        issue({
+          code: "paid_exceeds_total",
+          severity: "blocking",
+          message: "Tiền trả không được vượt tổng đơn ạ.",
+          field_path: "paid_amount",
+          item_index: null,
+        }),
+      );
+    } else if (orderTotal !== null && paidAmount >= 0) {
+      effectivePaid = paidAmount;
+    }
+  } else if (resolved.payment_status === "debt") {
+    effectivePaid = 0;
+  } else {
     issues.push(
       issue({
         code: "payment_status_unknown",
@@ -403,6 +437,7 @@ function validateCreateOrder(
     issues,
     items: itemResult.items,
     effectiveAmount: null,
+    effectivePaid,
   };
 }
 
@@ -474,6 +509,7 @@ function validateRecordPayment(
     issues,
     items: [],
     effectiveAmount: amount,
+    effectivePaid: null,
   };
 }
 
@@ -489,6 +525,7 @@ function validateCreatePurchase(
     issues,
     items: itemResult.items,
     effectiveAmount: null,
+    effectivePaid: null,
   };
 }
 
@@ -529,6 +566,7 @@ export function validateResolvedIntent(
       supplier: resolved.supplier,
       items: passthroughItems(resolved.items),
       effective_amount: null,
+      effective_paid: null,
       issues: [],
       ready_for_preview: false,
       blocking_count: 0,
@@ -540,6 +578,7 @@ export function validateResolvedIntent(
     issues: ValidationIssue[];
     items: ValidatedLineItem[];
     effectiveAmount: number | null;
+    effectivePaid: number | null;
   };
 
   if (resolved.intent === "create_order") {
@@ -564,6 +603,7 @@ export function validateResolvedIntent(
     supplier: resolved.supplier,
     items: result.items,
     effective_amount: result.effectiveAmount,
+    effective_paid: result.effectivePaid ?? null,
     issues: result.issues,
     ready_for_preview: blockingCount === 0,
     blocking_count: blockingCount,

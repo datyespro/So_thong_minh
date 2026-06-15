@@ -193,6 +193,7 @@ export function validatedIntentForPreviewDraft(
     items: draft.resolved.items.map(legacyRestoredLineItem),
     effective_amount:
       draft.intent === "record_payment" ? draft.resolved.amount ?? null : null,
+    effective_paid: null,
     issues: [],
     ready_for_preview: true,
     blocking_count: 0,

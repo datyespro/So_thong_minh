@@ -69,6 +69,7 @@ function baseIntent(overrides: Partial<ExtractedIntent> = {}): ExtractedIntent {
       product_management: null,
       items: [],
       amount: null,
+      paid_amount: null,
       payment_status: "unknown",
       payment_method: null,
       order_reference: null,
@@ -497,5 +498,22 @@ describe("resolveEntities", () => {
 
     expect(dated.business_date).toBe("2026-06-01");
     expect(undated).not.toHaveProperty("business_date");
+  });
+
+  it("passes paid_amount through Stage 2", async () => {
+    const resolved = await resolveEntities({
+      ownerId: "owner-1",
+      entityRows: ownerRows,
+      intent: baseIntent({
+        entities: {
+          ...baseIntent().entities,
+          paid_amount: 500000,
+          payment_status: "partial",
+        },
+      }),
+    });
+
+    expect(resolved.paid_amount).toBe(500000);
+    expect(resolved.payment_status).toBe("partial");
   });
 });

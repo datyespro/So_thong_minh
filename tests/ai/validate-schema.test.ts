@@ -71,6 +71,7 @@ function baseValidatedIntent(
       },
     ],
     effective_amount: null,
+    effective_paid: null,
     issues: [],
     ready_for_preview: true,
     blocking_count: 0,

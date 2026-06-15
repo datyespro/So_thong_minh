@@ -32,6 +32,7 @@ function baseIntent(
         },
       ],
       amount: null,
+      paid_amount: null,
       payment_status: "debt",
       payment_method: null,
       order_reference: null,

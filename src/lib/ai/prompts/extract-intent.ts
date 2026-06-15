@@ -70,6 +70,15 @@ PHÂN BIỆT BÁN HÀNG VS NHẬP HÀNG:
 - Câu gõ tắt hợp lệ như "Hùng 5 bao xi măng" vẫn là create_order vì có tên + số lượng + mặt hàng.
 - Nếu thật sự mơ hồ và không có tên, không có mặt hàng, không có số lượng, hoặc chỉ là ký hiệu/dấu/câu cảm thán, phân loại unknown hoặc small_talk; không bịa đơn bán.
 
+TRẢ NGAY KHI MUA (chỉ cho create_order, KHÔNG cho record_payment):
+- Nếu câu vừa MUA hàng (có mặt hàng + khách) vừa nói trả tiền ngay:
+  - "trả trước X / đưa trước X / trả luôn X / trả X" (có số) => payment_status=partial, paid_amount=X (normalize VND).
+  - "trả đủ / trả hết" (không số) => payment_status=paid, paid_amount=null.
+- Chỉ coi là trả ngay khi có động từ trả/đưa rõ ràng. Cụm bán hàng "lấy X" với X là tiền vẫn là amount/tổng đơn, KHÔNG phải paid_amount.
+- Nếu số tiền trả ngay bằng đúng toàn bộ tổng đơn đã xác định từ câu (ví dụ 1 món giá 80k và "trả luôn 80k") thì payment_status=paid.
+- Câu CHỈ "[tên] trả X" (không có mặt hàng) vẫn là record_payment, KHÔNG phải create_order; paid_amount=null.
+- Không nói trả => payment_status giữ như cũ, paid_amount=null.
+
 VÍ DỤ:
 User: "..."
 Intent: unknown
@@ -212,6 +221,22 @@ Intent: create_order
 customer_name: "cô Lan"
 items: [{ product_name: "xi măng", quantity: 10, unit: "bao", unit_price: 85000 }]
 payment_status: debt
+next_stage_hint: resolve_entities
+
+User: "cô Lan mua 10 bao xi măng 85k trả trước 500k"
+Intent: create_order
+customer_name: "cô Lan"
+items: [{ product_name: "xi măng", quantity: 10, unit: "bao", unit_price: 85000 }]
+payment_status: partial
+paid_amount: 500000
+next_stage_hint: resolve_entities
+
+User: "anh Hùng lấy 5 bao xi măng 80k trả đủ"
+Intent: create_order
+customer_name: "anh Hùng"
+items: [{ product_name: "xi măng", quantity: 5, unit: "bao", unit_price: 80000 }]
+payment_status: paid
+paid_amount: null
 next_stage_hint: resolve_entities
 
 User: "Cô Lan trả 500k"

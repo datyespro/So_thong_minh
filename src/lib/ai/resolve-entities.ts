@@ -205,6 +205,7 @@ export async function resolveEntities({
       intent: intent.intent,
       raw_text: intent.raw_text,
       amount: intent.entities.amount,
+      paid_amount: intent.entities.paid_amount,
       ...(intent.entities.business_date != null
         ? { business_date: intent.entities.business_date }
         : {}),

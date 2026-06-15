@@ -135,6 +135,7 @@ function baseResolved(
     intent: "create_order",
     raw_text: "Ban cho co Lan 10 bao xi mang",
     amount: null,
+    paid_amount: null,
     payment_status: "paid",
     payment_method: "cash",
     customer: customerResolved,
@@ -281,6 +282,86 @@ describe("validateResolvedIntent create_order", () => {
     );
 
     expect(hasIssue(result, "payment_status_unknown")).toBe(true);
+    expect(result.ready_for_preview).toBe(true);
+  });
+
+  it("blocks partial payment above the order total", () => {
+    const result = validateResolvedIntent(
+      baseResolved({
+        payment_status: "partial",
+        paid_amount: 900000,
+      }),
+      masters,
+    );
+
+    expect(hasIssue(result, "paid_exceeds_total")).toBe(true);
+    expect(result.effective_paid).toBeNull();
+    expect(result.ready_for_preview).toBe(false);
+  });
+
+  it("computes an effective partial payment", () => {
+    const result = validateResolvedIntent(
+      baseResolved({
+        payment_status: "partial",
+        paid_amount: 500000,
+      }),
+      masters,
+    );
+
+    expect(hasIssue(result, "paid_exceeds_total")).toBe(false);
+    expect(result.effective_paid).toBe(500000);
+    expect(result.effective_amount).toBeNull();
+    expect(result.ready_for_preview).toBe(true);
+  });
+
+  it("uses the order total as effective paid when payment is full", () => {
+    const result = validateResolvedIntent(
+      baseResolved({
+        payment_status: "paid",
+        paid_amount: null,
+        items: [productItem({ quantity: 5, unit_price: 80000 })],
+      }),
+      masters,
+    );
+
+    expect(result.effective_paid).toBe(400000);
+    expect(result.effective_amount).toBeNull();
+  });
+
+  it("warns when partial payment has no amount", () => {
+    const result = validateResolvedIntent(
+      baseResolved({
+        payment_status: "partial",
+        paid_amount: null,
+      }),
+      masters,
+    );
+
+    expect(hasIssue(result, "payment_status_unknown")).toBe(true);
+    expect(result.issues).toContainEqual(
+      expect.objectContaining({
+        code: "payment_status_unknown",
+        severity: "warning",
+        message: "Chưa rõ trả trước bao nhiêu ạ.",
+        field_path: "paid_amount",
+      }),
+    );
+    expect(result.effective_paid).toBeNull();
+    expect(result.ready_for_preview).toBe(true);
+  });
+
+  it("keeps a debt order at zero effective paid", () => {
+    const result = validateResolvedIntent(
+      baseResolved({
+        payment_status: "debt",
+        paid_amount: null,
+      }),
+      masters,
+    );
+
+    expect(hasIssue(result, "payment_status_unknown")).toBe(false);
+    expect(result.effective_paid).toBe(0);
+    expect(result.effective_amount).toBeNull();
     expect(result.ready_for_preview).toBe(true);
   });
 
