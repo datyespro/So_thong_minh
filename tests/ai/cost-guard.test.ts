@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { evaluateAiGuard, checkAiGuard } from "@/src/lib/ai/cost-guard";
 
 describe("evaluateAiGuard", () => {
@@ -87,7 +88,7 @@ describe("checkAiGuard", () => {
     };
 
     const decision = await checkAiGuard({
-      supabase: mockSupabase as any,
+      supabase: mockSupabase as unknown as SupabaseClient,
       ownerId: "user-1",
     });
 
@@ -105,7 +106,7 @@ describe("checkAiGuard", () => {
     };
 
     const decision = await checkAiGuard({
-      supabase: mockSupabase as any,
+      supabase: mockSupabase as unknown as SupabaseClient,
       ownerId: "user-1",
     });
 
