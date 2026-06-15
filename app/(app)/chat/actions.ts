@@ -22,6 +22,7 @@ import {
   runChatPipeline,
   type ChatPipelineResult,
 } from "@/src/lib/ai/chat-pipeline";
+import { checkAiGuard } from "@/src/lib/ai/cost-guard";
 import {
   logAiInteraction,
   updateAiInteractionOutcome,
@@ -2956,6 +2957,29 @@ export async function processMessage(
       ok: false,
       code: "unauthorized",
       message: "Vui lòng đăng nhập lại ạ.",
+    };
+  }
+
+  const guardDecision = await checkAiGuard({ supabase, ownerId: user.id });
+  if (!guardDecision.allow) {
+    await persistAssistantTerminalMessage({
+      supabase,
+      ownerId: user.id,
+      content: guardDecision.message,
+      intent: guardDecision.reason,
+      source: "tip_d8b_cost_guard",
+    });
+
+    return {
+      ok: true,
+      userMessage: saved.data,
+      pipeline: {
+        ok: false,
+        stage: "extract",
+        code: guardDecision.reason,
+        message: guardDecision.message,
+      },
+      terminalText: guardDecision.message,
     };
   }
 

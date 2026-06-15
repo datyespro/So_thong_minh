@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   runChatPipeline: vi.fn(),
   logAiInteraction: vi.fn(),
   answerQuery: vi.fn(),
+  checkAiGuard: vi.fn(),
 }));
 
 const productReadChain = {
@@ -55,6 +56,10 @@ vi.mock("@/src/lib/ai/chat-pipeline", async (importOriginal) => {
 
 vi.mock("@/src/lib/ai/interaction-log", () => ({
   logAiInteraction: mocks.logAiInteraction,
+}));
+
+vi.mock("@/src/lib/ai/cost-guard", () => ({
+  checkAiGuard: mocks.checkAiGuard,
 }));
 
 vi.mock("@/src/lib/ai/answer-query", async (importOriginal) => {
@@ -279,6 +284,7 @@ describe("processMessage", () => {
     });
     mocks.runChatPipeline.mockResolvedValue(pipelineResult);
     mocks.logAiInteraction.mockResolvedValue(undefined);
+    mocks.checkAiGuard.mockResolvedValue({ allow: true });
   });
 
   it("returns the save failure and does not run pipeline", async () => {
