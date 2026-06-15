@@ -309,7 +309,7 @@ function makeAddedItemTempId() {
   return `added-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
 }
 
-const PRODUCT_UNIT_SUGGESTIONS = ["bao", "cây", "cái", "m³"] as const;
+const PRODUCT_UNIT_SUGGESTIONS = ["viên", "bao", "cây", "cái", "m³"] as const;
 
 export function addedItemFromProductCandidate(
   candidate: EntityCandidate,
@@ -1773,14 +1773,15 @@ export function ProductCreatePanel({
 
   return (
     <div
-      className="mt-2 rounded border border-stamp/25 bg-paperNote px-3 py-3 text-[15px] leading-6"
+      className="mt-3 rounded-r border-y border-r border-b-2 border-ledgerBorder border-l-[3px] border-l-stamp bg-paperNote px-3 py-4 text-[15px] leading-6 sm:px-5"
       data-testid="product-create-panel"
     >
       <p className="font-semibold text-inkDeep">
-        Chưa có mặt hàng &quot;{raw}&quot;. Thêm mới nhé?
+        Chưa có mặt hàng <span className="text-stamp">&quot;{raw}&quot;</span>. Thêm
+        mới nhé?
       </p>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        <label className="min-w-0">
+      <div className="mt-3 grid gap-x-3 gap-y-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.7fr)]">
+        <label className="min-w-0 sm:col-start-1 sm:row-start-1">
           <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-stamp">
             Đơn vị
           </span>
@@ -1795,7 +1796,28 @@ export function ProductCreatePanel({
             }}
           />
         </label>
-        <label className="min-w-0">
+        <div className="flex flex-wrap gap-2 sm:col-span-2 sm:row-start-2">
+          {PRODUCT_UNIT_SUGGESTIONS.map((unit) => (
+            <button
+              key={unit}
+              type="button"
+              disabled={isSaving}
+              className={cn(
+                "h-10 whitespace-nowrap rounded border px-3 text-[15px] font-semibold disabled:cursor-not-allowed disabled:opacity-60",
+                unitDraft.trim() === unit
+                  ? "border-ink bg-ink text-paper hover:bg-inkDeep"
+                  : "border-stamp/30 bg-surface text-ink hover:border-ink hover:bg-paperWarm",
+              )}
+              onClick={() => {
+                setUnitDraft(unit);
+                handleDraftChange();
+              }}
+            >
+              {unit}
+            </button>
+          ))}
+        </div>
+        <label className="min-w-0 sm:col-start-2 sm:row-start-1">
           <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-stamp">
             Giá bán
           </span>
@@ -1813,26 +1835,15 @@ export function ProductCreatePanel({
           />
         </label>
       </div>
-      <div className="mt-2 flex flex-wrap gap-2">
-        {PRODUCT_UNIT_SUGGESTIONS.map((unit) => (
-          <button
-            key={unit}
-            type="button"
-            disabled={isSaving}
-            className="h-9 rounded border border-stamp/30 bg-surface px-3 text-[15px] font-semibold text-ink hover:border-ink hover:bg-paperWarm disabled:cursor-not-allowed disabled:opacity-60"
-            onClick={() => {
-              setUnitDraft(unit);
-              handleDraftChange();
-            }}
-          >
-            {unit}
-          </button>
-        ))}
-      </div>
-      <div className="mt-2 flex flex-wrap gap-2">
+      {visibleError ? (
+        <p className="mt-3 min-h-6 text-[15px] font-medium text-debt" role="alert">
+          {visibleError}
+        </p>
+      ) : null}
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         <Button
           type="button"
-          className="h-11 rounded bg-ink px-3 text-[16px] font-semibold text-paper hover:bg-inkDeep"
+          className="h-11 w-full rounded bg-ink px-5 text-[16px] font-semibold text-paper hover:bg-inkDeep sm:w-auto"
           disabled={isSaving}
           onClick={handleCreateClick}
         >
@@ -1842,18 +1853,13 @@ export function ProductCreatePanel({
         <Button
           type="button"
           variant="outline"
-          className="h-11 rounded border-ledgerBorder bg-surface px-3 text-[16px] font-semibold text-textMute hover:bg-paperWarm"
+          className="h-11 w-full rounded border-ledgerBorder bg-transparent px-4 text-[16px] font-semibold text-textMute hover:bg-paperWarm hover:text-textMain sm:w-auto"
           onClick={onDismiss}
         >
           <X className="h-4 w-4" aria-hidden="true" />
           Để sau
         </Button>
       </div>
-      {visibleError ? (
-        <p className="mt-2 text-[15px] text-debt" role="alert">
-          {visibleError}
-        </p>
-      ) : null}
     </div>
   );
 }
@@ -4609,53 +4615,6 @@ export function PreviewCard({
                           }
                         />
                       ) : null}
-                      {productNotFound && productCreateDismissed ? (
-                        <ProductMissingNotice
-                          raw={inlineProductRaw}
-                          onCreate={() => {
-                            setDismissedProductCreateIndices((indices) =>
-                              indices.filter((index) => index !== displayItem.index),
-                            );
-                            setProductCreateItemIndex(displayItem.index);
-                            setCreateProductError(null);
-                          }}
-                        />
-                      ) : null}
-                      {productNotFound && !productCreateDismissed ? (
-                        <ProductCreatePanel
-                          raw={inlineProductRaw}
-                          defaultUnit={displayItem.unit ?? ""}
-                          defaultSellPrice={
-                            validated.intent === "create_order"
-                              ? displayItem.unitPrice
-                              : null
-                          }
-                          submitLabel="Tạo hàng"
-                          isSaving={isCreatingProduct}
-                          error={
-                            productCreateItemIndex === displayItem.index
-                              ? createProductError
-                              : null
-                          }
-                          onCreate={(draft) =>
-                            void handleCreateProductForItem(
-                              displayItem.index,
-                              inlineProductRaw,
-                              draft,
-                            )
-                          }
-                          onDismiss={() => {
-                            setDismissedProductCreateIndices((indices) =>
-                              indices.includes(displayItem.index)
-                                ? indices
-                                : [...indices, displayItem.index],
-                            );
-                            setProductCreateItemIndex(null);
-                            setCreateProductError(null);
-                          }}
-                          onDraftChange={() => setCreateProductError(null)}
-                        />
-                      ) : null}
                     </div>
                     <div className="mt-3 grid grid-cols-[92px_minmax(0,1fr)] items-center gap-2 sm:mt-0 sm:block">
                       <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-stamp sm:hidden">
@@ -4732,6 +4691,57 @@ export function PreviewCard({
                         >
                           <Trash2 className="h-4 w-4" aria-hidden="true" />
                         </Button>
+                      </div>
+                    ) : null}
+                    {productNotFound && productCreateDismissed ? (
+                      <div className="min-w-0 sm:col-span-full">
+                        <ProductMissingNotice
+                          raw={inlineProductRaw}
+                          onCreate={() => {
+                            setDismissedProductCreateIndices((indices) =>
+                              indices.filter((index) => index !== displayItem.index),
+                            );
+                            setProductCreateItemIndex(displayItem.index);
+                            setCreateProductError(null);
+                          }}
+                        />
+                      </div>
+                    ) : null}
+                    {productNotFound && !productCreateDismissed ? (
+                      <div className="min-w-0 sm:col-span-full">
+                        <ProductCreatePanel
+                          raw={inlineProductRaw}
+                          defaultUnit={displayItem.unit ?? ""}
+                          defaultSellPrice={
+                            validated.intent === "create_order"
+                              ? displayItem.unitPrice
+                              : null
+                          }
+                          submitLabel="Tạo hàng"
+                          isSaving={isCreatingProduct}
+                          error={
+                            productCreateItemIndex === displayItem.index
+                              ? createProductError
+                              : null
+                          }
+                          onCreate={(draft) =>
+                            void handleCreateProductForItem(
+                              displayItem.index,
+                              inlineProductRaw,
+                              draft,
+                            )
+                          }
+                          onDismiss={() => {
+                            setDismissedProductCreateIndices((indices) =>
+                              indices.includes(displayItem.index)
+                                ? indices
+                                : [...indices, displayItem.index],
+                            );
+                            setProductCreateItemIndex(null);
+                            setCreateProductError(null);
+                          }}
+                          onDraftChange={() => setCreateProductError(null)}
+                        />
                       </div>
                     ) : null}
                   </div>
