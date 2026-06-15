@@ -72,6 +72,8 @@ function baseValidatedIntent(
     ],
     effective_amount: null,
     effective_paid: null,
+    payment_status: null,
+    paid_amount: null,
     issues: [],
     ready_for_preview: true,
     blocking_count: 0,
@@ -112,10 +114,17 @@ describe("ValidationIssueSchema", () => {
 
 describe("ValidatedIntentSchema", () => {
   it("accepts a valid writable validated intent", () => {
-    const parsed = ValidatedIntentSchema.parse(baseValidatedIntent());
+    const parsed = ValidatedIntentSchema.parse(
+      baseValidatedIntent({
+        payment_status: "partial",
+        paid_amount: 200000,
+      }),
+    );
 
     expect(parsed.ready_for_preview).toBe(true);
     expect(parsed.items[0].line_total).toBe(425000);
+    expect(parsed.payment_status).toBe("partial");
+    expect(parsed.paid_amount).toBe(200000);
   });
 
   it("accepts query routing without preview readiness", () => {

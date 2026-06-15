@@ -2087,6 +2087,7 @@ export type CommitOrderInput = Readonly<{
   customer_name?: string | null;
   raw_input: string;
   business_date?: string | null;
+  paid_amount?: number | null;
   ai_turn_id?: string;
   items: CommitOrderItemInput[];
 }>;
@@ -2257,6 +2258,7 @@ export async function commitOrder(
     p_customer_id: input.customer_id,
     p_business_date: requestedBusinessDate,
     p_note: input.raw_input ?? null,
+    p_paid_amount: input.paid_amount ?? 0,
     p_items: input.items.map((item) => ({
       product_id: item.product_id,
       product_name_snapshot: item.product_name_snapshot,

@@ -168,5 +168,7 @@ export function baseValidated(
     blocking_count: 0,
     warning_count: 0,
     ...overrides,
+    payment_status: overrides.payment_status ?? null,
+    paid_amount: overrides.paid_amount ?? null,
   };
 }

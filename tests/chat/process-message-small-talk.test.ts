@@ -125,6 +125,8 @@ function nonePipeline(
       items: [],
       effective_amount: null,
       effective_paid: null,
+      payment_status: null,
+      paid_amount: null,
       issues: [],
       ready_for_preview: false,
       blocking_count: 0,

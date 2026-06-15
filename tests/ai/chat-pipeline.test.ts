@@ -132,6 +132,8 @@ const validatedIntent: ValidatedIntent = {
   ],
   effective_amount: 1600000,
   effective_paid: null,
+  payment_status: null,
+  paid_amount: null,
   issues: [],
   ready_for_preview: true,
   blocking_count: 0,

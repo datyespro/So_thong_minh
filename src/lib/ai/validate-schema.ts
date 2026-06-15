@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { IntentNameSchema } from "@/src/lib/ai/intent-schema";
+import {
+  IntentNameSchema,
+  PaymentStatusSchema,
+} from "@/src/lib/ai/intent-schema";
 import {
   ResolvedEntitySchema,
   ResolvedItemSchema,
@@ -67,6 +70,8 @@ export const ValidatedIntentSchema = z.object({
   items: z.array(ValidatedLineItemSchema),
   effective_amount: z.number().nullable(),
   effective_paid: z.number().nullable(),
+  payment_status: PaymentStatusSchema.nullable(),
+  paid_amount: z.number().nullable(),
   issues: z.array(ValidationIssueSchema),
   ready_for_preview: z.boolean(),
   blocking_count: z.number().int().min(0),

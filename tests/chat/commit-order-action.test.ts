@@ -185,6 +185,7 @@ describe("commitOrder", () => {
     expect(params.p_idempotency_key).toBe("idem-1");
     expect(params.p_customer_id).toBe("cust-1");
     expect(params.p_note).toBe("anh Hùng mua 3 bao xi măng");
+    expect(params.p_paid_amount).toBe(0);
     // business_date is computed server-side in Asia/Ho_Chi_Minh, never CURRENT_DATE.
     expect(params.p_business_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(params.p_items).toEqual([
@@ -409,6 +410,15 @@ describe("commitOrder", () => {
     expect(mocks.rpc).toHaveBeenCalledWith(
       "commit_sale_order",
       expect.objectContaining({ p_business_date: "2026-06-01" }),
+    );
+  });
+
+  it("passes the immediate paid amount to the sale RPC", async () => {
+    await commitOrder({ ...validInput, paid_amount: 500000 });
+
+    expect(mocks.rpc).toHaveBeenCalledWith(
+      "commit_sale_order",
+      expect.objectContaining({ p_paid_amount: 500000 }),
     );
   });
 

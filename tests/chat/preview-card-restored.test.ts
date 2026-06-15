@@ -313,4 +313,69 @@ describe("restored preview draft commit", () => {
     );
     expect(result.ok).toBe(true);
   });
+
+  it("uses the inline-patched total when committing a restored partial payment", async () => {
+    const initialValidated = unresolvedValidated();
+    const validated = baseValidated({
+      payment_status: "partial",
+      paid_amount: 900000,
+      effective_paid: 900000,
+    });
+    const patched = {
+      ...createEmptyPreviewCardPatch(),
+      itemPrices: { 0: 42500 },
+      itemProducts: {
+        0: {
+          entity_type: "product" as const,
+          raw: "xi măng",
+          resolved_id: "product-xi-mang-inline",
+          resolved_name: "xi măng",
+        },
+      },
+    };
+    const resolved = resolvedIntentForPreviewDraft(
+      {
+        ...initialValidated,
+        payment_status: "partial",
+        paid_amount: 900000,
+        effective_paid: null,
+      },
+      patched,
+    );
+
+    if (!resolved) {
+      throw new Error("expected draftable resolved intent");
+    }
+
+    const draft: PreviewDraft = {
+      ...draftFixture(),
+      validated: initialValidated,
+      resolved,
+      patched,
+    };
+    vi.mocked(fetch).mockResolvedValue(
+      jsonResponse({ ok: true, data: validated }),
+    );
+    mocks.commitOrder.mockResolvedValue({
+      ok: true,
+      data: {
+        order_id: "order-inline-paid",
+        total_amount: 850000,
+        debt_amount: 0,
+        business_date: "2026-06-05",
+      },
+    });
+
+    const result = await commitRestoredPreviewDraft(draft);
+
+    expect(draft.resolved.payment_status).toBe("partial");
+    expect(draft.resolved.paid_amount).toBe(900000);
+    expect(draft.resolved.items[0]?.resolution.resolved_id).toBe(
+      "product-xi-mang-inline",
+    );
+    expect(mocks.commitOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ paid_amount: 850000 }),
+    );
+    expect(result.ok).toBe(true);
+  });
 });

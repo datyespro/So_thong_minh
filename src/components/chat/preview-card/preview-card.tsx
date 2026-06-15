@@ -44,6 +44,7 @@ import {
   formatVietnameseMoney,
   parseVietnameseNumber,
 } from "@/src/components/chat/preview-card/number-utils";
+import { paidForCommit } from "@/src/lib/chat/paid-for-commit";
 import {
   commitConfirmationMessage,
   dismissedPreviewMessage,
@@ -1114,7 +1115,8 @@ export function resolvedIntentForPreviewDraft(
       validated.intent === "record_payment"
         ? patch.amount ?? validated.effective_amount
         : null,
-    payment_status: "unknown",
+    paid_amount: validated.paid_amount,
+    payment_status: validated.payment_status ?? "unknown",
     payment_method: null,
     customer: resolvedEntityFromPatch(validated.customer, patch.customer),
     supplier: resolvedEntityFromPatch(validated.supplier, patch.supplier),
@@ -1362,6 +1364,11 @@ export async function commitRestoredPreviewDraft(
         customer_name: entityName,
         raw_input: validated.raw_text,
         ...businessDateCommitInput(validated.business_date),
+        paid_amount: paidForCommit(
+          validated.payment_status,
+          validated.paid_amount,
+          state.total,
+        ),
         items,
       });
 
@@ -3084,6 +3091,14 @@ export function PreviewCard({
   const paymentTotalUnsettled =
     validated.intent === "record_payment" &&
     (state.amount === null || state.amount <= 0 || overpaymentBlocking);
+  const immediatePaid =
+    validated.intent === "create_order" && !paymentTotalUnsettled
+      ? paidForCommit(
+          validated.payment_status,
+          validated.paid_amount,
+          state.total,
+        )
+      : 0;
   const cardBusinessDate = getPreviewBusinessDate({
     intent: validated.intent,
     hasCommitted: committedInfo !== null,
@@ -3579,6 +3594,11 @@ export function PreviewCard({
         customer_name: entityName,
         raw_input: validated.raw_text,
         ...businessDateCommitInput(validated.business_date),
+        paid_amount: paidForCommit(
+          validated.payment_status,
+          validated.paid_amount,
+          state.total,
+        ),
         items,
       });
 
@@ -4189,6 +4209,20 @@ export function PreviewCard({
             >
               {paymentTotalUnsettled ? "—" : formatVietnameseMoney(state.total)}
             </p>
+            {immediatePaid > 0 ? (
+              <div className="mt-1 text-[14px] leading-5">
+                <p className="text-paid">
+                  Trả ngay: {formatVietnameseMoney(immediatePaid)}
+                </p>
+                {immediatePaid === state.total ? (
+                  <p className="font-semibold text-paid">Đã trả đủ</p>
+                ) : (
+                  <p className="font-semibold text-debt">
+                    Còn nợ: {formatVietnameseMoney((state.total ?? 0) - immediatePaid)}
+                  </p>
+                )}
+              </div>
+            ) : null}
           </div>
         </div>
 

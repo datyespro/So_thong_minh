@@ -142,6 +142,8 @@ describe("preview draft storage", () => {
     expect(validatedIntentForPreviewDraft(draft!)).toMatchObject({
       ready_for_preview: true,
       blocking_count: 0,
+      payment_status: null,
+      paid_amount: null,
     });
   });
 

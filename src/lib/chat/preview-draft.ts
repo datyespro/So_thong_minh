@@ -194,6 +194,8 @@ export function validatedIntentForPreviewDraft(
     effective_amount:
       draft.intent === "record_payment" ? draft.resolved.amount ?? null : null,
     effective_paid: null,
+    payment_status: null,
+    paid_amount: null,
     issues: [],
     ready_for_preview: true,
     blocking_count: 0,

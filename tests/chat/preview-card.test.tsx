@@ -76,6 +76,54 @@ describe("PreviewCard", () => {
     expect(html).not.toContain('disabled=""');
   });
 
+  it("shows immediate paid and remaining debt from the patched order total", () => {
+    const html = renderCard(
+      baseValidated({
+        payment_status: "partial",
+        paid_amount: 500000,
+      }),
+      {
+        patched: {
+          ...createEmptyPreviewCardPatch(),
+          itemPrices: { 0: 42500 },
+        },
+      },
+    );
+
+    expect(html).toContain("Trả ngay: 500.000 đ");
+    expect(html).toContain("Còn nợ: 350.000 đ");
+  });
+
+  it("shows fully paid and keeps unpaid orders and record payments unchanged", () => {
+    const paidHtml = renderCard(
+      baseValidated({ payment_status: "paid", paid_amount: null }),
+      {
+        patched: {
+          ...createEmptyPreviewCardPatch(),
+          itemPrices: { 0: 20000 },
+        },
+      },
+    );
+    const debtHtml = renderCard(
+      baseValidated({ payment_status: "debt", paid_amount: null }),
+    );
+    const paymentHtml = renderCard(
+      baseValidated({
+        intent: "record_payment",
+        items: [],
+        effective_amount: 500000,
+        payment_status: "unknown",
+        paid_amount: null,
+      }),
+    );
+
+    expect(paidHtml).toContain("Trả ngay: 400.000 đ");
+    expect(paidHtml).toContain("Đã trả đủ");
+    expect(paidHtml).not.toContain("Còn nợ:");
+    expect(debtHtml).not.toContain("Trả ngay:");
+    expect(paymentHtml).not.toContain("Trả ngay:");
+  });
+
   it("shows today's business date before commit for order and purchase cards only", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-02T03:00:00+07:00"));

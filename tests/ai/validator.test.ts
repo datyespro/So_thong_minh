@@ -311,6 +311,8 @@ describe("validateResolvedIntent create_order", () => {
     expect(hasIssue(result, "paid_exceeds_total")).toBe(false);
     expect(result.effective_paid).toBe(500000);
     expect(result.effective_amount).toBeNull();
+    expect(result.payment_status).toBe("partial");
+    expect(result.paid_amount).toBe(500000);
     expect(result.ready_for_preview).toBe(true);
   });
 
@@ -512,6 +514,8 @@ describe("validateResolvedIntent record_payment", () => {
       baseResolved({
         intent: "record_payment",
         amount: 500000,
+        paid_amount: null,
+        payment_status: "unknown",
         items: [productItem()],
       }),
       masters,
@@ -521,6 +525,8 @@ describe("validateResolvedIntent record_payment", () => {
     expect(result.items).toEqual([]);
     expect(result.ready_for_preview).toBe(true);
     expect(result.effective_amount).toBe(500000);
+    expect(result.payment_status).toBe("unknown");
+    expect(result.paid_amount).toBeNull();
   });
 
   it("blocks missing amount", () => {
@@ -643,6 +649,8 @@ describe("validateResolvedIntent routing", () => {
     expect(result.kind).toBe("query");
     expect(result.issues).toEqual([]);
     expect(result.ready_for_preview).toBe(false);
+    expect(result.payment_status).toBe("unknown");
+    expect(result.paid_amount).toBeNull();
   });
 
   it("routes edit, undo, and small talk intents", () => {
