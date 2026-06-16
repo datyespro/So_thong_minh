@@ -158,3 +158,146 @@ jobs:
             echo "::error title=Reconcile mismatch::debt_mismatch=$debt_mismatch stock_mismatch=$stock_mismatch negative_debt=$negative_debt"
             exit 1
           fi
+
+  prod:
+    needs: [dev]
+    if: >
+      needs.dev.result == 'success' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'master' &&
+      github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF_PROD: ${{ secrets.SUPABASE_PROJECT_REF_PROD }}
+      SUPABASE_DB_PASSWORD_PROD: ${{ secrets.SUPABASE_DB_PASSWORD_PROD }}
+      SUPABASE_CLI_VERSION: 2.101.0
+    steps:
+      - name: Preflight secrets PROD
+        shell: bash
+        run: |
+          missing=0
+          for name in \
+            SUPABASE_ACCESS_TOKEN \
+            SUPABASE_PROJECT_REF_PROD \
+            SUPABASE_DB_PASSWORD_PROD
+          do
+            if [ -z "${!name}" ]; then
+              echo "::error title=Missing secret::$name is empty or unavailable"
+              missing=1
+            fi
+          done
+          project_ref="$(printf '%s' "$SUPABASE_PROJECT_REF_PROD" | tr -d '[:space:]')"
+          if ! [[ "$project_ref" =~ ^[a-z0-9]{20}$ ]]; then
+            echo "::error title=Invalid secret::SUPABASE_PROJECT_REF_PROD must be a 20-character lowercase project ref"
+            missing=1
+          fi
+          exit "$missing"
+
+      - name: Checkout CI commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      - name: Install psql and pg_dump 17
+        shell: bash
+        run: |
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client-17
+
+      - name: Backup sotm-prod
+        shell: bash
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_PROD }}
+          PGSSLMODE: require
+        run: |
+          ref="$(printf '%s' "$SUPABASE_PROJECT_REF_PROD" | tr -d '[:space:]')"
+          export PGHOST=aws-1-ap-southeast-1.pooler.supabase.com
+          export PGPORT=5432
+          export PGUSER="postgres.${ref}"
+          export PGDATABASE=postgres
+          pg_dump -Fc -n public --no-owner --no-privileges -f prod-backup.dump
+
+      - name: Upload Backup Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sotm-prod-backup-${{ github.event.workflow_run.head_sha }}
+          path: prod-backup.dump
+          retention-days: 14
+
+      - name: Push migrations to sotm-prod
+        shell: bash
+        env:
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_PROD }}
+        run: |
+          project_ref="$(printf '%s' "$SUPABASE_PROJECT_REF_PROD" | tr -d '[:space:]')"
+          supabase link --project-ref "$project_ref" --password "$SUPABASE_DB_PASSWORD_PROD"
+          supabase db push --password "$SUPABASE_DB_PASSWORD_PROD" --yes
+
+      - name: Reconcile sotm-prod debt and stock
+        shell: bash
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_PROD }}
+          PGSSLMODE: require
+        run: |
+          ref="$(printf '%s' "$SUPABASE_PROJECT_REF_PROD" | tr -d '[:space:]')"
+          export PGHOST=aws-1-ap-southeast-1.pooler.supabase.com
+          export PGPORT=5432
+          export PGUSER="postgres.${ref}"
+          export PGDATABASE=postgres
+
+          read debt_mismatch stock_mismatch negative_debt total_mismatch < <(
+            psql -X -v ON_ERROR_STOP=1 -At -F ' ' <<'SQL'
+          with checks as (
+            select
+              (
+                select count(*) from customers c
+                where coalesce(c.debt_total, 0) <> (
+                  (select coalesce(sum(o.debt_amount), 0) from orders o
+                    where o.customer_id = c.id
+                      and o.status = 'confirmed'
+                      and o.deleted_at is null)
+                  -
+                  (select coalesce(sum(p.amount), 0) from payments p
+                    where p.customer_id = c.id
+                      and p.deleted_at is null)
+                )
+              ) as debt_mismatch,
+              (
+                select count(*) from products p
+                where coalesce(p.current_stock, 0) <> (
+                  select coalesce(sum(im.quantity_delta), 0)
+                  from inventory_movements im
+                  where im.product_id = p.id
+                )
+              ) as stock_mismatch,
+              (
+                select count(*) from customers
+                where coalesce(debt_total, 0) < 0
+              ) as negative_debt
+          )
+          select
+            debt_mismatch,
+            stock_mismatch,
+            negative_debt,
+            debt_mismatch + stock_mismatch + negative_debt as total_mismatch
+          from checks;
+          SQL
+          )
+
+          echo "debt_mismatch=$debt_mismatch"
+          echo "stock_mismatch=$stock_mismatch"
+          echo "negative_debt=$negative_debt"
+
+          if [ "$total_mismatch" != "0" ]; then
+            echo "::error title=Reconcile mismatch::debt_mismatch=$debt_mismatch stock_mismatch=$stock_mismatch negative_debt=$negative_debt"
+            exit 1
+          fi
