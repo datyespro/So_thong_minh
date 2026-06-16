@@ -51,6 +51,11 @@ jobs:
               missing=1
             fi
           done
+          project_ref="$(printf '%s' "$SUPABASE_PROJECT_REF_DEV" | tr -d '[:space:]')"
+          if ! [[ "$project_ref" =~ ^[a-z0-9]{20}$ ]]; then
+            echo "::error title=Invalid secret::SUPABASE_PROJECT_REF_DEV must be a 20-character lowercase project ref"
+            missing=1
+          fi
           exit "$missing"
 
       - name: Checkout CI commit
@@ -80,7 +85,8 @@ jobs:
         env:
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_DEV }}
         run: |
-          supabase link --project-ref "$SUPABASE_PROJECT_REF_DEV" --password "$SUPABASE_DB_PASSWORD_DEV"
+          project_ref="$(printf '%s' "$SUPABASE_PROJECT_REF_DEV" | tr -d '[:space:]')"
+          supabase link --project-ref "$project_ref" --password "$SUPABASE_DB_PASSWORD_DEV"
           supabase db push --password "$SUPABASE_DB_PASSWORD_DEV"
 
       - name: Deploy frontend to Vercel Production
