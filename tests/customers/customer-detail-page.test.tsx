@@ -50,6 +50,11 @@ type PageData = {
   orders?: OrderRow[];
   payments?: PaymentRow[];
   items?: ItemRow[];
+  shopSettings?: {
+    shop_name: string;
+    phone: string;
+    address: string;
+  };
 };
 
 function createQueryResult<T>(data: T) {
@@ -97,6 +102,11 @@ function setupSupabaseMock({
       paid_at: "2026-05-31T03:00:00.000Z",
     },
   ],
+  shopSettings = {
+    shop_name: "Cửa hàng Test",
+    phone: "0900000000",
+    address: "123 Test",
+  },
   items = [
     {
       order_id: "order-1",
@@ -136,6 +146,10 @@ function setupSupabaseMock({
         return createQueryBuilder(items);
       }
 
+      if (table === "shop_settings") {
+        return createQueryBuilder(shopSettings);
+      }
+
       throw new Error(`Unexpected table: ${table}`);
     }),
   };
@@ -153,7 +167,7 @@ async function renderCustomerDetailPage(data: PageData = {}) {
     searchParams: Promise.resolve({}),
   });
 
-  return renderToStaticMarkup(page);
+  return renderToStaticMarkup(page).split('<div class="print-area print-only">')[0];
 }
 
 function countText(html: string, text: string) {

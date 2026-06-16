@@ -1,0 +1,62 @@
+.print-only {
+  display: none;
+}
+
+@media print {
+  @page {
+    margin: 14mm;
+    size: A4 portrait;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  nav,
+  aside,
+  button,
+  .no-print {
+    display: none !important;
+  }
+
+  main,
+  .app-shell-content {
+    background: #ffffff !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    width: 100% !important;
+  }
+
+  .print-only,
+  .print-area,
+  .print-area * {
+    visibility: visible !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .print-area {
+    background: #ffffff !important;
+    color: #111111 !important;
+    display: block !important;
+    left: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    position: absolute !important;
+    top: 0 !important;
+    width: 100% !important;
+  }
+}

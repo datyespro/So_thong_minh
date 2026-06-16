@@ -1,6 +1,9 @@
+import "@/src/styles/print.css";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, CircleDollarSign, Phone } from "lucide-react";
+import { InvoiceSummaryView } from "@/src/components/invoice/invoice-summary-view";
+import { PrintButton } from "@/src/components/invoice/print-button";
 import { Button } from "@/src/components/ui/button";
 import {
   flattenCustomerPurchaseHistory,
@@ -16,6 +19,7 @@ import {
 } from "@/src/lib/customers/debt-summary";
 import { APP_TIME_ZONE, dayjs } from "@/src/lib/dayjs";
 import { formatVietnameseMoney } from "@/src/lib/format/money";
+import { getShopSettings } from "@/src/lib/shop/get-shop-settings";
 import { createClient } from "@/src/lib/supabase/server";
 import { getAuthenticatedUser } from "@/src/components/shared/AuthGuard";
 
@@ -531,6 +535,7 @@ export default async function CustomerDetailPage({
   }
 
   const user = await getAuthenticatedUser();
+  const shopSettings = await getShopSettings(user.id);
   const supabase = await createClient();
 
   const { data: customerData, error: customerError } = await supabase
@@ -606,7 +611,7 @@ export default async function CustomerDetailPage({
 
   return (
     <section className="h-full overflow-y-auto bg-paper px-4 py-5 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-6xl">
+      <div className="customer-detail-screen mx-auto max-w-6xl">
         <div className="mb-5 border-b border-ledgerBorder pb-4">
           <Link
             href="/customers"
@@ -632,6 +637,7 @@ export default async function CustomerDetailPage({
           </div>
 
           <div className="flex flex-wrap gap-2 md:justify-end">
+            <PrintButton label="In tổng hợp" />
             <Button
               type="button"
               variant="outline"
@@ -725,6 +731,19 @@ export default async function CustomerDetailPage({
             nextSort={nextSort}
           />
         </section>
+      </div>
+
+      <div className="print-area print-only">
+        <InvoiceSummaryView
+          shopSettings={shopSettings}
+          customerName={customer.name}
+          customerPhone={customer.phone}
+          rows={historyRows}
+          historyTotal={historyTotal}
+          debtSummary={debtSummary}
+          payments={payments}
+          printDate={dayjs().tz(APP_TIME_ZONE).format("DD/MM/YYYY")}
+        />
       </div>
     </section>
   );
