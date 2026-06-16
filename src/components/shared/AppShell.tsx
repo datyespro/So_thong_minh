@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import * as React from "react";
-import { BarChart3, MessageCircle, Package, PanelLeftClose, PanelLeftOpen, Users } from "lucide-react";
+import { BarChart3, MessageCircle, Package, PanelLeftClose, PanelLeftOpen, Settings, Users } from "lucide-react";
 import { SignOutButton } from "@/src/components/shared/SignOutButton";
 
 const navItems = [
@@ -11,6 +11,7 @@ const navItems = [
   { href: "/customers", label: "Khách hàng", icon: Users },
   { href: "/products", label: "Sản phẩm", icon: Package },
   { href: "/reports", label: "Báo cáo", icon: BarChart3 },
+  { href: "/settings", label: "Cài đặt", icon: Settings },
 ];
 
 type AppShellProps = Readonly<{
@@ -187,7 +188,7 @@ export function AppShell({
               {avatarInitial}
             </div>
           </div>
-          <nav className="grid grid-cols-4 gap-1">
+          <nav className="grid grid-cols-5 gap-1">
             {navItems.map((item) => {
               const Icon = item.icon;
               const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
