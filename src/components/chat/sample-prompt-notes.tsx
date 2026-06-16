@@ -6,7 +6,7 @@ export const SAMPLE_PROMPTS = [
   {
     tag: "GHI ĐƠN",
     tone: "order",
-    text: "anh Hùng mua 20 bao xi măng 1,6 triệu",
+    text: "anh Hùng mua 20 bao xi măng 100k 1 bao",
   },
   {
     tag: "THU NỢ",

@@ -4177,7 +4177,7 @@ export function PreviewCard({
   }
 
   function priceInputValue(itemIndex: number, value: number | null) {
-    return drafts.prices[itemIndex] ?? (value === null ? "" : String(Math.round(value)));
+    return drafts.prices[itemIndex] ?? (value === null ? "" : new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 }).format(Math.round(value)));
   }
 
   return (
