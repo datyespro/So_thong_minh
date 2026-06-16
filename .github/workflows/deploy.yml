@@ -90,9 +90,7 @@ jobs:
       - name: Deploy frontend to Vercel Production
         shell: bash
         run: |
-          pnpm dlx vercel@"$VERCEL_CLI_VERSION" pull --yes --environment=production --token="$VERCEL_TOKEN"
-          pnpm dlx vercel@"$VERCEL_CLI_VERSION" build --prod --token="$VERCEL_TOKEN"
-          deploy_url="$(pnpm dlx vercel@"$VERCEL_CLI_VERSION" deploy --prebuilt --prod --token="$VERCEL_TOKEN")"
+          deploy_url="$(pnpm dlx vercel@"$VERCEL_CLI_VERSION" deploy --prod --yes --token="$VERCEL_TOKEN")"
           echo "Vercel deployment: $deploy_url"
 
       - name: Install psql
