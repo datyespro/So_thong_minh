@@ -108,7 +108,7 @@ jobs:
           PGSSLMODE: require
         run: |
           ref="$(printf '%s' "$SUPABASE_PROJECT_REF_DEV" | tr -d '[:space:]')"
-          export PGHOST=aws-0-ap-southeast-1.pooler.supabase.com
+          export PGHOST=aws-1-ap-southeast-1.pooler.supabase.com
           export PGPORT=5432
           export PGUSER="postgres.${ref}"
           export PGDATABASE=postgres
