@@ -68,7 +68,7 @@ describe("PreviewCard", () => {
     expect(html).toContain('value="20"');
     expect(html).not.toContain('value="20 bao"');
     expect(html).toContain("Nhập giá bao");
-    expect(html).toContain('value="80000"');
+    expect(html).toContain('value="80.000"');
     expect(html).toContain("1.600.000 đ");
     expect(html).toContain("Ghi đơn");
     expect(html).toContain(">Bỏ</button>");

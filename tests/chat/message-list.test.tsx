@@ -47,7 +47,7 @@ describe("MessageList", () => {
     expect(html).toContain("THU NỢ");
     expect(html).toContain("HỎI");
     expect(html).toContain("BÁO CÁO");
-    expect(html).toContain("anh Hùng mua 20 bao xi măng 1,6 triệu");
+    expect(html).toContain("anh Hùng mua 20 bao xi măng 100k 1 bao");
   });
 
   it("renders messages in chronological order", () => {
