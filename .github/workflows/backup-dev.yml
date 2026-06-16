@@ -1,0 +1,66 @@
+name: Backup DEV
+
+on:
+  schedule:
+    - cron: '0 18 * * *'        # 18:00 UTC = 01:00 giờ VN hằng ngày (giờ thấp điểm)
+  workflow_dispatch: {}          # cho phép bấm chạy tay từ tab Actions
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-dev
+  cancel-in-progress: false      # KHÔNG huỷ backup đang chạy
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_PROJECT_REF_DEV: ${{ secrets.SUPABASE_PROJECT_REF_DEV }}
+      SUPABASE_DB_PASSWORD_DEV: ${{ secrets.SUPABASE_DB_PASSWORD_DEV }}
+    steps:
+      - name: Preflight secrets
+        shell: bash
+        run: |
+          missing=0
+          for name in SUPABASE_PROJECT_REF_DEV SUPABASE_DB_PASSWORD_DEV; do
+            if [ -z "${!name}" ]; then
+              echo "::error title=Missing secret::$name is empty"; missing=1
+            fi
+          done
+          ref="$(printf '%s' "$SUPABASE_PROJECT_REF_DEV" | tr -d '[:space:]')"
+          [[ "$ref" =~ ^[a-z0-9]{20}$ ]] || { echo "::error::ref invalid"; missing=1; }
+          exit "$missing"
+
+      - name: Install pg_dump 17
+        shell: bash
+        run: |
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client-17
+
+      - name: Dump sotm-dev (schema public)
+        id: dump
+        shell: bash
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_DEV }}
+          PGSSLMODE: require
+        run: |
+          ref="$(printf '%s' "$SUPABASE_PROJECT_REF_DEV" | tr -d '[:space:]')"
+          export PGHOST=aws-1-ap-southeast-1.pooler.supabase.com
+          export PGPORT=5432
+          export PGUSER="postgres.${ref}"
+          export PGDATABASE=postgres
+          stamp="$(date -u +%Y%m%d-%H%M)"
+          fname="sotm-dev-backup-${stamp}.dump"
+          pg_dump -Fc -n public --no-owner --no-privileges -f "$fname"
+          ls -lh "$fname"
+          echo "fname=$fname" >> "$GITHUB_OUTPUT"
+
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.dump.outputs.fname }}
+          path: ${{ steps.dump.outputs.fname }}
+          retention-days: 90
