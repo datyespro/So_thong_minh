@@ -2,6 +2,7 @@ overrides:
   postcss: 8.5.15
 
 allowBuilds:
+  core-js: false
   esbuild: true
   sharp: true
   unrs-resolver: true

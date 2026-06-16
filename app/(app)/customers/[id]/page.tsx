@@ -3,6 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, CircleDollarSign, Phone } from "lucide-react";
 import {
+  PdfExportButton,
+  PdfSingleOrderButton,
   PrintableCustomerSection,
   PrintSingleOrderButton,
 } from "@/src/components/invoice/printable-customer-section";
@@ -278,7 +280,10 @@ function MobileHistoryCard({
           </p>
         </div>
         {isFirstOrderRow ? (
-          <PrintSingleOrderButton orderId={row.order_id} label="In đơn này" />
+          <div className="flex flex-wrap justify-end gap-2">
+            <PrintSingleOrderButton orderId={row.order_id} label="In đơn này" />
+            <PdfSingleOrderButton orderId={row.order_id} />
+          </div>
         ) : null}
       </div>
       <div className="space-y-2">
@@ -495,7 +500,10 @@ function PurchaseHistoryTable({
                 </td>
                   <td className="px-3 py-3 text-right">
                     {isFirstOrderRow ? (
-                      <PrintSingleOrderButton orderId={row.order_id} />
+                      <div className="flex justify-end gap-2">
+                        <PrintSingleOrderButton orderId={row.order_id} />
+                        <PdfSingleOrderButton orderId={row.order_id} />
+                      </div>
                     ) : null}
                   </td>
                 </tr>
@@ -643,6 +651,7 @@ export default async function CustomerDetailPage({
     debtTotal: customer.debt_total,
   });
   const phoneHref = customer.phone ? normalizedPhoneHref(customer.phone) : null;
+  const pdfDate = dayjs().tz(APP_TIME_ZONE).format("DD-MM-YYYY");
 
   return (
     <section className="h-full overflow-y-auto bg-paper px-4 py-5 sm:px-6 lg:px-8">
@@ -683,6 +692,10 @@ export default async function CustomerDetailPage({
 
           <div className="flex flex-wrap gap-2 md:justify-end">
             <PrintButton label="In tổng hợp" />
+            <PdfExportButton
+              label="Tải PDF tổng hợp"
+              filename={`cong-no-${customer.name}-${pdfDate}.pdf`}
+            />
             <Button
               type="button"
               variant="outline"
