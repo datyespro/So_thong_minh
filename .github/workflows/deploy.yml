@@ -1,0 +1,149 @@
+name: Deploy DEV
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-dev-master
+  cancel-in-progress: true
+
+jobs:
+  dev:
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'master' &&
+      github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF_DEV: ${{ secrets.SUPABASE_PROJECT_REF_DEV }}
+      SUPABASE_DB_PASSWORD_DEV: ${{ secrets.SUPABASE_DB_PASSWORD_DEV }}
+      SUPABASE_DB_URL_DEV: ${{ secrets.SUPABASE_DB_URL_DEV }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      SUPABASE_CLI_VERSION: 2.101.0
+      VERCEL_CLI_VERSION: 54.14.0
+
+    steps:
+      - name: Preflight secrets
+        shell: bash
+        run: |
+          missing=0
+          for name in \
+            SUPABASE_ACCESS_TOKEN \
+            SUPABASE_PROJECT_REF_DEV \
+            SUPABASE_DB_PASSWORD_DEV \
+            SUPABASE_DB_URL_DEV \
+            VERCEL_TOKEN \
+            VERCEL_ORG_ID \
+            VERCEL_PROJECT_ID
+          do
+            if [ -z "${!name}" ]; then
+              echo "::error title=Missing secret::$name is empty or unavailable"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Checkout CI commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      - name: Push migrations to sotm-dev
+        shell: bash
+        env:
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_DEV }}
+        run: |
+          supabase link --project-ref "$SUPABASE_PROJECT_REF_DEV" --password "$SUPABASE_DB_PASSWORD_DEV"
+          supabase db push --password "$SUPABASE_DB_PASSWORD_DEV"
+
+      - name: Deploy frontend to Vercel Production
+        shell: bash
+        run: |
+          pnpm dlx vercel@"$VERCEL_CLI_VERSION" pull --yes --environment=production --token="$VERCEL_TOKEN"
+          pnpm dlx vercel@"$VERCEL_CLI_VERSION" build --prod --token="$VERCEL_TOKEN"
+          deploy_url="$(pnpm dlx vercel@"$VERCEL_CLI_VERSION" deploy --prebuilt --prod --token="$VERCEL_TOKEN")"
+          echo "Vercel deployment: $deploy_url"
+
+      - name: Install psql
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+
+      - name: Reconcile sotm-dev debt and stock
+        shell: bash
+        run: |
+          read debt_mismatch stock_mismatch negative_debt total_mismatch < <(
+            psql "$SUPABASE_DB_URL_DEV" -X -v ON_ERROR_STOP=1 -At -F ' ' <<'SQL'
+          with checks as (
+            select
+              (
+                select count(*) from customers c
+                where coalesce(c.debt_total, 0) <> (
+                  (select coalesce(sum(o.debt_amount), 0) from orders o
+                    where o.customer_id = c.id
+                      and o.status = 'confirmed'
+                      and o.deleted_at is null)
+                  -
+                  (select coalesce(sum(p.amount), 0) from payments p
+                    where p.customer_id = c.id
+                      and p.deleted_at is null)
+                )
+              ) as debt_mismatch,
+              (
+                select count(*) from products p
+                where coalesce(p.current_stock, 0) <> (
+                  select coalesce(sum(im.quantity_delta), 0)
+                  from inventory_movements im
+                  where im.product_id = p.id
+                )
+              ) as stock_mismatch,
+              (
+                select count(*) from customers
+                where coalesce(debt_total, 0) < 0
+              ) as negative_debt
+          )
+          select
+            debt_mismatch,
+            stock_mismatch,
+            negative_debt,
+            debt_mismatch + stock_mismatch + negative_debt as total_mismatch
+          from checks;
+          SQL
+          )
+
+          echo "debt_mismatch=$debt_mismatch"
+          echo "stock_mismatch=$stock_mismatch"
+          echo "negative_debt=$negative_debt"
+
+          if [ "$total_mismatch" != "0" ]; then
+            echo "::error title=Reconcile mismatch::debt_mismatch=$debt_mismatch stock_mismatch=$stock_mismatch negative_debt=$negative_debt"
+            exit 1
+          fi
