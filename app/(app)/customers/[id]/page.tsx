@@ -2,7 +2,10 @@ import "@/src/styles/print.css";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, CircleDollarSign, Phone } from "lucide-react";
-import { InvoiceSummaryView } from "@/src/components/invoice/invoice-summary-view";
+import {
+  PrintableCustomerSection,
+  PrintSingleOrderButton,
+} from "@/src/components/invoice/printable-customer-section";
 import { PrintButton } from "@/src/components/invoice/print-button";
 import { Button } from "@/src/components/ui/button";
 import {
@@ -17,6 +20,7 @@ import {
   buildCustomerDebtSummary,
   type CustomerDebtSummary,
 } from "@/src/lib/customers/debt-summary";
+import { groupRowsByOrder } from "@/src/lib/customers/group-orders";
 import { APP_TIME_ZONE, dayjs } from "@/src/lib/dayjs";
 import { formatVietnameseMoney } from "@/src/lib/format/money";
 import { getShopSettings } from "@/src/lib/shop/get-shop-settings";
@@ -246,7 +250,13 @@ function PaymentHistoryList({
   );
 }
 
-function MobileHistoryCard({ row }: Readonly<{ row: CustomerPurchaseHistoryRow }>) {
+function MobileHistoryCard({
+  row,
+  isFirstOrderRow,
+}: Readonly<{
+  row: CustomerPurchaseHistoryRow;
+  isFirstOrderRow: boolean;
+}>) {
   const fields = [
     ["Ngày", formatBusinessDate(row.business_date)],
     ["Mặt hàng", row.product_name_snapshot],
@@ -258,13 +268,18 @@ function MobileHistoryCard({ row }: Readonly<{ row: CustomerPurchaseHistoryRow }
 
   return (
     <div className="rounded border border-ledgerBorder bg-surface px-3 py-3 text-[16px] leading-7 shadow-[var(--shadow-card)]">
-      <div className="mb-2 border-b border-ledgerBorder pb-2">
-        <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-stamp">
-          {formatBusinessDate(row.business_date)}
-        </p>
-        <p className="mt-1 font-semibold text-inkDeep">
-          {row.product_name_snapshot}
-        </p>
+      <div className="mb-2 flex items-start justify-between gap-3 border-b border-ledgerBorder pb-2">
+        <div>
+          <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-stamp">
+            {formatBusinessDate(row.business_date)}
+          </p>
+          <p className="mt-1 font-semibold text-inkDeep">
+            {row.product_name_snapshot}
+          </p>
+        </div>
+        {isFirstOrderRow ? (
+          <PrintSingleOrderButton orderId={row.order_id} label="In đơn này" />
+        ) : null}
       </div>
       <div className="space-y-2">
         {fields.map(([label, value]) => (
@@ -448,11 +463,18 @@ function PurchaseHistoryTable({
                   )}
                 </th>
               ))}
+              <th scope="col" className="w-[76px] px-3 py-2 text-right">
+                In
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-ledgerBorder">
-            {rows.map((row, index) => (
-              <tr key={`${row.order_id}-${row.sort_order ?? "null"}-${index}`}>
+            {rows.map((row, index) => {
+              const isFirstOrderRow =
+                index === 0 || rows[index - 1]?.order_id !== row.order_id;
+
+              return (
+                <tr key={`${row.order_id}-${row.sort_order ?? "null"}-${index}`}>
                 <td className="px-3 py-3 font-semibold text-textMute">
                   {formatBusinessDate(row.business_date)}
                 </td>
@@ -471,13 +493,19 @@ function PurchaseHistoryTable({
                 <td className="px-3 py-3 text-right font-semibold text-inkDeep">
                   {formatMoneyValue(row.line_total)}
                 </td>
-              </tr>
-            ))}
+                  <td className="px-3 py-3 text-right">
+                    {isFirstOrderRow ? (
+                      <PrintSingleOrderButton orderId={row.order_id} />
+                    ) : null}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
           <tfoot className="border-t-2 border-ledgerBorder bg-paperWarm">
             {showDebtFooter ? (
               <tr>
-                <td colSpan={6} className="px-3 py-3">
+                <td colSpan={7} className="px-3 py-3">
                   <SettlementSummaryPanel
                     total={total}
                     summary={summary}
@@ -489,7 +517,7 @@ function PurchaseHistoryTable({
             ) : (
               <tr>
                 <td
-                  colSpan={5}
+                  colSpan={6}
                   className="px-3 py-3 text-right font-display text-[18px] font-semibold text-inkDeep"
                 >
                   Tổng cộng
@@ -504,12 +532,18 @@ function PurchaseHistoryTable({
       </div>
 
       <div className="space-y-3 sm:hidden">
-        {rows.map((row, index) => (
-          <MobileHistoryCard
-            key={`${row.order_id}-${row.sort_order ?? "null"}-${index}`}
-            row={row}
-          />
-        ))}
+        {rows.map((row, index) => {
+          const isFirstOrderRow =
+            index === 0 || rows[index - 1]?.order_id !== row.order_id;
+
+          return (
+            <MobileHistoryCard
+              key={`${row.order_id}-${row.sort_order ?? "null"}-${index}`}
+              row={row}
+              isFirstOrderRow={isFirstOrderRow}
+            />
+          );
+        })}
         <MobileHistoryTotal
           total={total}
           summary={summary}
@@ -601,6 +635,7 @@ export default async function CustomerDetailPage({
   }
 
   const historyRows = flattenCustomerPurchaseHistory(orders, items, sort);
+  const groupedOrders = groupRowsByOrder(historyRows);
   const historyTotal = sumCustomerPurchaseHistoryTotal(historyRows);
   const debtSummary = buildCustomerDebtSummary({
     orders,
@@ -611,7 +646,17 @@ export default async function CustomerDetailPage({
 
   return (
     <section className="h-full overflow-y-auto bg-paper px-4 py-5 sm:px-6 lg:px-8">
-      <div className="customer-detail-screen mx-auto max-w-6xl">
+      <PrintableCustomerSection
+        shopSettings={shopSettings}
+        customerName={customer.name}
+        customerPhone={customer.phone}
+        rows={historyRows}
+        historyTotal={historyTotal}
+        debtSummary={debtSummary}
+        payments={payments}
+        groupedOrders={groupedOrders}
+      >
+        <div className="customer-detail-screen mx-auto max-w-6xl">
         <div className="mb-5 border-b border-ledgerBorder pb-4">
           <Link
             href="/customers"
@@ -731,20 +776,8 @@ export default async function CustomerDetailPage({
             nextSort={nextSort}
           />
         </section>
-      </div>
-
-      <div className="print-area print-only">
-        <InvoiceSummaryView
-          shopSettings={shopSettings}
-          customerName={customer.name}
-          customerPhone={customer.phone}
-          rows={historyRows}
-          historyTotal={historyTotal}
-          debtSummary={debtSummary}
-          payments={payments}
-          printDate={dayjs().tz(APP_TIME_ZONE).format("DD/MM/YYYY")}
-        />
-      </div>
+        </div>
+      </PrintableCustomerSection>
     </section>
   );
 }
