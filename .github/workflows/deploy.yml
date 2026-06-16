@@ -25,7 +25,6 @@ jobs:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_PROJECT_REF_DEV: ${{ secrets.SUPABASE_PROJECT_REF_DEV }}
       SUPABASE_DB_PASSWORD_DEV: ${{ secrets.SUPABASE_DB_PASSWORD_DEV }}
-      SUPABASE_DB_URL_DEV: ${{ secrets.SUPABASE_DB_URL_DEV }}
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
@@ -41,7 +40,6 @@ jobs:
             SUPABASE_ACCESS_TOKEN \
             SUPABASE_PROJECT_REF_DEV \
             SUPABASE_DB_PASSWORD_DEV \
-            SUPABASE_DB_URL_DEV \
             VERCEL_TOKEN \
             VERCEL_ORG_ID \
             VERCEL_PROJECT_ID
@@ -105,9 +103,18 @@ jobs:
 
       - name: Reconcile sotm-dev debt and stock
         shell: bash
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_DEV }}
+          PGSSLMODE: require
         run: |
+          ref="$(printf '%s' "$SUPABASE_PROJECT_REF_DEV" | tr -d '[:space:]')"
+          export PGHOST=aws-0-ap-southeast-1.pooler.supabase.com
+          export PGPORT=5432
+          export PGUSER="postgres.${ref}"
+          export PGDATABASE=postgres
+
           read debt_mismatch stock_mismatch negative_debt total_mismatch < <(
-            psql "$SUPABASE_DB_URL_DEV" -X -v ON_ERROR_STOP=1 -At -F ' ' <<'SQL'
+            psql -X -v ON_ERROR_STOP=1 -At -F ' ' <<'SQL'
           with checks as (
             select
               (
