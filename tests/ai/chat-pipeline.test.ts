@@ -36,6 +36,7 @@ const extractedIntent: ExtractedIntent = {
     supplier_name: null,
     product_name: "xi măng",
     product_management: null,
+    customer_management: null,
     items: [
       {
         raw: "20 bao xi măng",

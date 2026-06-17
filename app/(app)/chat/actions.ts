@@ -4,13 +4,17 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ActionResult } from "@/src/types/action-result";
 import type { ChatMessageView } from "@/src/components/chat/types";
 import {
+  historyCustomerCardContent,
   historyProductCardContent,
   parseHistoryCommitCard,
+  parseHistoryCustomerCard,
   parseHistoryProductCard,
   type HistoryCommitCard,
+  type HistoryCustomerCard,
   type HistoryProductCard,
 } from "@/src/lib/chat/history-card";
 import type {
+  CustomerManagementPreview,
   ProductManagementCandidate,
   ProductManagementPreview,
   ProductManagementProduct,
@@ -43,7 +47,10 @@ import {
 import { generateSmallTalkReply } from "@/src/lib/ai/small-talk-reply";
 import { resolveOne, type EntityRow } from "@/src/lib/ai/entity-resolver";
 import type { ResolvedEntity } from "@/src/lib/ai/resolve-schema";
-import type { ProductManagement } from "@/src/lib/ai/intent-schema";
+import type {
+  CustomerManagement,
+  ProductManagement,
+} from "@/src/lib/ai/intent-schema";
 import {
   parseProductSellPriceInput,
   validateProductUpdatePatch,
@@ -56,6 +63,7 @@ import { businessDateVN } from "@/src/lib/dayjs";
 const MAX_MESSAGE_LENGTH = 2000;
 
 type ProductManagementSupabaseClient = Pick<SupabaseClient, "from">;
+type CustomerManagementSupabaseClient = Pick<SupabaseClient, "from">;
 type HistoryCardSupabaseClient = Pick<SupabaseClient, "from">;
 
 type InsertedChatRow = {
@@ -125,6 +133,7 @@ export type UpdatedProductView = {
   unit: string;
   sell_price: number | null;
 };
+export type UpdatedCustomerView = CustomerRow;
 
 export type ProcessMessageResult =
   | {
@@ -132,6 +141,7 @@ export type ProcessMessageResult =
       userMessage: ChatMessageView;
       pipeline: ChatPipelineResult;
       answer?: QueryAnswer | null;
+      customerManagementPreview?: CustomerManagementPreview | null;
       productManagementPreview?: ProductManagementPreview | null;
       terminalText?: string | null;
       turnId?: string;
@@ -289,6 +299,49 @@ export async function persistProductManagementMessage(
     intent: "manage_product",
     metadata: { card },
     source: "tip_33_product",
+  });
+
+  return { ok: true, data: null };
+}
+
+export async function persistCustomerManagementMessage(
+  input: Readonly<{
+    card: unknown;
+    content: string;
+  }>,
+): Promise<ActionResult<null>> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return {
+      ok: false,
+      code: "unauthorized",
+      message: "Vui lòng đăng nhập lại ạ.",
+    };
+  }
+
+  const card = parseHistoryCustomerCard({ card: input.card });
+  const content = input.content.trim();
+
+  if (!card || content.length === 0) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Thẻ quản lý khách chưa hợp lệ ạ.",
+    };
+  }
+
+  await persistAssistantTerminalMessage({
+    supabase,
+    ownerId: user.id,
+    content,
+    intent: "manage_customer",
+    metadata: { card },
+    source: "tip_34_customer",
   });
 
   return { ok: true, data: null };
@@ -1098,6 +1151,158 @@ async function persistTerminalProductManagementPreview({
   });
 }
 
+async function resolveCustomerManagementPreview({
+  customerManagement,
+  ownerId,
+  supabase,
+}: {
+  customerManagement: CustomerManagement | null;
+  ownerId: string;
+  supabase: CustomerManagementSupabaseClient;
+}): Promise<ActionResult<CustomerManagementPreview | null>> {
+  if (!customerManagement) {
+    return { ok: true, data: null };
+  }
+
+  const customerRaw = customerManagement.customer_raw.trim();
+  const newName = customerManagement.new_name?.trim() ?? "";
+
+  if (customerRaw.length === 0 || newName.length === 0) {
+    return {
+      ok: true,
+      data: {
+        status: "not_found",
+        action: "rename",
+        customer_raw: customerRaw,
+        new_name: newName || null,
+      },
+    };
+  }
+
+  const { data, error } = await supabase
+    .from("customers")
+    .select("id,name,aliases")
+    .eq("owner_id", ownerId)
+    .eq("is_active", true)
+    .is("deleted_at", null);
+
+  if (error) {
+    return {
+      ok: false,
+      code: "db_error",
+      message: "Chưa tìm được khách, bác thử lại ạ.",
+    };
+  }
+
+  const rows = data as CustomerSearchRow[] | null;
+  const customersById = new Map(
+    (rows ?? []).map((row) => [row.id, { id: row.id, name: row.name }]),
+  );
+  const resolution = resolveOne(
+    customerRaw,
+    "customer",
+    normalizeCustomerSearchRows(rows),
+  );
+
+  if (resolution.status === "not_found") {
+    return {
+      ok: true,
+      data: {
+        status: "not_found",
+        action: "rename",
+        customer_raw: customerRaw,
+        new_name: newName,
+      },
+    };
+  }
+
+  if (resolution.status === "resolved" && resolution.resolved_id) {
+    const customer = customersById.get(resolution.resolved_id);
+
+    if (customer) {
+      return {
+        ok: true,
+        data: {
+          status: "confirm_rename",
+          action: "rename",
+          customer,
+          new_name: newName,
+        },
+      };
+    }
+  }
+
+  const candidates = resolution.candidates
+    .map((candidate) => customersById.get(candidate.id))
+    .filter((candidate): candidate is CustomerRow => Boolean(candidate));
+
+  if (candidates.length === 0) {
+    return {
+      ok: true,
+      data: {
+        status: "not_found",
+        action: "rename",
+        customer_raw: customerRaw,
+        new_name: newName,
+      },
+    };
+  }
+
+  return {
+    ok: true,
+    data: {
+      status: "needs_choice",
+      action: "rename",
+      customer_raw: customerRaw,
+      new_name: newName,
+      candidates,
+    },
+  };
+}
+
+function terminalHistoryCustomerCard(
+  preview: CustomerManagementPreview | null,
+): HistoryCustomerCard | null {
+  if (preview?.status !== "not_found") {
+    return null;
+  }
+
+  return {
+    v: 1,
+    kind: "manage_customer",
+    action: "rename",
+    status: "not_found",
+    customer_name: null,
+    customer_raw: preview.customer_raw,
+    new_name: preview.new_name,
+  };
+}
+
+async function persistTerminalCustomerManagementPreview({
+  supabase,
+  ownerId,
+  preview,
+}: {
+  supabase: Pick<SupabaseClient, "from">;
+  ownerId: string;
+  preview: CustomerManagementPreview | null;
+}) {
+  const card = terminalHistoryCustomerCard(preview);
+
+  if (!card) {
+    return;
+  }
+
+  await persistAssistantTerminalMessage({
+    supabase,
+    ownerId,
+    content: historyCustomerCardContent(card),
+    intent: "manage_customer",
+    metadata: { card },
+    source: "tip_34_customer",
+  });
+}
+
 function createdProductView(row: ProductRow): CreatedProductView {
   return {
     id: row.id,
@@ -1298,6 +1503,162 @@ export async function createCustomer(
   return {
     ok: true,
     data: data as CustomerRow,
+  };
+}
+
+export async function updateCustomer(
+  customerId: string,
+  patch: { name: string },
+): Promise<ActionResult<UpdatedCustomerView>> {
+  if (typeof customerId !== "string" || customerId.trim().length === 0) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Không tìm thấy khách để sửa.",
+    };
+  }
+
+  if (!patch || typeof patch.name !== "string") {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Tên khách chưa hợp lệ ạ.",
+    };
+  }
+
+  const trimmedName = patch.name.trim();
+
+  if (trimmedName.length === 0) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Tên khách chưa hợp lệ ạ.",
+    };
+  }
+
+  const user = await getAuthenticatedUser();
+  const supabase = await createClient();
+  const trimmedCustomerId = customerId.trim();
+
+  const { data: beforeData, error: beforeError } = await supabase
+    .from("customers")
+    .select("id,name")
+    .eq("owner_id", user.id)
+    .eq("id", trimmedCustomerId)
+    .eq("is_active", true)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (beforeError) {
+    return {
+      ok: false,
+      code: "db_error",
+      message: "Chưa đọc được khách, bác thử lại ạ.",
+    };
+  }
+
+  if (!beforeData) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Không tìm thấy khách để sửa.",
+    };
+  }
+
+  const before = beforeData as CustomerRow;
+
+  if (normalizeCustomerName(before.name) === normalizeCustomerName(trimmedName)) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Tên mới đang trùng tên cũ ạ.",
+    };
+  }
+
+  const existingRead = await supabase
+    .from("customers")
+    .select("id,name")
+    .eq("owner_id", user.id)
+    .eq("is_active", true)
+    .is("deleted_at", null);
+
+  if (existingRead.error) {
+    return {
+      ok: false,
+      code: "db_error",
+      message: "Chưa kiểm được khách trùng tên, bác thử lại ạ.",
+    };
+  }
+
+  const duplicate = findCustomerByName(
+    existingRead.data as CustomerRow[] | null,
+    trimmedName,
+  );
+
+  if (duplicate && duplicate.id !== trimmedCustomerId) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Tên khách này đã có rồi ạ.",
+    };
+  }
+
+  const { data, error } = await supabase
+    .from("customers")
+    .update({ name: trimmedName })
+    .eq("owner_id", user.id)
+    .eq("id", trimmedCustomerId)
+    .eq("is_active", true)
+    .is("deleted_at", null)
+    .select("id,name")
+    .maybeSingle();
+
+  if (error) {
+    return {
+      ok: false,
+      code: "db_error",
+      message: "Chưa sửa được khách, bác thử lại ạ.",
+    };
+  }
+
+  if (!data) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Không tìm thấy khách để sửa.",
+    };
+  }
+
+  const updated = data as CustomerRow;
+  const { error: auditError } = await supabase.from("audit_log").insert({
+    owner_id: user.id,
+    actor_id: user.id,
+    entity_type: "customer",
+    entity_id: updated.id,
+    action: "update",
+    before_data: { name: before.name },
+    after_data: { name: updated.name },
+    metadata: {
+      fields: ["name"],
+    },
+  });
+
+  if (auditError) {
+    console.error("audit_log insert failed for updateCustomer", auditError);
+
+    return {
+      ok: false,
+      code: "db_error",
+      message: "Đã sửa khách nhưng chưa ghi được nhật ký, bác tải lại kiểm tra giúp em ạ.",
+    };
+  }
+
+  return {
+    ok: true,
+    data: {
+      id: updated.id,
+      name: updated.name,
+    },
   };
 }
 
@@ -3018,15 +3379,31 @@ export async function processMessage(
         supabase,
       })
     : { ok: true as const, data: null };
+  const customerManagementPreviewResult = pipeline.ok
+    ? await resolveCustomerManagementPreview({
+        customerManagement: pipeline.extracted.entities.customer_management,
+        ownerId: user.id,
+        supabase,
+      })
+    : { ok: true as const, data: null };
 
   if (!productManagementPreviewResult.ok) {
     return productManagementPreviewResult;
+  }
+
+  if (!customerManagementPreviewResult.ok) {
+    return customerManagementPreviewResult;
   }
 
   await persistTerminalProductManagementPreview({
     supabase,
     ownerId: user.id,
     preview: productManagementPreviewResult.data,
+  });
+  await persistTerminalCustomerManagementPreview({
+    supabase,
+    ownerId: user.id,
+    preview: customerManagementPreviewResult.data,
   });
 
   const terminalText = await persistTerminalAssistantResponse({
@@ -3041,6 +3418,9 @@ export async function processMessage(
     userMessage: saved.data,
     pipeline,
     ...(answer ? { answer } : {}),
+    ...(customerManagementPreviewResult.data
+      ? { customerManagementPreview: customerManagementPreviewResult.data }
+      : {}),
     ...(productManagementPreviewResult.data
       ? { productManagementPreview: productManagementPreviewResult.data }
       : {}),

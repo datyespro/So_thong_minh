@@ -14,6 +14,8 @@ const validOutput = {
     customer_name: "cô Lan",
     supplier_name: null,
     product_name: "xi măng",
+    product_management: null,
+    customer_management: null,
     items: [
       {
         raw: "10 bao xi măng 85k",
@@ -26,6 +28,7 @@ const validOutput = {
       },
     ],
     amount: null,
+    paid_amount: null,
     payment_status: "debt",
     payment_method: null,
     order_reference: null,

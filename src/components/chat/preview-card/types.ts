@@ -121,12 +121,46 @@ export type ProductManagementPreview =
       product: ProductManagementProduct;
     };
 
+export type CustomerManagementPreview =
+  | {
+      status: "not_found";
+      action: "rename";
+      customer_raw: string;
+      new_name: string | null;
+    }
+  | {
+      status: "needs_choice";
+      action: "rename";
+      customer_raw: string;
+      new_name: string | null;
+      candidates: Array<{ id: string; name: string }>;
+    }
+  | {
+      status: "confirm_rename";
+      action: "rename";
+      customer: { id: string; name: string };
+      new_name: string;
+    }
+  | {
+      status: "renamed";
+      action: "rename";
+      customer: { id: string; name: string };
+      new_name: string;
+    }
+  | {
+      status: "dismissed";
+      action: "rename";
+      customer: { id: string; name: string };
+      new_name: string;
+    };
+
 export type PipelineTurnView = {
   id: string;
   userMessageId: string;
   validated: ValidatedIntent;
   answer?: QueryAnswer | null;
   productManagementPreview?: ProductManagementPreview | null;
+  customerManagementPreview?: CustomerManagementPreview | null;
   terminalText?: string | null;
   aiTurnId?: string | null;
   patched: PreviewCardPatch;

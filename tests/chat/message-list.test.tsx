@@ -458,4 +458,58 @@ describe("MessageList", () => {
     expect(html).not.toContain('data-testid="history-product-card"');
     expect(html).toContain("Đã bỏ, chưa lưu vào danh sách.");
   });
+  it("renders a persisted manage_customer card as one read-only card", () => {
+    const message: ChatMessageView = {
+      id: "message-customer",
+      role: "assistant",
+      content: "Đã đổi tên khách chị Lan thành Lan xóm Nghè.",
+      created_at: "2026-06-17T09:37:31.000Z",
+      metadata: {
+        source: "tip_34_customer",
+        card: {
+          v: 1,
+          kind: "manage_customer",
+          action: "rename",
+          status: "renamed",
+          customer_name: "chị Lan",
+          customer_raw: null,
+          new_name: "Lan xóm Nghè",
+        },
+      },
+    };
+    const html = renderMessageList({
+      messages: [message],
+      pipelineTurns: [
+        {
+          id: "turn-customer",
+          userMessageId: message.id,
+          validated: baseValidated({
+            intent: "manage_customer",
+            kind: "none",
+            items: [],
+            effective_amount: null,
+            ready_for_preview: false,
+          }),
+          customerManagementPreview: {
+            status: "confirm_rename",
+            action: "rename",
+            customer: {
+              id: "customer-lan",
+              name: "chị Lan",
+            },
+            new_name: "Lan xóm Nghè",
+          },
+          patched: createEmptyPreviewCardPatch(),
+        },
+      ],
+      activeTurnId: "turn-customer",
+    });
+
+    expect(html).toContain('data-testid="history-customer-card"');
+    expect(html).toContain("Đã đổi tên khách chị Lan thành Lan xóm Nghè.");
+    expect(html).not.toContain('data-testid="customer-management-confirm_rename"');
+    expect(html.match(/data-testid="history-customer-card"/g) ?? []).toHaveLength(1);
+    expect(html).not.toContain(">Xác nhận</button>");
+    expect(html).not.toContain(">Bỏ</button>");
+  });
 });

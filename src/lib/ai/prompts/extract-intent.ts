@@ -30,6 +30,7 @@ INTENT:
 - record_payment: ghi khách trả tiền.
 - create_purchase: ghi nhập hàng từ nhà cung cấp.
 - manage_product: quản lý danh mục hàng hóa, gồm đổi đơn vị mặc định, đặt giá bán mặc định, thêm tên hàng mới, hoặc xóa một mặt hàng khỏi danh mục. Không phải đơn bán/nhập.
+- manage_customer: quản lý khách hàng, hiện chỉ hỗ trợ đổi tên khách hàng.
 - query_debt: hỏi công nợ.
 - query_inventory: hỏi tồn kho.
 - query_sales: hỏi doanh thu hoặc bán hàng.
@@ -53,6 +54,17 @@ QUẢN LÝ HÀNG HÓA:
 - Ví dụ "thêm hàng cát vàng" => manage_product, action=create, product_raw="cát vàng".
 - Ví dụ "tạo hàng mới: gạch block 12k một viên" => manage_product, action=create, product_raw="gạch block", unit="viên", sell_price=12000.
 - Ví dụ "xóa sản phẩm fff" => manage_product, action=delete, product_raw="fff".
+
+QUẢN LÝ KHÁCH HÀNG:
+- Dùng manage_customer khi người dùng muốn đổi tên khách hàng.
+- manage_customer KHÔNG phải giao dịch bán/nhập; để customer_name=null, supplier_name=null, items=[].
+- Điền entities.customer_management:
+  - action: rename.
+  - customer_raw: tên khách hiện tại theo chuỗi gốc user gõ.
+  - new_name: tên mới; nếu câu không nói tên mới thì để null.
+- Ví dụ "đổi tên chị lan thành Lan xóm Nghè" => manage_customer, action=rename, customer_raw="chị lan", new_name="Lan xóm Nghè".
+- Ví dụ "sửa tên khách Hùng thành anh Hùng Bình Tân" => manage_customer, action=rename, customer_raw="Hùng", new_name="anh Hùng Bình Tân".
+- KHÔNG nhầm với đổi tên sản phẩm; ví dụ "đổi tên xi măng thành xi măng Hà Tiên" là manage_product.
 
 PHÂN BIỆT BÁN HÀNG VS NHẬP HÀNG:
 - Bối cảnh mặc định là cửa hàng vật liệu BÁN hàng cho khách. Khi câu có "mua", "lấy", "lấy hàng" và chủ ngữ là tên người/khách, hãy hiểu là khách mua của cửa hàng => intent=create_order.
@@ -164,6 +176,24 @@ customer_name: null
 supplier_name: null
 product_name: "xi măng"
 product_management: { action: "delete", product_raw: "xi măng", unit: null, sell_price: null }
+items: []
+next_stage_hint: resolve_entities
+
+User: "đổi tên chị lan thành Lan xóm Nghè"
+Intent: manage_customer
+customer_name: null
+supplier_name: null
+product_name: null
+customer_management: { action: "rename", customer_raw: "chị lan", new_name: "Lan xóm Nghè" }
+items: []
+next_stage_hint: resolve_entities
+
+User: "sửa tên khách Hùng thành anh Hùng Bình Tân"
+Intent: manage_customer
+customer_name: null
+supplier_name: null
+product_name: null
+customer_management: { action: "rename", customer_raw: "Hùng", new_name: "anh Hùng Bình Tân" }
 items: []
 next_stage_hint: resolve_entities
 

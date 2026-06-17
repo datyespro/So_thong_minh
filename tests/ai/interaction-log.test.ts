@@ -21,6 +21,7 @@ const extractedIntent: ExtractedIntent = {
     supplier_name: null,
     product_name: "xi măng",
     product_management: null,
+    customer_management: null,
     items: [],
     amount: null,
     paid_amount: null,

@@ -92,6 +92,7 @@ const extractedIntent: ExtractedIntent = {
     supplier_name: null,
     product_name: "xi măng",
     product_management: null,
+    customer_management: null,
     items: [],
     amount: null,
     paid_amount: null,
@@ -205,6 +206,7 @@ function manageProductPipeline(
         customer_name: null,
         product_name: productManagement.product_raw,
         product_management: productManagement,
+        customer_management: null,
         items: [],
         amount: null,
         payment_status: "unknown",
@@ -247,6 +249,58 @@ function manageProductDeletePipeline(productRaw: string): ChatPipelineResult {
     validated: {
       ...pipeline.validated,
       raw_text: rawText,
+    },
+  };
+}
+
+function manageCustomerPipeline({
+  customerRaw,
+  newName,
+}: {
+  customerRaw: string;
+  newName: string | null;
+}): ChatPipelineResult {
+  const baseValidated = pipelineResult.ok ? pipelineResult.validated : null;
+  const rawText =
+    newName === null
+      ? `đổi tên ${customerRaw}`
+      : `đổi tên ${customerRaw} thành ${newName}`;
+
+  if (!baseValidated) {
+    throw new Error("Expected base pipeline fixture to be successful.");
+  }
+
+  return {
+    ok: true,
+    extracted: {
+      ...extractedIntent,
+      intent: "manage_customer",
+      raw_text: rawText,
+      normalized_text: rawText,
+      entities: {
+        ...extractedIntent.entities,
+        customer_name: null,
+        product_name: null,
+        product_management: null,
+        customer_management: {
+          action: "rename",
+          customer_raw: customerRaw,
+          new_name: newName,
+        },
+        items: [],
+        amount: null,
+        payment_status: "unknown",
+      },
+    },
+    validated: {
+      ...baseValidated,
+      intent: "manage_customer",
+      kind: "none",
+      raw_text: rawText,
+      customer: null,
+      items: [],
+      effective_amount: null,
+      ready_for_preview: false,
     },
   };
 }
@@ -962,6 +1016,120 @@ describe("processMessage", () => {
     }
     expect(mocks.from).toHaveBeenCalledTimes(2);
     expect(mocks.from).toHaveBeenCalledWith("products");
+  });
+
+  it("attaches a not_found customer-management preview and persists terminal text", async () => {
+    const customerPipeline = manageCustomerPipeline({
+      customerRaw: "chị lan",
+      newName: "Lan xóm Nghè",
+    });
+    mocks.runChatPipeline.mockResolvedValue(customerPipeline);
+    mocks.readIs.mockResolvedValue({
+      data: [{ id: "customer-hung", name: "anh Hùng", aliases: [] }],
+      error: null,
+    });
+    mocks.from
+      .mockReturnValueOnce(chatInsertChain)
+      .mockReturnValueOnce(productReadChain);
+
+    const result = await processMessage("đổi tên chị lan thành Lan xóm Nghè");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.customerManagementPreview).toEqual({
+        status: "not_found",
+        action: "rename",
+        customer_raw: "chị lan",
+        new_name: "Lan xóm Nghè",
+      });
+    }
+    expect(mocks.from).toHaveBeenCalledWith("customers");
+    expect(mocks.readSelect).toHaveBeenCalledWith("id,name,aliases");
+    expect(mocks.readEq).toHaveBeenCalledWith("owner_id", "user-a");
+    expect(mocks.readEq).toHaveBeenCalledWith("is_active", true);
+    expect(mocks.readIs).toHaveBeenCalledWith("deleted_at", null);
+    expect(mocks.insert).toHaveBeenCalledTimes(2);
+    expect(mocks.insert.mock.calls[1][0]).toEqual({
+      owner_id: "user-a",
+      role: "assistant",
+      content: "Không tìm thấy khách tên chị lan ạ.",
+      intent: "manage_customer",
+      metadata: {
+        card: {
+          v: 1,
+          kind: "manage_customer",
+          action: "rename",
+          status: "not_found",
+          customer_name: null,
+          customer_raw: "chị lan",
+          new_name: "Lan xóm Nghè",
+        },
+        source: "tip_34_customer",
+      },
+    });
+  });
+
+  it("attaches a confirm_rename customer-management preview for one resolved customer", async () => {
+    const customerPipeline = manageCustomerPipeline({
+      customerRaw: "chị lan",
+      newName: "Lan xóm Nghè",
+    });
+    mocks.runChatPipeline.mockResolvedValue(customerPipeline);
+    mocks.readIs.mockResolvedValue({
+      data: [{ id: "customer-lan", name: "Chị Lan", aliases: ["chị lan"] }],
+      error: null,
+    });
+    mocks.from
+      .mockReturnValueOnce(chatInsertChain)
+      .mockReturnValueOnce(productReadChain);
+
+    const result = await processMessage("đổi tên chị lan thành Lan xóm Nghè");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.customerManagementPreview).toEqual({
+        status: "confirm_rename",
+        action: "rename",
+        customer: { id: "customer-lan", name: "Chị Lan" },
+        new_name: "Lan xóm Nghè",
+      });
+    }
+    expect(mocks.insert).toHaveBeenCalledTimes(1);
+  });
+
+  it("attaches a needs_choice customer-management preview for ambiguous customers", async () => {
+    const customerPipeline = manageCustomerPipeline({
+      customerRaw: "Lan",
+      newName: "Lan xóm Nghè",
+    });
+    mocks.runChatPipeline.mockResolvedValue(customerPipeline);
+    mocks.readIs.mockResolvedValue({
+      data: [
+        { id: "customer-lan-a", name: "Chị Lan", aliases: ["Lan"] },
+        { id: "customer-lan-b", name: "Cô Lan", aliases: ["Lan"] },
+      ],
+      error: null,
+    });
+    mocks.from
+      .mockReturnValueOnce(chatInsertChain)
+      .mockReturnValueOnce(productReadChain);
+
+    const result = await processMessage("đổi tên Lan thành Lan xóm Nghè");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.customerManagementPreview).toEqual({
+        status: "needs_choice",
+        action: "rename",
+        customer_raw: "Lan",
+        new_name: "Lan xóm Nghè",
+        candidates: [
+          { id: "customer-lan-a", name: "Chị Lan" },
+          { id: "customer-lan-b", name: "Cô Lan" },
+        ],
+      });
+    }
+    expect(mocks.insert).toHaveBeenCalledTimes(1);
   });
 
   it("attaches a deterministic answer for supported query intents", async () => {

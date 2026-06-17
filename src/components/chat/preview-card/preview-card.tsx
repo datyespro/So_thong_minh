@@ -14,12 +14,14 @@ import {
   deleteProduct,
   getCustomerDebt,
   persistDismissedPreviewMessage,
+  persistCustomerManagementMessage,
   persistProductManagementMessage,
   recreateSaleOrder,
   searchCustomersByName,
   searchSuppliersByName,
   searchProductsByName,
   undoCommit,
+  updateCustomer,
   updateProduct,
   type CommitOrderItemInput,
   type CommitPurchaseItemInput,
@@ -31,7 +33,9 @@ import { cn } from "@/src/lib/utils";
 import { Button } from "@/src/components/ui/button";
 import { HistoryCommitCard } from "@/src/components/chat/history-commit-card";
 import {
+  historyCustomerCardContent,
   historyProductCardContent,
+  type HistoryCustomerCard as HistoryCustomerCardData,
   type HistoryProductCard as HistoryProductCardData,
 } from "@/src/lib/chat/history-card";
 import { confirmAliasInBackground } from "@/src/components/chat/preview-card/alias-client";
@@ -75,6 +79,7 @@ import type {
   PreviewAddedItemPatch,
   PreviewCardPatch,
   PreviewResolvedEntityPatch,
+  CustomerManagementPreview,
   ProductManagementCandidate,
   ProductManagementPreview,
   ProductManagementProduct,
@@ -108,6 +113,7 @@ type PreviewCardMode = "live" | "restored";
 type PreviewCardProps = Readonly<{
   validated: ValidatedIntent;
   answer?: QueryAnswer | null;
+  customerManagementPreview?: CustomerManagementPreview | null;
   productManagementPreview?: ProductManagementPreview | null;
   terminalText?: string | null;
   aiTurnId?: string | null;
@@ -683,6 +689,125 @@ export async function saveProductManagementCreatePreview(
         unit: result.data.unit,
         sell_price: result.data.sell_price,
       },
+    },
+  };
+}
+
+type CustomerManagementCandidate = Extract<
+  CustomerManagementPreview,
+  { status: "needs_choice" }
+>["candidates"][number];
+type CustomerManagementConfirmRenamePreview = Extract<
+  CustomerManagementPreview,
+  { status: "confirm_rename" }
+>;
+type CustomerManagementRenamedPreview = Extract<
+  CustomerManagementPreview,
+  { status: "renamed" }
+>;
+
+export function customerManagementChoiceEntity(
+  preview: Extract<CustomerManagementPreview, { status: "needs_choice" }>,
+): ResolvedEntity {
+  return {
+    raw: preview.customer_raw,
+    entity_type: "customer",
+    status: "ambiguous",
+    resolved_id: null,
+    resolved_name: null,
+    confidence: 1,
+    candidates: preview.candidates.map((candidate) => ({
+      id: candidate.id,
+      name: candidate.name,
+      score: 1,
+      matched_on: "name_exact",
+      matched_value: preview.customer_raw,
+    })),
+  };
+}
+
+export function customerManagementCustomerFromCandidate(
+  candidate: CustomerManagementCandidate,
+) {
+  return {
+    id: candidate.id,
+    name: candidate.name,
+  };
+}
+
+export function historyCustomerCardFromResult(
+  preview: CustomerManagementRenamedPreview,
+): HistoryCustomerCardData {
+  return {
+    v: 1,
+    kind: "manage_customer",
+    action: "rename",
+    status: "renamed",
+    customer_name: preview.customer.name,
+    customer_raw: null,
+    new_name: preview.new_name,
+  };
+}
+
+export function historyCustomerCardFromDismissedPreview(
+  preview: CustomerManagementPreview,
+): HistoryCustomerCardData | null {
+  if (preview.status !== "confirm_rename") {
+    return null;
+  }
+
+  return {
+    v: 1,
+    kind: "manage_customer",
+    action: "rename",
+    status: "dismissed",
+    customer_name: preview.customer.name,
+    customer_raw: null,
+    new_name: preview.new_name,
+  };
+}
+
+export async function persistCustomerManagementHistory(
+  card: HistoryCustomerCardData,
+) {
+  try {
+    const result = await persistCustomerManagementMessage({
+      card,
+      content: historyCustomerCardContent(card),
+    });
+
+    if (!result.ok) {
+      console.warn("Failed to persist customer-management history card", {
+        code: result.code,
+        message: result.message,
+      });
+    }
+  } catch (error) {
+    console.warn("Failed to persist customer-management history card", error);
+  }
+}
+
+export async function saveCustomerManagementPreview(
+  preview: CustomerManagementConfirmRenamePreview,
+): Promise<
+  | { ok: true; data: CustomerManagementRenamedPreview }
+  | { ok: false; message: string }
+> {
+  const result = await updateCustomer(preview.customer.id, {
+    name: preview.new_name,
+  });
+
+  if (!result.ok) {
+    return { ok: false, message: result.message };
+  }
+
+  return {
+    ok: true,
+    data: {
+      status: "renamed",
+      action: "rename",
+      customer: preview.customer,
+      new_name: result.data.name,
     },
   };
 }
@@ -2217,6 +2342,149 @@ function ProductManagementPreviewContent({
   );
 }
 
+function CustomerManagementPreviewContent({
+  preview,
+  isLive,
+  isSaving,
+  isDismissed,
+  error,
+  onSelectCandidate,
+  onSave,
+  onCancel,
+}: Readonly<{
+  preview: CustomerManagementPreview;
+  isLive: boolean;
+  isSaving: boolean;
+  isDismissed: boolean;
+  error: string | null;
+  onSelectCandidate: (candidate: CustomerManagementCandidate) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}>) {
+  if (preview.status === "not_found") {
+    return (
+      <div className={cn("flex w-full justify-start", !isLive && "opacity-70")}>
+        <div
+          className="max-w-[86%] rounded border border-dashed border-ledgerBorder bg-paperWarm px-4 py-3 text-[16px] leading-7 text-textMute shadow-none sm:max-w-[78%]"
+          data-testid="customer-management-not-found"
+        >
+          Không tìm thấy khách tên “{preview.customer_raw}” ạ.
+        </div>
+      </div>
+    );
+  }
+
+  const customer =
+    preview.status === "confirm_rename" ||
+    preview.status === "renamed" ||
+    preview.status === "dismissed"
+      ? preview.customer
+      : null;
+  const interactive =
+    isLive && preview.status === "confirm_rename" && !isDismissed;
+
+  return (
+    <div className={cn("flex w-full justify-start", !interactive && "opacity-70")}>
+      <article
+        className={cn(
+          "w-full max-w-[94%] rounded border px-4 py-4 text-textMain shadow-[var(--shadow-card)] sm:max-w-[88%]",
+          interactive
+            ? "border-ledgerBorder bg-surface"
+            : "border-ledgerBorder bg-paperWarm shadow-none",
+        )}
+        data-testid={`customer-management-${preview.status}`}
+      >
+        <div className="border-b border-ledgerBorder pb-3">
+          <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-stamp">
+            manage_customer
+          </p>
+          <h2 className="mt-1 font-display text-2xl font-semibold tracking-normal text-inkDeep">
+            {preview.status === "needs_choice"
+              ? "Chọn khách cần đổi tên"
+              : "Đổi tên khách"}
+          </h2>
+        </div>
+
+        {preview.status === "needs_choice" ? (
+          <div className="mt-3">
+            <p className="text-[16px] leading-7 text-textMute">
+              Bác chọn đúng khách cần đổi tên giúp em ạ.
+            </p>
+            <EntityChoicePanel
+              entity={customerManagementChoiceEntity(preview)}
+              label="Khách"
+              allowCreate={false}
+              onSelect={(candidate) =>
+                onSelectCandidate(
+                  customerManagementCustomerFromCandidate(candidate),
+                )
+              }
+            />
+          </div>
+        ) : null}
+
+        {customer ? (
+          <div className="mt-4 rounded border border-ledgerBorder bg-paper px-3 py-3">
+            <div className="grid gap-2 text-[16px] leading-7 sm:grid-cols-[140px_1fr]">
+              <p className="font-semibold text-textMute">Từ</p>
+              <p className="font-semibold text-inkDeep">{customer.name}</p>
+              <p className="font-semibold text-textMute">Thành</p>
+              <p className="font-semibold text-paid">{preview.new_name}</p>
+            </div>
+          </div>
+        ) : null}
+
+        {preview.status === "renamed" && customer ? (
+          <p
+            className="mt-4 flex items-center gap-2 border-t border-ledgerBorder pt-3 text-[16px] font-semibold leading-6 text-paid"
+            data-testid="customer-management-renamed"
+          >
+            <Check className="h-5 w-5 shrink-0" aria-hidden="true" />
+            Đã đổi tên khách thành {preview.new_name}.
+          </p>
+        ) : null}
+
+        {isDismissed || preview.status === "dismissed" ? (
+          <p
+            className="mt-4 border-t border-ledgerBorder pt-3 text-[16px] font-semibold leading-6 text-textMute"
+            data-testid="customer-management-dismissed"
+          >
+            Đã bỏ, chưa đổi tên khách.
+          </p>
+        ) : null}
+
+        {interactive ? (
+          <div className="mt-4 flex flex-wrap gap-2 border-t border-ledgerBorder pt-3">
+            <Button
+              type="button"
+              disabled={isSaving}
+              className="h-12 rounded bg-ink px-5 text-[16px] font-semibold text-paper hover:bg-inkDeep disabled:cursor-not-allowed disabled:opacity-55"
+              onClick={onSave}
+            >
+              {isSaving ? "Đang lưu..." : "Xác nhận"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isSaving}
+              className="h-12 rounded border-ledgerBorder bg-surface px-5 text-[16px] font-semibold text-textMute hover:bg-paperWarm hover:text-ink disabled:cursor-not-allowed disabled:opacity-55"
+              onClick={onCancel}
+            >
+              Bỏ
+            </Button>
+          </div>
+        ) : null}
+
+        {error ? (
+          <p className="mt-2 text-[15px] leading-6 text-debt" role="alert">
+            {error}
+          </p>
+        ) : null}
+      </article>
+    </div>
+  );
+}
+
 function ProductManagementDeletePreviewContent({
   preview,
   isLive,
@@ -2509,6 +2777,7 @@ function DeleteOrderConfirmModal({
 export function PreviewCard({
   validated: initialValidated,
   answer = null,
+  customerManagementPreview = null,
   productManagementPreview = null,
   terminalText = null,
   aiTurnId = null,
@@ -2581,6 +2850,14 @@ export function PreviewCard({
   const [undone, setUndone] = React.useState(false);
   const [undoError, setUndoError] = React.useState<string | null>(null);
   const [confirmDeleteOrder, setConfirmDeleteOrder] = React.useState(false);
+  const [customerManagementState, setCustomerManagementState] =
+    React.useState<CustomerManagementPreview | null>(customerManagementPreview);
+  const [customerManagementDismissed, setCustomerManagementDismissed] =
+    React.useState(false);
+  const [isSavingCustomerManagement, setIsSavingCustomerManagement] =
+    React.useState(false);
+  const [customerManagementError, setCustomerManagementError] =
+    React.useState<string | null>(null);
   const [productManagementState, setProductManagementState] =
     React.useState<ProductManagementPreview | null>(productManagementPreview);
   const [productManagementCreateDraft, setProductManagementCreateDraft] =
@@ -2686,6 +2963,13 @@ export function PreviewCard({
   ]);
 
   React.useEffect(() => {
+    setCustomerManagementState(customerManagementPreview);
+    setCustomerManagementDismissed(false);
+    setIsSavingCustomerManagement(false);
+    setCustomerManagementError(null);
+  }, [customerManagementPreview]);
+
+  React.useEffect(() => {
     setProductManagementState(productManagementPreview);
     setProductManagementCreateDraft(
       productManagementPreview?.status === "create_draft"
@@ -2727,6 +3011,83 @@ export function PreviewCard({
       cancelled = true;
     };
   }, [paymentCustomerId]);
+
+  function handleSelectCustomerManagementCandidate(
+    candidate: CustomerManagementCandidate,
+  ) {
+    if (customerManagementState?.status !== "needs_choice") {
+      return;
+    }
+
+    setCustomerManagementState({
+      status: "confirm_rename",
+      action: "rename",
+      customer: customerManagementCustomerFromCandidate(candidate),
+      new_name: customerManagementState.new_name ?? "",
+    });
+    setCustomerManagementError(null);
+
+    if (
+      shouldLearnAlias(customerManagementState.customer_raw, candidate.name)
+    ) {
+      void confirmAliasInBackground(
+        "customer",
+        candidate.id,
+        customerManagementState.customer_raw,
+      );
+    }
+  }
+
+  async function handleConfirmCustomerRename() {
+    if (
+      customerManagementState?.status !== "confirm_rename" ||
+      isSavingCustomerManagement
+    ) {
+      return;
+    }
+
+    setIsSavingCustomerManagement(true);
+    setCustomerManagementError(null);
+
+    try {
+      const result = await saveCustomerManagementPreview(customerManagementState);
+
+      if (!result.ok) {
+        setCustomerManagementError(result.message);
+        return;
+      }
+
+      setCustomerManagementState(result.data);
+      await persistCustomerManagementHistory(
+        historyCustomerCardFromResult(result.data),
+      );
+    } catch (error) {
+      console.error("updateCustomer from chat preview failed", error);
+      setCustomerManagementError("Chưa lưu được thay đổi, bác thử lại ạ.");
+    } finally {
+      setIsSavingCustomerManagement(false);
+    }
+  }
+
+  async function handleCancelCustomerManagement() {
+    if (isSavingCustomerManagement) {
+      return;
+    }
+
+    const card = customerManagementState
+      ? historyCustomerCardFromDismissedPreview(customerManagementState)
+      : null;
+
+    setIsSavingCustomerManagement(true);
+    setCustomerManagementError(null);
+
+    if (card) {
+      await persistCustomerManagementHistory(card);
+    }
+
+    setCustomerManagementDismissed(true);
+    setIsSavingCustomerManagement(false);
+  }
 
   function handleSelectProductManagementCandidate(
     candidate: ProductManagementCandidate,
@@ -2908,6 +3269,21 @@ export function PreviewCard({
 
     setProductManagementDeleteDismissed(true);
     setIsSavingProductManagement(false);
+  }
+
+  if (customerManagementState) {
+    return (
+      <CustomerManagementPreviewContent
+        preview={customerManagementState}
+        isLive={liveInteractions}
+        isSaving={isSavingCustomerManagement}
+        isDismissed={customerManagementDismissed}
+        error={customerManagementError}
+        onSelectCandidate={handleSelectCustomerManagementCandidate}
+        onSave={() => void handleConfirmCustomerRename()}
+        onCancel={() => void handleCancelCustomerManagement()}
+      />
+    );
   }
 
   if (productManagementPreview && productManagementDismissed) {

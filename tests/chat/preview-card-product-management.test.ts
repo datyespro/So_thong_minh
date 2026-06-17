@@ -1,10 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ProductManagementPreview } from "@/src/components/chat/preview-card";
+import type {
+  CustomerManagementPreview,
+  ProductManagementPreview,
+} from "@/src/components/chat/preview-card";
 
 const mocks = vi.hoisted(() => ({
   createProductFromChat: vi.fn(),
   deleteProduct: vi.fn(),
+  persistCustomerManagementMessage: vi.fn(),
   persistProductManagementMessage: vi.fn(),
+  updateCustomer: vi.fn(),
   updateProduct: vi.fn(),
 }));
 
@@ -19,22 +24,29 @@ vi.mock("@/app/(app)/chat/actions", () => ({
   deleteProduct: mocks.deleteProduct,
   getCustomerDebt: vi.fn(),
   persistDismissedPreviewMessage: vi.fn(),
+  persistCustomerManagementMessage: mocks.persistCustomerManagementMessage,
   persistProductManagementMessage: mocks.persistProductManagementMessage,
   recreateSaleOrder: vi.fn(),
   searchCustomersByName: vi.fn(),
   searchSuppliersByName: vi.fn(),
   searchProductsByName: vi.fn(),
   undoCommit: vi.fn(),
+  updateCustomer: mocks.updateCustomer,
   updateProduct: mocks.updateProduct,
 }));
 
 const {
+  customerManagementChoiceEntity,
+  customerManagementCustomerFromCandidate,
+  historyCustomerCardFromDismissedPreview,
+  historyCustomerCardFromResult,
   productManagementChoiceEntity,
   productManagementCreateFormFromPreview,
   productManagementProductFromCandidate,
   historyProductCardFromDismissedPreview,
   historyProductCardFromResult,
   persistProductManagementHistory,
+  saveCustomerManagementPreview,
   saveProductManagementCreatePreview,
   saveProductManagementDeletePreview,
   saveProductManagementPreview,
@@ -62,8 +74,14 @@ describe("product-management preview helpers", () => {
   beforeEach(() => {
     mocks.createProductFromChat.mockReset();
     mocks.deleteProduct.mockReset();
+    mocks.persistCustomerManagementMessage.mockReset();
     mocks.persistProductManagementMessage.mockReset();
+    mocks.updateCustomer.mockReset();
     mocks.updateProduct.mockReset();
+    mocks.persistCustomerManagementMessage.mockResolvedValue({
+      ok: true,
+      data: null,
+    });
     mocks.persistProductManagementMessage.mockResolvedValue({
       ok: true,
       data: null,
@@ -472,5 +490,92 @@ describe("product-management preview helpers", () => {
 
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
+  });
+
+  it("saves customer rename through updateCustomer and builds the renamed card", async () => {
+    const preview: Extract<
+      CustomerManagementPreview,
+      { status: "confirm_rename" }
+    > = {
+      status: "confirm_rename",
+      action: "rename",
+      customer: { id: "customer-lan", name: "chị Lan" },
+      new_name: "Lan xóm Nghè",
+    };
+    mocks.updateCustomer.mockResolvedValue({
+      ok: true,
+      data: { id: "customer-lan", name: "Lan xóm Nghè" },
+    });
+
+    const result = await saveCustomerManagementPreview(preview);
+
+    expect(mocks.updateCustomer).toHaveBeenCalledWith("customer-lan", {
+      name: "Lan xóm Nghè",
+    });
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        status: "renamed",
+        action: "rename",
+        customer: { id: "customer-lan", name: "chị Lan" },
+        new_name: "Lan xóm Nghè",
+      },
+    });
+    expect(
+      result.ok ? historyCustomerCardFromResult(result.data) : null,
+    ).toEqual({
+      v: 1,
+      kind: "manage_customer",
+      action: "rename",
+      status: "renamed",
+      customer_name: "chị Lan",
+      customer_raw: null,
+      new_name: "Lan xóm Nghè",
+    });
+  });
+
+  it("converts a selected customer candidate and builds a dismissed rename card", () => {
+    const needsChoice: Extract<
+      CustomerManagementPreview,
+      { status: "needs_choice" }
+    > = {
+      status: "needs_choice",
+      action: "rename",
+      customer_raw: "Lan",
+      new_name: "Lan xóm Nghè",
+      candidates: [
+        { id: "customer-lan-a", name: "chị Lan" },
+        { id: "customer-lan-b", name: "cô Lan" },
+      ],
+    };
+
+    expect(customerManagementChoiceEntity(needsChoice)).toMatchObject({
+      raw: "Lan",
+      entity_type: "customer",
+      status: "ambiguous",
+      candidates: [
+        { id: "customer-lan-a", name: "chị Lan" },
+        { id: "customer-lan-b", name: "cô Lan" },
+      ],
+    });
+    expect(
+      customerManagementCustomerFromCandidate(needsChoice.candidates[1]),
+    ).toEqual({ id: "customer-lan-b", name: "cô Lan" });
+    expect(
+      historyCustomerCardFromDismissedPreview({
+        status: "confirm_rename",
+        action: "rename",
+        customer: { id: "customer-lan-a", name: "chị Lan" },
+        new_name: "Lan xóm Nghè",
+      }),
+    ).toEqual({
+      v: 1,
+      kind: "manage_customer",
+      action: "rename",
+      status: "dismissed",
+      customer_name: "chị Lan",
+      customer_raw: null,
+      new_name: "Lan xóm Nghè",
+    });
   });
 });

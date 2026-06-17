@@ -20,6 +20,7 @@ function baseIntent(
       supplier_name: null,
       product_name: "xi măng",
       product_management: null,
+      customer_management: null,
       items: [
         {
           raw: "10 bao xi măng 85k",
@@ -59,6 +60,7 @@ describe("IntentNameSchema", () => {
       "record_payment",
       "create_purchase",
       "manage_product",
+      "manage_customer",
       "query_debt",
       "query_inventory",
       "query_sales",
@@ -231,6 +233,62 @@ describe("ExtractedIntentSchema", () => {
     });
   });
 
+  it("accepts a manage_customer rename output with nullable new_name", () => {
+    const rename = ExtractedIntentSchema.parse(
+      baseIntent({
+        intent: "manage_customer",
+        raw_text: "đổi tên chị lan thành Lan xóm Nghè",
+        normalized_text: "đổi tên chị lan thành Lan xóm Nghè",
+        entities: {
+          ...baseIntent().entities,
+          customer_name: null,
+          product_name: null,
+          product_management: null,
+          customer_management: {
+            action: "rename",
+            customer_raw: "chị lan",
+            new_name: "Lan xóm Nghè",
+          },
+          items: [],
+          amount: null,
+          payment_status: "unknown",
+        },
+        needs_confirmation: false,
+      }),
+    );
+
+    expect(rename.entities.customer_management).toEqual({
+      action: "rename",
+      customer_raw: "chị lan",
+      new_name: "Lan xóm Nghè",
+    });
+
+    const missingNewName = ExtractedIntentSchema.parse(
+      baseIntent({
+        intent: "manage_customer",
+        raw_text: "đổi tên chị lan",
+        normalized_text: "đổi tên chị lan",
+        entities: {
+          ...baseIntent().entities,
+          customer_name: null,
+          product_name: null,
+          product_management: null,
+          customer_management: {
+            action: "rename",
+            customer_raw: "chị lan",
+            new_name: null,
+          },
+          items: [],
+          amount: null,
+          payment_status: "unknown",
+        },
+        needs_confirmation: false,
+      }),
+    );
+
+    expect(missingNewName.entities.customer_management?.new_name).toBeNull();
+  });
+
   it("defaults missing internal product_management to null", () => {
     const withoutProductManagement = {
       ...baseIntent(),
@@ -245,12 +303,27 @@ describe("ExtractedIntentSchema", () => {
     expect(parsed.entities.product_management).toBeNull();
   });
 
-  it("requires output product_management to be explicitly null or populated", () => {
+  it("defaults missing internal customer_management to null", () => {
+    const withoutCustomerManagement = {
+      ...baseIntent(),
+      entities: {
+        ...baseIntent().entities,
+      } as Partial<ExtractedIntent["entities"]>,
+    };
+    delete withoutCustomerManagement.entities.customer_management;
+
+    const parsed = ExtractedIntentSchema.parse(withoutCustomerManagement);
+
+    expect(parsed.entities.customer_management).toBeNull();
+  });
+
+  it("requires output management entities to be explicitly null or populated", () => {
     const output = {
       ...baseIntent(),
       entities: {
         ...baseIntent().entities,
         product_management: null,
+        customer_management: null,
         items: baseIntent().entities.items,
         payment_status: "debt",
         time_range: {
@@ -263,6 +336,7 @@ describe("ExtractedIntentSchema", () => {
     };
 
     expect(ExtractedIntentOutputSchema.parse(output).entities.product_management).toBeNull();
+    expect(ExtractedIntentOutputSchema.parse(output).entities.customer_management).toBeNull();
 
     const missingOutput = {
       ...output,
@@ -274,6 +348,19 @@ describe("ExtractedIntentSchema", () => {
       .product_management;
 
     expect(() => ExtractedIntentOutputSchema.parse(missingOutput)).toThrow();
+
+    const missingCustomerOutput = {
+      ...output,
+      entities: {
+        ...output.entities,
+      },
+    };
+    delete (missingCustomerOutput.entities as Partial<typeof output.entities>)
+      .customer_management;
+
+    expect(() =>
+      ExtractedIntentOutputSchema.parse(missingCustomerOutput),
+    ).toThrow();
   });
 
   it("rejects confidence below 0", () => {

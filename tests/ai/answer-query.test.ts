@@ -201,6 +201,7 @@ const extracted: ExtractedIntent = {
     supplier_name: null,
     product_name: null,
     product_management: null,
+    customer_management: null,
     items: [],
     amount: null,
     paid_amount: null,

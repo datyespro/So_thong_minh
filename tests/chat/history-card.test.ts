@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  historyCustomerCardContent,
   historyProductCardContent,
   parseHistoryCommitCard,
+  parseHistoryCustomerCard,
   parseHistoryProductCard,
 } from "@/src/lib/chat/history-card";
 
@@ -107,5 +109,55 @@ describe("parseHistoryProductCard", () => {
         product_name: "xi măng",
       }),
     ).toBe("Đã bỏ, chưa lưu vào danh sách.");
+  });
+});
+
+describe("parseHistoryCustomerCard", () => {
+  const customerCard = {
+    v: 1,
+    kind: "manage_customer",
+    action: "rename",
+    status: "renamed",
+    customer_name: "chị Lan",
+    customer_raw: null,
+    new_name: "Lan xóm Nghè",
+  } as const;
+
+  it("parses a valid customer result card", () => {
+    expect(parseHistoryCustomerCard({ card: customerCard })).toEqual(
+      customerCard,
+    );
+  });
+
+  it("returns null for malformed customer cards", () => {
+    expect(
+      parseHistoryCustomerCard({
+        card: { ...customerCard, status: "confirm_rename" },
+      }),
+    ).toBeNull();
+    expect(
+      parseHistoryCustomerCard({ card: { ...customerCard, kind: "manage_product" } }),
+    ).toBeNull();
+    expect(parseHistoryCustomerCard({ card: null })).toBeNull();
+  });
+
+  it("builds canonical persisted content for customer terminal states", () => {
+    expect(historyCustomerCardContent(customerCard)).toBe(
+      "Đã đổi tên khách chị Lan thành Lan xóm Nghè.",
+    );
+    expect(
+      historyCustomerCardContent({
+        ...customerCard,
+        status: "not_found",
+        customer_name: null,
+        customer_raw: "chị lan",
+      }),
+    ).toBe("Không tìm thấy khách tên chị lan ạ.");
+    expect(
+      historyCustomerCardContent({
+        ...customerCard,
+        status: "dismissed",
+      }),
+    ).toBe("Đã bỏ, chưa đổi tên khách.");
   });
 });

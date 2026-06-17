@@ -55,6 +55,7 @@ const {
   searchCustomersByName,
   searchSuppliersByName,
   searchProductsByName,
+  updateCustomer,
   updateProduct,
 } = await import("@/app/(app)/chat/actions");
 const { createProductPatchForItem } = await import(
@@ -872,6 +873,138 @@ describe("searchProductsByName", () => {
         candidates: [],
       });
     }
+    expect(mocks.insert).not.toHaveBeenCalled();
+  });
+});
+
+describe("updateCustomer", () => {
+  beforeEach(() => {
+    mocks.getUser.mockReset();
+    mocks.from.mockReset();
+    mocks.readSelect.mockReset();
+    mocks.readEq.mockReset();
+    mocks.readIs.mockReset();
+    mocks.readMaybeSingle.mockReset();
+    mocks.update.mockReset();
+    mocks.updateEq.mockReset();
+    mocks.updateIs.mockReset();
+    mocks.updateSelect.mockReset();
+    mocks.updateMaybeSingle.mockReset();
+    mocks.insert.mockReset();
+    mocks.insertSelect.mockReset();
+    mocks.single.mockReset();
+
+    mocks.getUser.mockResolvedValue({
+      data: { user: { id: "user-a" } },
+      error: null,
+    });
+    mocks.readSelect.mockReturnValue(readChain);
+    mocks.readEq.mockReturnValue(readChain);
+    mocks.readIs
+      .mockReturnValueOnce(readChain)
+      .mockResolvedValueOnce({
+        data: [{ id: "customer-hung", name: "anh Hùng" }],
+        error: null,
+      });
+    mocks.readMaybeSingle.mockResolvedValue({
+      data: { id: "customer-lan", name: "chị Lan" },
+      error: null,
+    });
+    mocks.update.mockReturnValue(updateChain);
+    mocks.updateEq.mockReturnValue(updateChain);
+    mocks.updateIs.mockReturnValue(updateChain);
+    mocks.updateSelect.mockReturnValue(updateChain);
+    mocks.updateMaybeSingle.mockResolvedValue({
+      data: { id: "customer-lan", name: "Lan xóm Nghè" },
+      error: null,
+    });
+    mocks.insert.mockResolvedValue({ error: null });
+    mocks.from
+      .mockReturnValueOnce(readChain)
+      .mockReturnValueOnce(readChain)
+      .mockReturnValueOnce(updateChain)
+      .mockReturnValueOnce(insertChain);
+  });
+
+  it("renames one owner-scoped customer and writes an audit row", async () => {
+    const result = await updateCustomer("customer-lan", {
+      name: "  Lan xóm Nghè  ",
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      data: { id: "customer-lan", name: "Lan xóm Nghè" },
+    });
+    expect(mocks.from).toHaveBeenNthCalledWith(1, "customers");
+    expect(mocks.from).toHaveBeenNthCalledWith(2, "customers");
+    expect(mocks.from).toHaveBeenNthCalledWith(3, "customers");
+    expect(mocks.from).toHaveBeenNthCalledWith(4, "audit_log");
+    expect(mocks.readEq).toHaveBeenCalledWith("owner_id", "user-a");
+    expect(mocks.readEq).toHaveBeenCalledWith("id", "customer-lan");
+    expect(mocks.readEq).toHaveBeenCalledWith("is_active", true);
+    expect(mocks.readIs).toHaveBeenCalledWith("deleted_at", null);
+    expect(mocks.update).toHaveBeenCalledWith({ name: "Lan xóm Nghè" });
+    expect(mocks.updateEq).toHaveBeenCalledWith("owner_id", "user-a");
+    expect(mocks.updateEq).toHaveBeenCalledWith("id", "customer-lan");
+    expect(mocks.updateEq).toHaveBeenCalledWith("is_active", true);
+    expect(mocks.updateIs).toHaveBeenCalledWith("deleted_at", null);
+    expect(mocks.insert).toHaveBeenCalledWith({
+      owner_id: "user-a",
+      actor_id: "user-a",
+      entity_type: "customer",
+      entity_id: "customer-lan",
+      action: "update",
+      before_data: { name: "chị Lan" },
+      after_data: { name: "Lan xóm Nghè" },
+      metadata: {
+        fields: ["name"],
+      },
+    });
+  });
+
+  it("blocks duplicate customer names before update", async () => {
+    mocks.readIs
+      .mockReset()
+      .mockReturnValueOnce(readChain)
+      .mockResolvedValueOnce({
+        data: [
+          { id: "customer-lan", name: "chị Lan" },
+          { id: "customer-hung", name: "anh Hùng" },
+        ],
+        error: null,
+      });
+
+    const result = await updateCustomer("customer-lan", {
+      name: "anh hùng",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      code: "validation_failed",
+      message: "Tên khách này đã có rồi ạ.",
+    });
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.insert).not.toHaveBeenCalled();
+  });
+
+  it("blocks customers hidden by the owner filter", async () => {
+    mocks.readMaybeSingle.mockResolvedValue({
+      data: null,
+      error: null,
+    });
+
+    const result = await updateCustomer("other-owner-customer", {
+      name: "Lan xóm Nghè",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      code: "validation_failed",
+      message: "Không tìm thấy khách để sửa.",
+    });
+    expect(mocks.readEq).toHaveBeenCalledWith("owner_id", "user-a");
+    expect(mocks.readEq).toHaveBeenCalledWith("id", "other-owner-customer");
+    expect(mocks.update).not.toHaveBeenCalled();
     expect(mocks.insert).not.toHaveBeenCalled();
   });
 });

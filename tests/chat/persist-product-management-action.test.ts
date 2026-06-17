@@ -15,7 +15,10 @@ vi.mock("@/src/lib/supabase/server", () => ({
   })),
 }));
 
-const { persistProductManagementMessage } = await import(
+const {
+  persistCustomerManagementMessage,
+  persistProductManagementMessage,
+} = await import(
   "@/app/(app)/chat/actions"
 );
 
@@ -28,6 +31,16 @@ const card = {
   product_raw: null,
   unit: "m³",
   sell_price: null,
+} as const;
+
+const customerCard = {
+  v: 1,
+  kind: "manage_customer",
+  action: "rename",
+  status: "renamed",
+  customer_name: "chị Lan",
+  customer_raw: null,
+  new_name: "Lan xóm Nghè",
 } as const;
 
 describe("persistProductManagementMessage", () => {
@@ -115,5 +128,54 @@ describe("persistProductManagementMessage", () => {
     );
 
     warnSpy.mockRestore();
+  });
+});
+
+describe("persistCustomerManagementMessage", () => {
+  beforeEach(() => {
+    mocks.getUser.mockReset();
+    mocks.from.mockReset();
+    mocks.insert.mockReset();
+
+    mocks.getUser.mockResolvedValue({
+      data: { user: { id: "owner-a" } },
+      error: null,
+    });
+    mocks.from.mockReturnValue({ insert: mocks.insert });
+    mocks.insert.mockResolvedValue({ error: null });
+  });
+
+  it("persists one owner-scoped manage_customer history card", async () => {
+    const result = await persistCustomerManagementMessage({
+      card: customerCard,
+      content: "Đã đổi tên khách chị Lan thành Lan xóm Nghè.",
+    });
+
+    expect(result).toEqual({ ok: true, data: null });
+    expect(mocks.from).toHaveBeenCalledWith("chat_messages");
+    expect(mocks.insert).toHaveBeenCalledWith({
+      owner_id: "owner-a",
+      role: "assistant",
+      content: "Đã đổi tên khách chị Lan thành Lan xóm Nghè.",
+      intent: "manage_customer",
+      metadata: {
+        card: customerCard,
+        source: "tip_34_customer",
+      },
+    });
+  });
+
+  it("rejects non-terminal customer cards", async () => {
+    const result = await persistCustomerManagementMessage({
+      card: { ...customerCard, status: "confirm_rename" },
+      content: "Xác nhận đổi tên khách",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      code: "validation_failed",
+      message: "Thẻ quản lý khách chưa hợp lệ ạ.",
+    });
+    expect(mocks.from).not.toHaveBeenCalled();
   });
 });

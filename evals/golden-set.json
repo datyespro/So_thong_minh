@@ -319,6 +319,67 @@
     "mode": "assert"
   },
   {
+    "id": "A19",
+    "group": "A",
+    "text": "đổi tên chị lan thành Lan xóm Nghè",
+    "expect": {
+      "intent": "manage_customer",
+      "fields": [
+        {
+          "path": "entities.customer_management.action",
+          "match": "exact",
+          "value": "rename"
+        },
+        {
+          "path": "entities.customer_management.customer_raw",
+          "match": "name",
+          "value": "chị lan"
+        },
+        {
+          "path": "entities.customer_management.new_name",
+          "match": "name",
+          "value": "Lan xóm Nghè"
+        }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "A20",
+    "group": "A",
+    "text": "sửa tên khách Hùng thành anh Hùng Bình Tân",
+    "expect": {
+      "intent": "manage_customer",
+      "fields": [
+        {
+          "path": "entities.customer_management.action",
+          "match": "exact",
+          "value": "rename"
+        },
+        {
+          "path": "entities.customer_management.customer_raw",
+          "match": "name",
+          "value": "Hùng"
+        },
+        {
+          "path": "entities.customer_management.new_name",
+          "match": "name",
+          "value": "anh Hùng Bình Tân"
+        }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "A21",
+    "group": "A",
+    "text": "đổi tên xi măng thành xi măng Hà Tiên",
+    "expect": {
+      "intent": "manage_product"
+    },
+    "mode": "assert"
+  },
+  {
     "id": "B1",
     "group": "B",
     "text": "nhập 100 bao xi măng từ Minh Phát",

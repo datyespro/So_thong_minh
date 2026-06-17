@@ -39,9 +39,20 @@ export const HistoryProductCardSchema = z.object({
   sell_price: z.number().nullable(),
 });
 
+export const HistoryCustomerCardSchema = z.object({
+  v: z.literal(1),
+  kind: z.literal("manage_customer"),
+  action: z.literal("rename"),
+  status: z.enum(["renamed", "dismissed", "not_found"]),
+  customer_name: z.string().nullable(),
+  customer_raw: z.string().nullable(),
+  new_name: z.string().nullable(),
+});
+
 export type HistoryCommitCard = z.infer<typeof HistoryCommitCardSchema>;
 export type HistoryCommitCardItem = z.infer<typeof HistoryCommitCardItemSchema>;
 export type HistoryProductCard = z.infer<typeof HistoryProductCardSchema>;
+export type HistoryCustomerCard = z.infer<typeof HistoryCustomerCardSchema>;
 
 export function parseHistoryCommitCard(metadata: unknown): HistoryCommitCard | null {
   if (!metadata || typeof metadata !== "object" || !("card" in metadata)) {
@@ -67,6 +78,36 @@ export function parseHistoryProductCard(
   );
 
   return parsed.success ? parsed.data : null;
+}
+
+export function parseHistoryCustomerCard(
+  metadata: unknown,
+): HistoryCustomerCard | null {
+  if (!metadata || typeof metadata !== "object" || !("card" in metadata)) {
+    return null;
+  }
+
+  const parsed = HistoryCustomerCardSchema.safeParse(
+    (metadata as { card?: unknown }).card,
+  );
+
+  return parsed.success ? parsed.data : null;
+}
+
+export function historyCustomerCardContent(card: HistoryCustomerCard) {
+  const currentName =
+    card.customer_name?.trim() || card.customer_raw?.trim() || "này";
+  const newName = card.new_name?.trim() || "—";
+
+  if (card.status === "renamed") {
+    return `Đã đổi tên khách ${currentName} thành ${newName}.`;
+  }
+
+  if (card.status === "not_found") {
+    return `Không tìm thấy khách tên ${currentName} ạ.`;
+  }
+
+  return "Đã bỏ, chưa đổi tên khách.";
 }
 
 export function historyProductCardContent(card: HistoryProductCard) {
