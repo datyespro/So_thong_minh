@@ -11,6 +11,7 @@ describe("terminal chat text helpers", () => {
   it("keeps current none-branch text unchanged", () => {
     expect(friendlyNoneMessage("small_talk")).toBe("Dạ, em nghe ạ.");
     expect(friendlyNoneMessage("unknown")).toBe("Em chưa rõ ý câu này ạ.");
+    expect(friendlyNoneMessage("manage_customer")).toBeNull();
   });
 
   it("keeps the shared money formatter null behavior", () => {

@@ -30,7 +30,7 @@ INTENT:
 - record_payment: ghi khách trả tiền.
 - create_purchase: ghi nhập hàng từ nhà cung cấp.
 - manage_product: quản lý danh mục hàng hóa, gồm đổi đơn vị mặc định, đặt giá bán mặc định, thêm tên hàng mới, hoặc xóa một mặt hàng khỏi danh mục. Không phải đơn bán/nhập.
-- manage_customer: quản lý khách hàng, hiện chỉ hỗ trợ đổi tên khách hàng.
+- manage_customer: quản lý khách hàng, gồm đổi tên hoặc thêm/sửa số điện thoại khách hàng.
 - query_debt: hỏi công nợ.
 - query_inventory: hỏi tồn kho.
 - query_sales: hỏi doanh thu hoặc bán hàng.
@@ -56,14 +56,23 @@ QUẢN LÝ HÀNG HÓA:
 - Ví dụ "xóa sản phẩm fff" => manage_product, action=delete, product_raw="fff".
 
 QUẢN LÝ KHÁCH HÀNG:
-- Dùng manage_customer khi người dùng muốn đổi tên khách hàng.
+- Dùng manage_customer khi người dùng muốn đổi tên hoặc thêm/sửa số điện thoại khách hàng.
 - manage_customer KHÔNG phải giao dịch bán/nhập; để customer_name=null, supplier_name=null, items=[].
 - Điền entities.customer_management:
-  - action: rename.
-  - customer_raw: tên khách hiện tại theo chuỗi gốc user gõ.
-  - new_name: tên mới; nếu câu không nói tên mới thì để null.
-- Ví dụ "đổi tên chị lan thành Lan xóm Nghè" => manage_customer, action=rename, customer_raw="chị lan", new_name="Lan xóm Nghè".
-- Ví dụ "sửa tên khách Hùng thành anh Hùng Bình Tân" => manage_customer, action=rename, customer_raw="Hùng", new_name="anh Hùng Bình Tân".
+  - Đổi tên:
+    - action: rename.
+    - customer_raw: tên khách hiện tại theo chuỗi gốc user gõ.
+    - new_name: tên mới; nếu câu không nói tên mới thì để null.
+    - phone_raw: null.
+  - Thêm/sửa SĐT:
+    - action: set_phone.
+    - customer_raw: tên khách theo chuỗi gốc user gõ.
+    - new_name: null.
+    - phone_raw: số điện thoại theo chuỗi gốc user gõ; nếu câu không nói SĐT thì để null.
+- Ví dụ "đổi tên chị lan thành Lan xóm Nghè" => manage_customer, action=rename, customer_raw="chị lan", new_name="Lan xóm Nghè", phone_raw=null.
+- Ví dụ "sửa tên khách Hùng thành anh Hùng Bình Tân" => manage_customer, action=rename, customer_raw="Hùng", new_name="anh Hùng Bình Tân", phone_raw=null.
+- Ví dụ "thêm số điện thoại cho chị Lan là 0987654321" => manage_customer, action=set_phone, customer_raw="chị Lan", new_name=null, phone_raw="0987654321".
+- Ví dụ "sửa sđt anh Hùng thành 0912345678" => manage_customer, action=set_phone, customer_raw="anh Hùng", new_name=null, phone_raw="0912345678".
 - KHÔNG nhầm với đổi tên sản phẩm; ví dụ "đổi tên xi măng thành xi măng Hà Tiên" là manage_product.
 
 PHÂN BIỆT BÁN HÀNG VS NHẬP HÀNG:
@@ -184,7 +193,7 @@ Intent: manage_customer
 customer_name: null
 supplier_name: null
 product_name: null
-customer_management: { action: "rename", customer_raw: "chị lan", new_name: "Lan xóm Nghè" }
+customer_management: { action: "rename", customer_raw: "chị lan", new_name: "Lan xóm Nghè", phone_raw: null }
 items: []
 next_stage_hint: resolve_entities
 
@@ -193,7 +202,25 @@ Intent: manage_customer
 customer_name: null
 supplier_name: null
 product_name: null
-customer_management: { action: "rename", customer_raw: "Hùng", new_name: "anh Hùng Bình Tân" }
+customer_management: { action: "rename", customer_raw: "Hùng", new_name: "anh Hùng Bình Tân", phone_raw: null }
+items: []
+next_stage_hint: resolve_entities
+
+User: "thêm số điện thoại cho chị Lan là 0987654321"
+Intent: manage_customer
+customer_name: null
+supplier_name: null
+product_name: null
+customer_management: { action: "set_phone", customer_raw: "chị Lan", new_name: null, phone_raw: "0987654321" }
+items: []
+next_stage_hint: resolve_entities
+
+User: "sửa sđt anh Hùng thành 0912345678"
+Intent: manage_customer
+customer_name: null
+supplier_name: null
+product_name: null
+customer_management: { action: "set_phone", customer_raw: "anh Hùng", new_name: null, phone_raw: "0912345678" }
 items: []
 next_stage_hint: resolve_entities
 

@@ -20,7 +20,7 @@ export function friendlyNoneMessage(intent: string) {
   }
 
   if (intent === "manage_customer") {
-    return "Dạ, em đã hiểu ý bác. Đang xử lý đổi tên khách ạ.";
+    return null;
   }
 
   return intent === "small_talk" ? "Dạ, em nghe ạ." : "Em chưa rõ ý câu này ạ.";

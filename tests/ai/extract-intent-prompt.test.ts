@@ -70,7 +70,7 @@ describe("buildExtractIntentPrompt", () => {
     expect(prompt).toContain('product_management: { action: "delete", product_raw: "xi măng", unit: null, sell_price: null }');
     expect(prompt).toContain('"bỏ/hủy đơn vừa ghi" là undo, KHÔNG phải delete sản phẩm');
   });
-  it("includes manage_customer rename guidance and only customer rename few-shots", () => {
+  it("includes manage_customer rename and phone guidance", () => {
     const prompt = buildExtractIntentPrompt({
       rawText: "đổi tên chị lan thành Lan xóm Nghè",
       todayISO: "2026-06-01",
@@ -81,12 +81,17 @@ describe("buildExtractIntentPrompt", () => {
     expect(prompt).toContain("customer_management");
     expect(prompt).toContain('User: "đổi tên chị lan thành Lan xóm Nghè"');
     expect(prompt).toContain(
-      'customer_management: { action: "rename", customer_raw: "chị lan", new_name: "Lan xóm Nghè" }',
+      'customer_management: { action: "rename", customer_raw: "chị lan", new_name: "Lan xóm Nghè", phone_raw: null }',
     );
     expect(prompt).toContain('User: "sửa tên khách Hùng thành anh Hùng Bình Tân"');
     expect(prompt).toContain(
-      'customer_management: { action: "rename", customer_raw: "Hùng", new_name: "anh Hùng Bình Tân" }',
+      'customer_management: { action: "rename", customer_raw: "Hùng", new_name: "anh Hùng Bình Tân", phone_raw: null }',
     );
+    expect(prompt).toContain('User: "thêm số điện thoại cho chị Lan là 0987654321"');
+    expect(prompt).toContain(
+      'customer_management: { action: "set_phone", customer_raw: "chị Lan", new_name: null, phone_raw: "0987654321" }',
+    );
+    expect(prompt).toContain('User: "sửa sđt anh Hùng thành 0912345678"');
     expect(prompt).toContain("KHÔNG nhầm với đổi tên sản phẩm");
     expect(prompt).not.toContain('User: "đổi tên xi măng thành xi măng Hà Tiên"');
   });

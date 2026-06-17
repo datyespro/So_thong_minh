@@ -380,6 +380,68 @@
     "mode": "assert"
   },
   {
+    "id": "A22",
+    "group": "A",
+    "text": "thêm số điện thoại cho chị Lan là 0987654321",
+    "expect": {
+      "intent": "manage_customer",
+      "fields": [
+        {
+          "path": "entities.customer_management.action",
+          "match": "exact",
+          "value": "set_phone"
+        },
+        {
+          "path": "entities.customer_management.customer_raw",
+          "match": "name",
+          "value": "chị Lan"
+        },
+        {
+          "path": "entities.customer_management.new_name",
+          "match": "exact",
+          "value": null
+        },
+        {
+          "path": "entities.customer_management.phone_raw",
+          "match": "exact",
+          "value": "0987654321"
+        }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "A23",
+    "group": "A",
+    "text": "sửa sđt anh Hùng thành 0912345678",
+    "expect": {
+      "intent": "manage_customer",
+      "fields": [
+        {
+          "path": "entities.customer_management.action",
+          "match": "exact",
+          "value": "set_phone"
+        },
+        {
+          "path": "entities.customer_management.customer_raw",
+          "match": "name",
+          "value": "anh Hùng"
+        },
+        {
+          "path": "entities.customer_management.new_name",
+          "match": "exact",
+          "value": null
+        },
+        {
+          "path": "entities.customer_management.phone_raw",
+          "match": "exact",
+          "value": "0912345678"
+        }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
     "id": "B1",
     "group": "B",
     "text": "nhập 100 bao xi măng từ Minh Phát",

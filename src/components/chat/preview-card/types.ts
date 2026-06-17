@@ -152,6 +152,38 @@ export type CustomerManagementPreview =
       action: "rename";
       customer: { id: string; name: string };
       new_name: string;
+    }
+  | {
+      status: "not_found";
+      action: "set_phone";
+      customer_raw: string;
+      phone_raw: string | null;
+    }
+  | {
+      status: "needs_choice";
+      action: "set_phone";
+      customer_raw: string;
+      phone_raw: string | null;
+      candidates: Array<{ id: string; name: string }>;
+    }
+  | {
+      status: "confirm_set_phone";
+      action: "set_phone";
+      customer: { id: string; name: string };
+      phone_raw: string;
+      current_phone: string | null;
+    }
+  | {
+      status: "phone_set";
+      action: "set_phone";
+      customer: { id: string; name: string };
+      phone_raw: string;
+    }
+  | {
+      status: "dismissed";
+      action: "set_phone";
+      customer: { id: string; name: string };
+      phone_raw: string;
     };
 
 export type PipelineTurnView = {

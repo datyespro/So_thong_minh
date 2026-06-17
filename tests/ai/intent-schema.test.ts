@@ -248,6 +248,7 @@ describe("ExtractedIntentSchema", () => {
             action: "rename",
             customer_raw: "chị lan",
             new_name: "Lan xóm Nghè",
+            phone_raw: null,
           },
           items: [],
           amount: null,
@@ -261,6 +262,7 @@ describe("ExtractedIntentSchema", () => {
       action: "rename",
       customer_raw: "chị lan",
       new_name: "Lan xóm Nghè",
+      phone_raw: null,
     });
 
     const missingNewName = ExtractedIntentSchema.parse(
@@ -277,6 +279,7 @@ describe("ExtractedIntentSchema", () => {
             action: "rename",
             customer_raw: "chị lan",
             new_name: null,
+            phone_raw: null,
           },
           items: [],
           amount: null,

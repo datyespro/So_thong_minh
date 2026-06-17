@@ -22,6 +22,7 @@ import {
   searchProductsByName,
   undoCommit,
   updateCustomer,
+  updateCustomerPhone,
   updateProduct,
   type CommitOrderItemInput,
   type CommitPurchaseItemInput,
@@ -705,6 +706,14 @@ type CustomerManagementRenamedPreview = Extract<
   CustomerManagementPreview,
   { status: "renamed" }
 >;
+type CustomerManagementConfirmSetPhonePreview = Extract<
+  CustomerManagementPreview,
+  { status: "confirm_set_phone" }
+>;
+type CustomerManagementPhoneSetPreview = Extract<
+  CustomerManagementPreview,
+  { status: "phone_set" }
+>;
 
 export function customerManagementChoiceEntity(
   preview: Extract<CustomerManagementPreview, { status: "needs_choice" }>,
@@ -736,8 +745,21 @@ export function customerManagementCustomerFromCandidate(
 }
 
 export function historyCustomerCardFromResult(
-  preview: CustomerManagementRenamedPreview,
+  preview: CustomerManagementRenamedPreview | CustomerManagementPhoneSetPreview,
 ): HistoryCustomerCardData {
+  if (preview.action === "set_phone") {
+    return {
+      v: 1,
+      kind: "manage_customer",
+      action: "set_phone",
+      status: "phone_set",
+      customer_name: preview.customer.name,
+      customer_raw: null,
+      new_name: null,
+      phone_raw: preview.phone_raw,
+    };
+  }
+
   return {
     v: 1,
     kind: "manage_customer",
@@ -746,14 +768,31 @@ export function historyCustomerCardFromResult(
     customer_name: preview.customer.name,
     customer_raw: null,
     new_name: preview.new_name,
+    phone_raw: null,
   };
 }
 
 export function historyCustomerCardFromDismissedPreview(
   preview: CustomerManagementPreview,
 ): HistoryCustomerCardData | null {
-  if (preview.status !== "confirm_rename") {
+  if (
+    preview.status !== "confirm_rename" &&
+    preview.status !== "confirm_set_phone"
+  ) {
     return null;
+  }
+
+  if (preview.action === "set_phone") {
+    return {
+      v: 1,
+      kind: "manage_customer",
+      action: "set_phone",
+      status: "dismissed",
+      customer_name: preview.customer.name,
+      customer_raw: null,
+      new_name: null,
+      phone_raw: preview.phone_raw,
+    };
   }
 
   return {
@@ -764,6 +803,7 @@ export function historyCustomerCardFromDismissedPreview(
     customer_name: preview.customer.name,
     customer_raw: null,
     new_name: preview.new_name,
+    phone_raw: null,
   };
 }
 
@@ -788,11 +828,32 @@ export async function persistCustomerManagementHistory(
 }
 
 export async function saveCustomerManagementPreview(
-  preview: CustomerManagementConfirmRenamePreview,
+  preview: CustomerManagementConfirmRenamePreview | CustomerManagementConfirmSetPhonePreview,
 ): Promise<
-  | { ok: true; data: CustomerManagementRenamedPreview }
+  | { ok: true; data: CustomerManagementRenamedPreview | CustomerManagementPhoneSetPreview }
   | { ok: false; message: string }
 > {
+  if (preview.action === "set_phone") {
+    const result = await updateCustomerPhone(
+      preview.customer.id,
+      preview.phone_raw,
+    );
+
+    if (!result.ok) {
+      return { ok: false, message: result.message };
+    }
+
+    return {
+      ok: true,
+      data: {
+        status: "phone_set",
+        action: "set_phone",
+        customer: preview.customer,
+        phone_raw: result.data.phone,
+      },
+    };
+  }
+
   const result = await updateCustomer(preview.customer.id, {
     name: preview.new_name,
   });
@@ -2376,12 +2437,18 @@ function CustomerManagementPreviewContent({
 
   const customer =
     preview.status === "confirm_rename" ||
+    preview.status === "confirm_set_phone" ||
     preview.status === "renamed" ||
+    preview.status === "phone_set" ||
     preview.status === "dismissed"
       ? preview.customer
       : null;
   const interactive =
-    isLive && preview.status === "confirm_rename" && !isDismissed;
+    isLive &&
+    (preview.status === "confirm_rename" ||
+      preview.status === "confirm_set_phone") &&
+    !isDismissed;
+  const isSetPhone = preview.action === "set_phone";
 
   return (
     <div className={cn("flex w-full justify-start", !interactive && "opacity-70")}>
@@ -2400,15 +2467,21 @@ function CustomerManagementPreviewContent({
           </p>
           <h2 className="mt-1 font-display text-2xl font-semibold tracking-normal text-inkDeep">
             {preview.status === "needs_choice"
-              ? "Chọn khách cần đổi tên"
-              : "Đổi tên khách"}
+              ? isSetPhone
+                ? "Chọn khách cần cập nhật SĐT"
+                : "Chọn khách cần đổi tên"
+              : isSetPhone
+                ? "Cập nhật SĐT khách"
+                : "Đổi tên khách"}
           </h2>
         </div>
 
         {preview.status === "needs_choice" ? (
           <div className="mt-3">
             <p className="text-[16px] leading-7 text-textMute">
-              Bác chọn đúng khách cần đổi tên giúp em ạ.
+              {isSetPhone
+                ? "Bác chọn đúng khách cần cập nhật SĐT giúp em ạ."
+                : "Bác chọn đúng khách cần đổi tên giúp em ạ."}
             </p>
             <EntityChoicePanel
               entity={customerManagementChoiceEntity(preview)}
@@ -2423,13 +2496,32 @@ function CustomerManagementPreviewContent({
           </div>
         ) : null}
 
-        {customer ? (
+        {customer && preview.action === "rename" ? (
           <div className="mt-4 rounded border border-ledgerBorder bg-paper px-3 py-3">
             <div className="grid gap-2 text-[16px] leading-7 sm:grid-cols-[140px_1fr]">
               <p className="font-semibold text-textMute">Từ</p>
               <p className="font-semibold text-inkDeep">{customer.name}</p>
               <p className="font-semibold text-textMute">Thành</p>
               <p className="font-semibold text-paid">{preview.new_name}</p>
+            </div>
+          </div>
+        ) : null}
+
+        {customer && preview.action === "set_phone" ? (
+          <div className="mt-4 rounded border border-ledgerBorder bg-paper px-3 py-3">
+            <div className="grid gap-2 text-[16px] leading-7 sm:grid-cols-[140px_1fr]">
+              <p className="font-semibold text-textMute">Khách</p>
+              <p className="font-semibold text-inkDeep">{customer.name}</p>
+              <p className="font-semibold text-textMute">SĐT mới</p>
+              <p className="font-semibold text-paid">{preview.phone_raw}</p>
+              {preview.status === "confirm_set_phone" ? (
+                <>
+                  <p className="font-semibold text-textMute">Hiện tại</p>
+                  <p className="font-semibold text-inkDeep">
+                    {preview.current_phone?.trim() || "chưa có"}
+                  </p>
+                </>
+              ) : null}
             </div>
           </div>
         ) : null}
@@ -2444,12 +2536,24 @@ function CustomerManagementPreviewContent({
           </p>
         ) : null}
 
+        {preview.status === "phone_set" && customer ? (
+          <p
+            className="mt-4 flex items-center gap-2 border-t border-ledgerBorder pt-3 text-[16px] font-semibold leading-6 text-paid"
+            data-testid="customer-management-phone-set"
+          >
+            <Check className="h-5 w-5 shrink-0" aria-hidden="true" />
+            Đã cập nhật SĐT cho {customer.name}: {preview.phone_raw}.
+          </p>
+        ) : null}
+
         {isDismissed || preview.status === "dismissed" ? (
           <p
             className="mt-4 border-t border-ledgerBorder pt-3 text-[16px] font-semibold leading-6 text-textMute"
             data-testid="customer-management-dismissed"
           >
-            Đã bỏ, chưa đổi tên khách.
+            {isSetPhone
+              ? "Đã bỏ, chưa cập nhật SĐT khách."
+              : "Đã bỏ, chưa đổi tên khách."}
           </p>
         ) : null}
 
@@ -3019,12 +3123,22 @@ export function PreviewCard({
       return;
     }
 
-    setCustomerManagementState({
-      status: "confirm_rename",
-      action: "rename",
-      customer: customerManagementCustomerFromCandidate(candidate),
-      new_name: customerManagementState.new_name ?? "",
-    });
+    setCustomerManagementState(
+      customerManagementState.action === "set_phone"
+        ? {
+            status: "confirm_set_phone",
+            action: "set_phone",
+            customer: customerManagementCustomerFromCandidate(candidate),
+            phone_raw: customerManagementState.phone_raw ?? "",
+            current_phone: null,
+          }
+        : {
+            status: "confirm_rename",
+            action: "rename",
+            customer: customerManagementCustomerFromCandidate(candidate),
+            new_name: customerManagementState.new_name ?? "",
+          },
+    );
     setCustomerManagementError(null);
 
     if (
@@ -3038,9 +3152,10 @@ export function PreviewCard({
     }
   }
 
-  async function handleConfirmCustomerRename() {
+  async function handleConfirmCustomerManagement() {
     if (
-      customerManagementState?.status !== "confirm_rename" ||
+      (customerManagementState?.status !== "confirm_rename" &&
+        customerManagementState?.status !== "confirm_set_phone") ||
       isSavingCustomerManagement
     ) {
       return;
@@ -3062,7 +3177,7 @@ export function PreviewCard({
         historyCustomerCardFromResult(result.data),
       );
     } catch (error) {
-      console.error("updateCustomer from chat preview failed", error);
+      console.error("update customer-management from chat preview failed", error);
       setCustomerManagementError("Chưa lưu được thay đổi, bác thử lại ạ.");
     } finally {
       setIsSavingCustomerManagement(false);
@@ -3280,7 +3395,7 @@ export function PreviewCard({
         isDismissed={customerManagementDismissed}
         error={customerManagementError}
         onSelectCandidate={handleSelectCustomerManagementCandidate}
-        onSave={() => void handleConfirmCustomerRename()}
+        onSave={() => void handleConfirmCustomerManagement()}
         onCancel={() => void handleCancelCustomerManagement()}
       />
     );

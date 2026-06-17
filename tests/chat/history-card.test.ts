@@ -121,6 +121,7 @@ describe("parseHistoryCustomerCard", () => {
     customer_name: "chị Lan",
     customer_raw: null,
     new_name: "Lan xóm Nghè",
+    phone_raw: null,
   } as const;
 
   it("parses a valid customer result card", () => {
@@ -159,5 +160,23 @@ describe("parseHistoryCustomerCard", () => {
         status: "dismissed",
       }),
     ).toBe("Đã bỏ, chưa đổi tên khách.");
+    expect(
+      historyCustomerCardContent({
+        ...customerCard,
+        action: "set_phone",
+        status: "phone_set",
+        new_name: null,
+        phone_raw: "0987654321",
+      }),
+    ).toBe("Đã cập nhật SĐT cho chị Lan: 0987654321.");
+    expect(
+      historyCustomerCardContent({
+        ...customerCard,
+        action: "set_phone",
+        status: "dismissed",
+        new_name: null,
+        phone_raw: "0987654321",
+      }),
+    ).toBe("Đã bỏ, chưa cập nhật SĐT khách.");
   });
 });

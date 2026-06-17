@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   persistCustomerManagementMessage: vi.fn(),
   persistProductManagementMessage: vi.fn(),
   updateCustomer: vi.fn(),
+  updateCustomerPhone: vi.fn(),
   updateProduct: vi.fn(),
 }));
 
@@ -32,6 +33,7 @@ vi.mock("@/app/(app)/chat/actions", () => ({
   searchProductsByName: vi.fn(),
   undoCommit: vi.fn(),
   updateCustomer: mocks.updateCustomer,
+  updateCustomerPhone: mocks.updateCustomerPhone,
   updateProduct: mocks.updateProduct,
 }));
 
@@ -77,6 +79,7 @@ describe("product-management preview helpers", () => {
     mocks.persistCustomerManagementMessage.mockReset();
     mocks.persistProductManagementMessage.mockReset();
     mocks.updateCustomer.mockReset();
+    mocks.updateCustomerPhone.mockReset();
     mocks.updateProduct.mockReset();
     mocks.persistCustomerManagementMessage.mockResolvedValue({
       ok: true,
@@ -531,6 +534,52 @@ describe("product-management preview helpers", () => {
       customer_name: "chị Lan",
       customer_raw: null,
       new_name: "Lan xóm Nghè",
+      phone_raw: null,
+    });
+  });
+
+  it("saves customer phone through updateCustomerPhone and builds the phone history card", async () => {
+    const preview: Extract<
+      CustomerManagementPreview,
+      { status: "confirm_set_phone" }
+    > = {
+      status: "confirm_set_phone",
+      action: "set_phone",
+      customer: { id: "customer-lan", name: "chị Lan" },
+      phone_raw: "0987654321",
+      current_phone: null,
+    };
+    mocks.updateCustomerPhone.mockResolvedValue({
+      ok: true,
+      data: { id: "customer-lan", name: "chị Lan", phone: "0987654321" },
+    });
+
+    const result = await saveCustomerManagementPreview(preview);
+
+    expect(mocks.updateCustomerPhone).toHaveBeenCalledWith(
+      "customer-lan",
+      "0987654321",
+    );
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        status: "phone_set",
+        action: "set_phone",
+        customer: { id: "customer-lan", name: "chị Lan" },
+        phone_raw: "0987654321",
+      },
+    });
+    expect(
+      result.ok ? historyCustomerCardFromResult(result.data) : null,
+    ).toEqual({
+      v: 1,
+      kind: "manage_customer",
+      action: "set_phone",
+      status: "phone_set",
+      customer_name: "chị Lan",
+      customer_raw: null,
+      new_name: null,
+      phone_raw: "0987654321",
     });
   });
 
@@ -576,6 +625,7 @@ describe("product-management preview helpers", () => {
       customer_name: "chị Lan",
       customer_raw: null,
       new_name: "Lan xóm Nghè",
+      phone_raw: null,
     });
   });
 });

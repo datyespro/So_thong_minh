@@ -41,6 +41,7 @@ const customerCard = {
   customer_name: "chị Lan",
   customer_raw: null,
   new_name: "Lan xóm Nghè",
+  phone_raw: null,
 } as const;
 
 describe("persistProductManagementMessage", () => {

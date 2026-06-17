@@ -42,11 +42,12 @@ export const HistoryProductCardSchema = z.object({
 export const HistoryCustomerCardSchema = z.object({
   v: z.literal(1),
   kind: z.literal("manage_customer"),
-  action: z.literal("rename"),
-  status: z.enum(["renamed", "dismissed", "not_found"]),
+  action: z.enum(["rename", "set_phone"]),
+  status: z.enum(["renamed", "phone_set", "dismissed", "not_found"]),
   customer_name: z.string().nullable(),
   customer_raw: z.string().nullable(),
-  new_name: z.string().nullable(),
+  new_name: z.string().nullable().default(null),
+  phone_raw: z.string().nullable().default(null),
 });
 
 export type HistoryCommitCard = z.infer<typeof HistoryCommitCardSchema>;
@@ -98,13 +99,22 @@ export function historyCustomerCardContent(card: HistoryCustomerCard) {
   const currentName =
     card.customer_name?.trim() || card.customer_raw?.trim() || "này";
   const newName = card.new_name?.trim() || "—";
+  const phone = card.phone_raw?.trim() || "—";
 
   if (card.status === "renamed") {
     return `Đã đổi tên khách ${currentName} thành ${newName}.`;
   }
 
+  if (card.status === "phone_set") {
+    return `Đã cập nhật SĐT cho ${currentName}: ${phone}.`;
+  }
+
   if (card.status === "not_found") {
     return `Không tìm thấy khách tên ${currentName} ạ.`;
+  }
+
+  if (card.action === "set_phone") {
+    return "Đã bỏ, chưa cập nhật SĐT khách.";
   }
 
   return "Đã bỏ, chưa đổi tên khách.";

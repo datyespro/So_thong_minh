@@ -80,6 +80,11 @@ type CustomerRow = {
 
 type CustomerSearchRow = CustomerRow & {
   aliases: string[] | null;
+  phone?: string | null;
+};
+
+type CustomerPhoneRow = CustomerRow & {
+  phone: string | null;
 };
 
 type SupplierRow = {
@@ -134,6 +139,9 @@ export type UpdatedProductView = {
   sell_price: number | null;
 };
 export type UpdatedCustomerView = CustomerRow;
+export type UpdatedCustomerPhoneView = CustomerRow & {
+  phone: string;
+};
 
 export type ProcessMessageResult =
   | {
@@ -701,12 +709,17 @@ async function persistTerminalAssistantResponse({
       }
     }
 
-    await persistAssistantTerminalMessage({
-      supabase,
-      ownerId,
-      content: friendlyNoneMessage(pipeline.validated.intent),
-      intent: pipeline.validated.intent,
-    });
+    const fallbackText = friendlyNoneMessage(pipeline.validated.intent);
+
+    if (fallbackText) {
+      await persistAssistantTerminalMessage({
+        supabase,
+        ownerId,
+        content: fallbackText,
+        intent: pipeline.validated.intent,
+      });
+    }
+
     return null;
   }
 
@@ -1165,6 +1178,108 @@ async function resolveCustomerManagementPreview({
   }
 
   const customerRaw = customerManagement.customer_raw.trim();
+
+  if (customerManagement.action === "set_phone") {
+    const phoneRaw = customerManagement.phone_raw?.trim() ?? "";
+
+    if (customerRaw.length === 0 || phoneRaw.length === 0) {
+      return {
+        ok: true,
+        data: {
+          status: "not_found",
+          action: "set_phone",
+          customer_raw: customerRaw,
+          phone_raw: phoneRaw || null,
+        },
+      };
+    }
+
+    const { data, error } = await supabase
+      .from("customers")
+      .select("id,name,aliases,phone")
+      .eq("owner_id", ownerId)
+      .eq("is_active", true)
+      .is("deleted_at", null);
+
+    if (error) {
+      return {
+        ok: false,
+        code: "db_error",
+        message: "Chưa tìm được khách, bác thử lại ạ.",
+      };
+    }
+
+    const rows = data as CustomerSearchRow[] | null;
+    const customersById = new Map(
+      (rows ?? []).map((row) => [
+        row.id,
+        { id: row.id, name: row.name, phone: row.phone ?? null },
+      ]),
+    );
+    const resolution = resolveOne(
+      customerRaw,
+      "customer",
+      normalizeCustomerSearchRows(rows),
+    );
+
+    if (resolution.status === "not_found") {
+      return {
+        ok: true,
+        data: {
+          status: "not_found",
+          action: "set_phone",
+          customer_raw: customerRaw,
+          phone_raw: phoneRaw,
+        },
+      };
+    }
+
+    if (resolution.status === "resolved" && resolution.resolved_id) {
+      const customer = customersById.get(resolution.resolved_id);
+
+      if (customer) {
+        return {
+          ok: true,
+          data: {
+            status: "confirm_set_phone",
+            action: "set_phone",
+            customer: { id: customer.id, name: customer.name },
+            phone_raw: phoneRaw,
+            current_phone: customer.phone,
+          },
+        };
+      }
+    }
+
+    const candidates = resolution.candidates
+      .map((candidate) => customersById.get(candidate.id))
+      .filter((candidate): candidate is CustomerPhoneRow => Boolean(candidate))
+      .map(({ id, name }) => ({ id, name }));
+
+    if (candidates.length === 0) {
+      return {
+        ok: true,
+        data: {
+          status: "not_found",
+          action: "set_phone",
+          customer_raw: customerRaw,
+          phone_raw: phoneRaw,
+        },
+      };
+    }
+
+    return {
+      ok: true,
+      data: {
+        status: "needs_choice",
+        action: "set_phone",
+        customer_raw: customerRaw,
+        phone_raw: phoneRaw,
+        candidates,
+      },
+    };
+  }
+
   const newName = customerManagement.new_name?.trim() ?? "";
 
   if (customerRaw.length === 0 || newName.length === 0) {
@@ -1267,6 +1382,19 @@ function terminalHistoryCustomerCard(
     return null;
   }
 
+  if (preview.action === "set_phone") {
+    return {
+      v: 1,
+      kind: "manage_customer",
+      action: "set_phone",
+      status: "not_found",
+      customer_name: null,
+      customer_raw: preview.customer_raw,
+      new_name: null,
+      phone_raw: preview.phone_raw,
+    };
+  }
+
   return {
     v: 1,
     kind: "manage_customer",
@@ -1275,6 +1403,7 @@ function terminalHistoryCustomerCard(
     customer_name: null,
     customer_raw: preview.customer_raw,
     new_name: preview.new_name,
+    phone_raw: null,
   };
 }
 
@@ -1658,6 +1787,127 @@ export async function updateCustomer(
     data: {
       id: updated.id,
       name: updated.name,
+    },
+  };
+}
+
+export async function updateCustomerPhone(
+  customerId: string,
+  phone: string,
+): Promise<ActionResult<UpdatedCustomerPhoneView>> {
+  if (typeof customerId !== "string" || customerId.trim().length === 0) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Không tìm thấy khách để sửa SĐT.",
+    };
+  }
+
+  if (typeof phone !== "string") {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Số điện thoại không được rỗng.",
+    };
+  }
+
+  const trimmedPhone = phone.trim();
+
+  if (trimmedPhone.length === 0) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Số điện thoại không được rỗng.",
+    };
+  }
+
+  const user = await getAuthenticatedUser();
+  const supabase = await createClient();
+  const trimmedCustomerId = customerId.trim();
+
+  const { data: beforeData, error: beforeError } = await supabase
+    .from("customers")
+    .select("id,name,phone")
+    .eq("owner_id", user.id)
+    .eq("id", trimmedCustomerId)
+    .eq("is_active", true)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (beforeError) {
+    return {
+      ok: false,
+      code: "db_error",
+      message: "Chưa đọc được khách, bác thử lại ạ.",
+    };
+  }
+
+  if (!beforeData) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Không tìm thấy khách để sửa SĐT.",
+    };
+  }
+
+  const before = beforeData as CustomerPhoneRow;
+  const { data, error } = await supabase
+    .from("customers")
+    .update({ phone: trimmedPhone })
+    .eq("owner_id", user.id)
+    .eq("id", trimmedCustomerId)
+    .eq("is_active", true)
+    .is("deleted_at", null)
+    .select("id,name,phone")
+    .maybeSingle();
+
+  if (error) {
+    return {
+      ok: false,
+      code: "db_error",
+      message: "Lỗi cập nhật SĐT.",
+    };
+  }
+
+  if (!data) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Không tìm thấy khách để sửa SĐT.",
+    };
+  }
+
+  const updated = data as CustomerPhoneRow;
+  const { error: auditError } = await supabase.from("audit_log").insert({
+    owner_id: user.id,
+    actor_id: user.id,
+    entity_type: "customer",
+    entity_id: updated.id,
+    action: "update",
+    before_data: { phone: before.phone },
+    after_data: { phone: updated.phone },
+    metadata: {
+      fields: ["phone"],
+    },
+  });
+
+  if (auditError) {
+    console.error("audit_log insert failed for updateCustomerPhone", auditError);
+
+    return {
+      ok: false,
+      code: "db_error",
+      message:
+        "Đã cập nhật SĐT nhưng chưa ghi được nhật ký, bác tải lại kiểm tra giúp em ạ.",
+    };
+  }
+
+  return {
+    ok: true,
+    data: {
+      id: updated.id,
+      name: updated.name,
+      phone: updated.phone ?? trimmedPhone,
     },
   };
 }

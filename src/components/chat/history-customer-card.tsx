@@ -10,6 +10,7 @@ type HistoryCustomerCardProps = Readonly<{
 
 const STATUS_TITLE: Record<HistoryCustomerCardData["status"], string> = {
   renamed: "Đã đổi tên khách",
+  phone_set: "Đã cập nhật SĐT",
   not_found: "Không tìm thấy khách",
   dismissed: "Đã bỏ",
 };
@@ -19,7 +20,9 @@ function customerName(card: HistoryCustomerCardData) {
 }
 
 function confirmationTone(card: HistoryCustomerCardData) {
-  return card.status === "renamed" ? "text-paid" : "text-textMute";
+  return card.status === "renamed" || card.status === "phone_set"
+    ? "text-paid"
+    : "text-textMute";
 }
 
 export function HistoryCustomerCard({
@@ -51,13 +54,19 @@ export function HistoryCustomerCard({
                 <p className="font-semibold text-paid">{card.new_name}</p>
               </>
             ) : null}
+            {card.phone_raw !== null ? (
+              <>
+                <p className="font-semibold text-textMute">SĐT</p>
+                <p className="font-semibold text-paid">{card.phone_raw}</p>
+              </>
+            ) : null}
           </div>
         </div>
 
         <p
           className={`mt-4 flex items-center gap-2 border-t border-ledgerBorder pt-3 text-[16px] font-semibold leading-6 ${confirmationTone(card)}`}
         >
-          {card.status === "renamed" ? (
+          {card.status === "renamed" || card.status === "phone_set" ? (
             <Check className="h-5 w-5 shrink-0" aria-hidden="true" />
           ) : null}
           {confirmationText}
