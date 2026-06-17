@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, FileText, Printer } from "lucide-react";
+import { Download, FileText, ImageDown, Printer } from "lucide-react";
 import {
   createContext,
   useCallback,
@@ -19,7 +19,10 @@ import type { GroupedOrder } from "@/src/lib/customers/group-orders";
 import type { CustomerPurchaseHistoryRow } from "@/src/lib/customers/purchase-history";
 import { APP_TIME_ZONE, dayjs } from "@/src/lib/dayjs";
 import type { ShopSettings } from "@/src/lib/shop/get-shop-settings";
-import { exportElementToPdf } from "@/src/lib/invoice/export-pdf";
+import {
+  exportElementToImage,
+  exportElementToPdf,
+} from "@/src/lib/invoice/export-pdf";
 
 type CustomerPaymentRow = {
   id: string;
@@ -42,28 +45,43 @@ type PrintableCustomerSectionProps = Readonly<{
 type PrintOrderContextValue = {
   printOrder: (orderId: string) => void;
   exportOrderPdf: (orderId: string) => void;
+  exportOrderImage: (orderId: string) => void;
   exportSummaryPdf: (filename?: string) => Promise<void>;
+  exportSummaryImage: (filename?: string) => Promise<void>;
   isExportingPdf: boolean;
+  isExportingImage: boolean;
 };
 
 const PrintOrderContext = createContext<PrintOrderContextValue | null>(null);
 
 type PendingSingleInvoiceAction = Readonly<{
-  mode: "print" | "pdf";
+  mode: "print" | "pdf" | "image";
   orderId: string;
 }>;
 
-function sanitizePdfFilename(filename: string) {
-  const cleaned = filename
+function sanitizeBaseFilename(filename: string) {
+  return filename
     .trim()
     .replace(/[<>:"/\\|?*\u0000-\u001F]/g, "-")
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+function sanitizePdfFilename(filename: string) {
+  const cleaned = sanitizeBaseFilename(filename);
 
   return cleaned.endsWith(".pdf")
     ? cleaned || "hoa-don.pdf"
     : `${cleaned || "hoa-don"}.pdf`;
+}
+
+function sanitizeImageFilename(filename: string) {
+  const cleaned = sanitizeBaseFilename(filename);
+
+  return cleaned.endsWith(".png")
+    ? cleaned || "hoa-don.png"
+    : `${cleaned || "hoa-don"}.png`;
 }
 
 function filenamePart(value: string | null | undefined) {
@@ -107,6 +125,7 @@ export function PrintableCustomerSection({
   const [pendingSingleAction, setPendingSingleAction] =
     useState<PendingSingleInvoiceAction | null>(null);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isExportingImage, setIsExportingImage] = useState(false);
   const printAreaRef = useRef<HTMLDivElement>(null);
   const printDate = dayjs().tz(APP_TIME_ZONE).format("DD/MM/YYYY");
   const selectedOrder = printOrderId
@@ -166,6 +185,54 @@ export function PrintableCustomerSection({
     [],
   );
 
+  const exportVisibleInvoiceImage = useCallback(
+    async (selector: string, filename: string) => {
+      const printArea = printAreaRef.current;
+
+      if (!printArea) {
+        return;
+      }
+
+      const previousStyle = {
+        background: printArea.style.background,
+        display: printArea.style.display,
+        left: printArea.style.left,
+        position: printArea.style.position,
+        top: printArea.style.top,
+        width: printArea.style.width,
+      };
+
+      printArea.style.background = "#ffffff";
+      printArea.style.display = "block";
+      printArea.style.left = "-9999px";
+      printArea.style.position = "fixed";
+      printArea.style.top = "0";
+      printArea.style.width = "210mm";
+
+      await new Promise<void>((resolve) => {
+        window.requestAnimationFrame(() => resolve());
+      });
+
+      try {
+        const element = printArea.querySelector(selector);
+
+        if (!(element instanceof HTMLElement)) {
+          throw new Error(`Cannot find invoice element: ${selector}`);
+        }
+
+        await exportElementToImage(element, sanitizeImageFilename(filename));
+      } finally {
+        printArea.style.background = previousStyle.background;
+        printArea.style.display = previousStyle.display;
+        printArea.style.left = previousStyle.left;
+        printArea.style.position = previousStyle.position;
+        printArea.style.top = previousStyle.top;
+        printArea.style.width = previousStyle.width;
+      }
+    },
+    [],
+  );
+
   const exportSummaryPdf = useCallback(
     async (filename?: string) => {
       setIsExportingPdf(true);
@@ -185,19 +252,54 @@ export function PrintableCustomerSection({
     [customerName, exportVisibleInvoice],
   );
 
+  const exportSummaryImage = useCallback(
+    async (filename?: string) => {
+      setIsExportingImage(true);
+
+      try {
+        await exportVisibleInvoiceImage(
+          ".invoice-summary-view",
+          filename ?? `cong-no-${filenamePart(customerName)}-${pdfDate()}.png`,
+        );
+      } catch (error) {
+        console.error("Failed to export summary invoice image", error);
+        window.alert("Không xuất được ảnh, thử lại sau ạ.");
+      } finally {
+        setIsExportingImage(false);
+      }
+    },
+    [customerName, exportVisibleInvoiceImage],
+  );
+
   const exportOrderPdf = useCallback((orderId: string) => {
     setPendingSingleAction({ mode: "pdf", orderId });
     setPrintOrderId(orderId);
   }, []);
 
+  const exportOrderImage = useCallback((orderId: string) => {
+    setPendingSingleAction({ mode: "image", orderId });
+    setPrintOrderId(orderId);
+  }, []);
+
   const contextValue = useMemo(
     () => ({
+      exportOrderImage,
       exportOrderPdf,
+      exportSummaryImage,
       exportSummaryPdf,
+      isExportingImage,
       isExportingPdf,
       printOrder,
     }),
-    [exportOrderPdf, exportSummaryPdf, isExportingPdf, printOrder],
+    [
+      exportOrderImage,
+      exportOrderPdf,
+      exportSummaryImage,
+      exportSummaryPdf,
+      isExportingImage,
+      isExportingPdf,
+      printOrder,
+    ],
   );
 
   useEffect(() => {
@@ -214,6 +316,28 @@ export function PrintableCustomerSection({
         window.print();
         setPrintOrderId(null);
         setPendingSingleAction(null);
+
+        return;
+      }
+
+      if (pendingSingleAction.mode === "image") {
+        void (async () => {
+          setIsExportingImage(true);
+
+          try {
+            await exportVisibleInvoiceImage(
+              ".invoice-single-view",
+              `hoa-don-${filenamePart(customerName)}-${orderDatePart(selectedOrder)}-${selectedOrder.order_id.slice(0, 8)}.png`,
+            );
+          } catch (error) {
+            console.error("Failed to export single invoice image", error);
+            window.alert("Không xuất được ảnh, thử lại sau ạ.");
+          } finally {
+            setIsExportingImage(false);
+            setPrintOrderId(null);
+            setPendingSingleAction(null);
+          }
+        })();
 
         return;
       }
@@ -241,6 +365,7 @@ export function PrintableCustomerSection({
   }, [
     customerName,
     exportVisibleInvoice,
+    exportVisibleInvoiceImage,
     pendingSingleAction,
     printOrderId,
     selectedOrder,
@@ -411,6 +536,19 @@ export function InvoiceActionPopover({
             <Download className="h-4 w-4" aria-hidden="true" />
             {context?.isExportingPdf ? "Đang tạo PDF" : "Tải PDF"}
           </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              context?.exportOrderImage(orderId);
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-[14px] font-semibold text-ink hover:bg-paperWarm disabled:cursor-not-allowed disabled:opacity-55"
+            disabled={!context || context.isExportingImage}
+          >
+            <ImageDown className="h-4 w-4" aria-hidden="true" />
+            {context?.isExportingImage ? "Đang tạo ảnh" : "Tải ảnh"}
+          </button>
         </div>
       ) : null}
     </div>
@@ -439,3 +577,29 @@ export function PdfSingleOrderButton({
     </Button>
   );
 }
+
+export function ImageExportButton({
+  filename,
+  label = "Tải ảnh tổng hợp",
+}: Readonly<{
+  filename?: string;
+  label?: string;
+}>) {
+  const context = useContext(PrintOrderContext);
+
+  return (
+    <Button
+      type="button"
+      onClick={() => {
+        void context?.exportSummaryImage(filename);
+      }}
+      className="no-print h-11 rounded border border-ledgerBorder bg-surface px-4 text-[16px] font-semibold text-ink hover:bg-paperWarm"
+      disabled={!context || context.isExportingImage}
+      title="Tải ảnh tổng hợp"
+    >
+      <ImageDown className="h-4 w-4" aria-hidden="true" />
+      {context?.isExportingImage ? "Đang tạo ảnh" : label}
+    </Button>
+  );
+}
+

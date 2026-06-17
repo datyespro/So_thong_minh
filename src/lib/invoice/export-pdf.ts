@@ -48,3 +48,40 @@ export async function exportElementToPdf(
 
   pdf.save(filename);
 }
+
+export async function exportElementToImage(
+  element: HTMLElement,
+  filename: string,
+): Promise<void> {
+  const { default: html2canvas } = await import("html2canvas");
+
+  const canvas = await html2canvas(element, {
+    backgroundColor: "#ffffff",
+    scale: 2,
+    useCORS: true,
+  });
+
+  if (canvas.width <= 0 || canvas.height <= 0) {
+    throw new Error("Invoice element rendered to an empty canvas.");
+  }
+
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error("Canvas toBlob failed"))),
+      "image/png",
+    );
+  });
+
+  const url = URL.createObjectURL(blob);
+
+  try {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+}

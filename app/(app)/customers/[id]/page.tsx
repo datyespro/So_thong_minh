@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, CircleDollarSign, Phone, Printer } from "lucide-react";
 import {
+  ImageExportButton,
   InvoiceActionPopover,
   PdfExportButton,
   PrintableCustomerSection,
@@ -782,6 +783,10 @@ export default async function CustomerDetailPage({
             <PdfExportButton
               label="Tải PDF tổng hợp"
               filename={`cong-no-${customer.name}-${pdfDate}.pdf`}
+            />
+            <ImageExportButton
+              label="Tải ảnh tổng hợp"
+              filename={`cong-no-${customer.name}-${pdfDate}.png`}
             />
             <Button
               type="button"
