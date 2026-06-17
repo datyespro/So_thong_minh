@@ -267,6 +267,7 @@ export function InvoiceSummaryView({
           gap: "24mm",
           gridTemplateColumns: "1fr 1fr",
           marginTop: "18mm",
+          paddingBottom: "25mm",
           textAlign: "center",
         }}
       >

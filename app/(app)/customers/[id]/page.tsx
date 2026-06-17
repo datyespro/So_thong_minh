@@ -3,12 +3,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, CircleDollarSign, Phone, Printer } from "lucide-react";
 import {
-  ImageExportButton,
   InvoiceActionPopover,
-  PdfExportButton,
   PrintableCustomerSection,
+  SummaryInvoicePopover,
 } from "@/src/components/invoice/printable-customer-section";
-import { PrintButton } from "@/src/components/invoice/print-button";
 import { Button } from "@/src/components/ui/button";
 import {
   flattenCustomerPurchaseHistory,
@@ -261,8 +259,10 @@ function PaymentHistoryList({
 
 function MobileHistoryCard({
   row,
+  isNewGroup,
 }: Readonly<{
   row: CustomerPurchaseHistoryRow;
+  isNewGroup?: boolean;
 }>) {
   const fields = [
     ["Ngày", formatBusinessDate(row.business_date)],
@@ -273,8 +273,15 @@ function MobileHistoryCard({
     ["Thành tiền", formatMoneyValue(row.line_total)],
   ] as const;
 
+  const className = [
+    "rounded border border-ledgerBorder bg-surface px-3 py-3 text-[16px] leading-7 shadow-[var(--shadow-card)]",
+    isNewGroup && "mt-3",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <div className="rounded border border-ledgerBorder bg-surface px-3 py-3 text-[16px] leading-7 shadow-[var(--shadow-card)]">
+    <div className={className}>
       <div className="mb-2 flex items-start justify-between gap-3 border-b border-ledgerBorder pb-2">
         <div>
           <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-stamp">
@@ -315,8 +322,10 @@ function MobileHistoryCard({
 
 function MobileGroupedHistoryCard({
   order,
+  isNewGroup,
 }: Readonly<{
   order: GroupedOrder;
+  isNewGroup?: boolean;
 }>) {
   const firstRow = order.items[0];
 
@@ -324,9 +333,16 @@ function MobileGroupedHistoryCard({
     return null;
   }
 
+  const className = [
+    "rounded border border-ledgerBorder bg-surface px-3 py-3 text-[16px] leading-7 shadow-[var(--shadow-card)]",
+    isNewGroup && "mt-3",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <div
-      className="rounded border border-ledgerBorder bg-surface px-3 py-3 text-[16px] leading-7 shadow-[var(--shadow-card)]"
+      className={className}
       style={MULTI_ORDER_BORDER_STYLE}
     >
       <div className="mb-2 flex items-start justify-between gap-3 border-b border-ledgerBorder pb-2">
@@ -552,40 +568,44 @@ function PurchaseHistoryTable({
                 rows[index + 1]?.order_id !== row.order_id;
               const shouldShowInvoiceAction =
                 !isMultiItemOrder || isLastOrderRow;
+              const isNewGroup = isFirstOrderRow && index > 0;
+              
+              const tdClass = isNewGroup ? "px-3 pb-3 pt-5 border-t-2 border-ledgerBorder" : "px-3 py-3";
+              const lastTdClass = isNewGroup ? "px-1 pb-3 pt-5 border-t-2 border-ledgerBorder text-right" : "px-1 py-3 text-right";
 
               return (
                 <tr
                   key={`${row.order_id}-${row.sort_order ?? "null"}-${index}`}
                   className={
-                    isMultiItemOrder && isFirstOrderRow
+                    isMultiItemOrder && isFirstOrderRow && !isNewGroup
                       ? "border-t-2 border-t-ledgerBorder"
                       : undefined
                   }
                 >
                   <td
-                    className="px-3 py-3 font-semibold text-textMute"
+                    className={`${tdClass} font-semibold text-textMute`}
                     style={
                       isMultiItemOrder ? MULTI_ORDER_BORDER_STYLE : undefined
                     }
                   >
                     {formatBusinessDate(row.business_date)}
                   </td>
-                  <td className="px-3 py-3 font-semibold text-inkDeep">
+                  <td className={`${tdClass} font-semibold text-inkDeep`}>
                     {row.product_name_snapshot}
                   </td>
-                  <td className="px-3 py-3 font-semibold">
+                  <td className={`${tdClass} font-semibold`}>
                     {formatQuantity(row.quantity)}
                   </td>
-                  <td className="px-3 py-3 font-semibold text-textMute">
+                  <td className={`${tdClass} font-semibold text-textMute`}>
                     {row.unit_snapshot || "—"}
                   </td>
-                  <td className="px-3 py-3 font-semibold">
+                  <td className={`${tdClass} font-semibold`}>
                     {formatMoneyValue(row.unit_price)}
                   </td>
-                  <td className="px-3 py-3 text-right font-semibold text-inkDeep">
+                  <td className={`${tdClass} text-right font-semibold text-inkDeep`}>
                     {formatMoneyValue(row.line_total)}
                   </td>
-                  <td className="px-1 py-3 text-right">
+                  <td className={lastTdClass}>
                     {shouldShowInvoiceAction ? (
                       <InvoiceActionPopover
                         orderId={row.order_id}
@@ -627,17 +647,19 @@ function PurchaseHistoryTable({
       </div>
 
       <div className="space-y-3 sm:hidden">
-        {groupedDisplayRows.map((order) => {
+        {groupedDisplayRows.map((order, index) => {
           const firstRow = order.items[0];
 
           if (!firstRow) {
             return null;
           }
 
+          const isNewGroup = index > 0;
+
           return order.items.length > 1 ? (
-            <MobileGroupedHistoryCard key={order.order_id} order={order} />
+            <MobileGroupedHistoryCard key={order.order_id} order={order} isNewGroup={isNewGroup} />
           ) : (
-            <MobileHistoryCard key={order.order_id} row={firstRow} />
+            <MobileHistoryCard key={order.order_id} row={firstRow} isNewGroup={isNewGroup} />
           );
         })}
         <MobileHistoryTotal
@@ -779,14 +801,9 @@ export default async function CustomerDetailPage({
           </div>
 
           <div className="flex flex-wrap gap-2 md:justify-end">
-            <PrintButton label="In tổng hợp" />
-            <PdfExportButton
-              label="Tải PDF tổng hợp"
-              filename={`cong-no-${customer.name}-${pdfDate}.pdf`}
-            />
-            <ImageExportButton
-              label="Tải ảnh tổng hợp"
-              filename={`cong-no-${customer.name}-${pdfDate}.png`}
+            <SummaryInvoicePopover
+              pdfFilename={`cong-no-${customer.name}-${pdfDate}.pdf`}
+              imageFilename={`cong-no-${customer.name}-${pdfDate}.png`}
             />
             <Button
               type="button"

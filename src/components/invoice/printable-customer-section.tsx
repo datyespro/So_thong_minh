@@ -401,30 +401,7 @@ export function PrintableCustomerSection({
   );
 }
 
-export function PdfExportButton({
-  filename,
-  label = "Tải PDF",
-}: Readonly<{
-  filename?: string;
-  label?: string;
-}>) {
-  const context = useContext(PrintOrderContext);
 
-  return (
-    <Button
-      type="button"
-      onClick={() => {
-        void context?.exportSummaryPdf(filename);
-      }}
-      className="no-print h-11 rounded border border-ledgerBorder bg-surface px-4 text-[16px] font-semibold text-ink hover:bg-paperWarm"
-      disabled={!context || context.isExportingPdf}
-      title="Tải PDF tổng hợp"
-    >
-      <Download className="h-4 w-4" aria-hidden="true" />
-      {context?.isExportingPdf ? "Đang tạo PDF" : label}
-    </Button>
-  );
-}
 
 export function PrintSingleOrderButton({
   orderId,
@@ -578,28 +555,97 @@ export function PdfSingleOrderButton({
   );
 }
 
-export function ImageExportButton({
-  filename,
-  label = "Tải ảnh tổng hợp",
+export function SummaryInvoicePopover({
+  pdfFilename,
+  imageFilename,
 }: Readonly<{
-  filename?: string;
-  label?: string;
+  pdfFilename?: string;
+  imageFilename?: string;
 }>) {
   const context = useContext(PrintOrderContext);
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
 
   return (
-    <Button
-      type="button"
-      onClick={() => {
-        void context?.exportSummaryImage(filename);
-      }}
-      className="no-print h-11 rounded border border-ledgerBorder bg-surface px-4 text-[16px] font-semibold text-ink hover:bg-paperWarm"
-      disabled={!context || context.isExportingImage}
-      title="Tải ảnh tổng hợp"
-    >
-      <ImageDown className="h-4 w-4" aria-hidden="true" />
-      {context?.isExportingImage ? "Đang tạo ảnh" : label}
-    </Button>
+    <div ref={containerRef} className="no-print relative inline-flex">
+      <Button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="h-11 rounded border border-ledgerBorder bg-surface px-4 text-[16px] font-semibold text-ink hover:bg-paperWarm"
+        disabled={!context}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <FileText className="h-4 w-4" aria-hidden="true" />
+        Xuất hóa đơn
+      </Button>
+
+      {open ? (
+        <div
+          role="menu"
+          className="absolute right-0 top-[calc(100%+4px)] z-40 w-48 rounded border border-ledgerBorder bg-surface py-1 text-left shadow-[0_16px_40px_-18px_rgba(23,37,84,0.45),0_1px_0_var(--ledger-border)]"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              window.print();
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-[14px] font-semibold text-ink hover:bg-paperWarm"
+          >
+            <Printer className="h-4 w-4" aria-hidden="true" />
+            In tổng hợp
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              void context?.exportSummaryPdf(pdfFilename);
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-[14px] font-semibold text-ink hover:bg-paperWarm disabled:cursor-not-allowed disabled:opacity-55"
+            disabled={!context || context.isExportingPdf}
+          >
+            <Download className="h-4 w-4" aria-hidden="true" />
+            {context?.isExportingPdf ? "Đang tạo PDF..." : "Tải PDF"}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              void context?.exportSummaryImage(imageFilename);
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-[14px] font-semibold text-ink hover:bg-paperWarm disabled:cursor-not-allowed disabled:opacity-55"
+            disabled={!context || context.isExportingImage}
+          >
+            <ImageDown className="h-4 w-4" aria-hidden="true" />
+            {context?.isExportingImage ? "Đang tạo ảnh..." : "Tải ảnh"}
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
