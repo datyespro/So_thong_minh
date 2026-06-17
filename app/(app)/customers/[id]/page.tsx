@@ -1,12 +1,11 @@
 import "@/src/styles/print.css";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CircleDollarSign, Phone } from "lucide-react";
+import { ArrowLeft, CircleDollarSign, Phone, Printer } from "lucide-react";
 import {
+  InvoiceActionPopover,
   PdfExportButton,
-  PdfSingleOrderButton,
   PrintableCustomerSection,
-  PrintSingleOrderButton,
 } from "@/src/components/invoice/printable-customer-section";
 import { PrintButton } from "@/src/components/invoice/print-button";
 import { Button } from "@/src/components/ui/button";
@@ -22,7 +21,10 @@ import {
   buildCustomerDebtSummary,
   type CustomerDebtSummary,
 } from "@/src/lib/customers/debt-summary";
-import { groupRowsByOrder } from "@/src/lib/customers/group-orders";
+import {
+  groupRowsByOrder,
+  type GroupedOrder,
+} from "@/src/lib/customers/group-orders";
 import { APP_TIME_ZONE, dayjs } from "@/src/lib/dayjs";
 import { formatVietnameseMoney } from "@/src/lib/format/money";
 import { getShopSettings } from "@/src/lib/shop/get-shop-settings";
@@ -60,6 +62,10 @@ const HISTORY_COLUMNS = [
   "Đơn giá",
   "Thành tiền",
 ] as const;
+
+const MULTI_ORDER_BORDER_STYLE = {
+  borderLeft: "3px solid var(--color-border-info, var(--ink-soft))",
+} as const;
 
 function normalizeSortDirection(
   value: string | string[] | undefined,
@@ -254,10 +260,8 @@ function PaymentHistoryList({
 
 function MobileHistoryCard({
   row,
-  isFirstOrderRow,
 }: Readonly<{
   row: CustomerPurchaseHistoryRow;
-  isFirstOrderRow: boolean;
 }>) {
   const fields = [
     ["Ngày", formatBusinessDate(row.business_date)],
@@ -279,12 +283,9 @@ function MobileHistoryCard({
             {row.product_name_snapshot}
           </p>
         </div>
-        {isFirstOrderRow ? (
-          <div className="flex flex-wrap justify-end gap-2">
-            <PrintSingleOrderButton orderId={row.order_id} label="In đơn này" />
-            <PdfSingleOrderButton orderId={row.order_id} />
-          </div>
-        ) : null}
+        <div className="shrink-0">
+          <InvoiceActionPopover orderId={row.order_id} itemCount={1} />
+        </div>
       </div>
       <div className="space-y-2">
         {fields.map(([label, value]) => (
@@ -307,6 +308,64 @@ function MobileHistoryCard({
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function MobileGroupedHistoryCard({
+  order,
+}: Readonly<{
+  order: GroupedOrder;
+}>) {
+  const firstRow = order.items[0];
+
+  if (!firstRow) {
+    return null;
+  }
+
+  return (
+    <div
+      className="rounded border border-ledgerBorder bg-surface px-3 py-3 text-[16px] leading-7 shadow-[var(--shadow-card)]"
+      style={MULTI_ORDER_BORDER_STYLE}
+    >
+      <div className="mb-2 flex items-start justify-between gap-3 border-b border-ledgerBorder pb-2">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-stamp">
+              {formatBusinessDate(order.business_date ?? firstRow.business_date)}
+            </p>
+            <span className="rounded border border-ledgerBorder bg-paperWarm px-2 py-0.5 font-mono text-[11px] font-semibold uppercase tracking-[0.1em] text-stamp">
+              {order.items.length} món
+            </span>
+          </div>
+        </div>
+        <div className="shrink-0">
+          <InvoiceActionPopover
+            orderId={order.order_id}
+            itemCount={order.items.length}
+          />
+        </div>
+      </div>
+
+      <ul className="space-y-2">
+        {order.items.map((item, index) => (
+          <li
+            key={`${item.order_id}-${item.sort_order ?? "null"}-${index}`}
+            className="rounded border border-ledgerBorder bg-paperWarm px-3 py-2"
+          >
+            <p className="break-words font-semibold text-inkDeep">
+              {item.product_name_snapshot}
+            </p>
+            <p className="mt-1 break-words font-semibold text-textMute">
+              {formatQuantity(item.quantity)} {item.unit_snapshot || "đơn vị"} ×{" "}
+              {formatMoneyValue(item.unit_price)} ={" "}
+              <span className="font-mono font-bold text-inkDeep">
+                {formatMoneyValue(item.line_total)}
+              </span>
+            </p>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -435,6 +494,13 @@ function PurchaseHistoryTable({
   }
 
   const showDebtFooter = shouldShowDebtFooter(total, summary);
+  const orderRowCounts = new Map<string, number>();
+
+  rows.forEach((row) => {
+    orderRowCounts.set(row.order_id, (orderRowCounts.get(row.order_id) ?? 0) + 1);
+  });
+
+  const groupedDisplayRows = groupRowsByOrder(rows);
 
   return (
     <>
@@ -468,42 +534,62 @@ function PurchaseHistoryTable({
                   )}
                 </th>
               ))}
-              <th scope="col" className="w-[76px] px-3 py-2 text-right">
-                In
+              <th scope="col" className="w-[44px] px-1 py-2 text-right">
+                <Printer className="ml-auto h-4 w-4" aria-hidden="true" />
+                <span className="sr-only">In</span>
               </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-ledgerBorder">
             {rows.map((row, index) => {
+              const itemCount = orderRowCounts.get(row.order_id) ?? 1;
+              const isMultiItemOrder = itemCount > 1;
               const isFirstOrderRow =
                 index === 0 || rows[index - 1]?.order_id !== row.order_id;
+              const isLastOrderRow =
+                index === rows.length - 1 ||
+                rows[index + 1]?.order_id !== row.order_id;
+              const shouldShowInvoiceAction =
+                !isMultiItemOrder || isLastOrderRow;
 
               return (
-                <tr key={`${row.order_id}-${row.sort_order ?? "null"}-${index}`}>
-                <td className="px-3 py-3 font-semibold text-textMute">
-                  {formatBusinessDate(row.business_date)}
-                </td>
-                <td className="px-3 py-3 font-semibold text-inkDeep">
-                  {row.product_name_snapshot}
-                </td>
-                <td className="px-3 py-3 font-semibold">
-                  {formatQuantity(row.quantity)}
-                </td>
-                <td className="px-3 py-3 font-semibold text-textMute">
-                  {row.unit_snapshot || "—"}
-                </td>
-                <td className="px-3 py-3 font-semibold">
-                  {formatMoneyValue(row.unit_price)}
-                </td>
-                <td className="px-3 py-3 text-right font-semibold text-inkDeep">
-                  {formatMoneyValue(row.line_total)}
-                </td>
-                  <td className="px-3 py-3 text-right">
-                    {isFirstOrderRow ? (
-                      <div className="flex justify-end gap-2">
-                        <PrintSingleOrderButton orderId={row.order_id} />
-                        <PdfSingleOrderButton orderId={row.order_id} />
-                      </div>
+                <tr
+                  key={`${row.order_id}-${row.sort_order ?? "null"}-${index}`}
+                  className={
+                    isMultiItemOrder && isFirstOrderRow
+                      ? "border-t-2 border-t-ledgerBorder"
+                      : undefined
+                  }
+                >
+                  <td
+                    className="px-3 py-3 font-semibold text-textMute"
+                    style={
+                      isMultiItemOrder ? MULTI_ORDER_BORDER_STYLE : undefined
+                    }
+                  >
+                    {formatBusinessDate(row.business_date)}
+                  </td>
+                  <td className="px-3 py-3 font-semibold text-inkDeep">
+                    {row.product_name_snapshot}
+                  </td>
+                  <td className="px-3 py-3 font-semibold">
+                    {formatQuantity(row.quantity)}
+                  </td>
+                  <td className="px-3 py-3 font-semibold text-textMute">
+                    {row.unit_snapshot || "—"}
+                  </td>
+                  <td className="px-3 py-3 font-semibold">
+                    {formatMoneyValue(row.unit_price)}
+                  </td>
+                  <td className="px-3 py-3 text-right font-semibold text-inkDeep">
+                    {formatMoneyValue(row.line_total)}
+                  </td>
+                  <td className="px-1 py-3 text-right">
+                    {shouldShowInvoiceAction ? (
+                      <InvoiceActionPopover
+                        orderId={row.order_id}
+                        itemCount={itemCount}
+                      />
                     ) : null}
                   </td>
                 </tr>
@@ -540,16 +626,17 @@ function PurchaseHistoryTable({
       </div>
 
       <div className="space-y-3 sm:hidden">
-        {rows.map((row, index) => {
-          const isFirstOrderRow =
-            index === 0 || rows[index - 1]?.order_id !== row.order_id;
+        {groupedDisplayRows.map((order) => {
+          const firstRow = order.items[0];
 
-          return (
-            <MobileHistoryCard
-              key={`${row.order_id}-${row.sort_order ?? "null"}-${index}`}
-              row={row}
-              isFirstOrderRow={isFirstOrderRow}
-            />
+          if (!firstRow) {
+            return null;
+          }
+
+          return order.items.length > 1 ? (
+            <MobileGroupedHistoryCard key={order.order_id} order={order} />
+          ) : (
+            <MobileHistoryCard key={order.order_id} row={firstRow} />
           );
         })}
         <MobileHistoryTotal

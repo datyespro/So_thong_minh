@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Printer } from "lucide-react";
+import { Download, FileText, Printer } from "lucide-react";
 import {
   createContext,
   useCallback,
@@ -321,6 +321,99 @@ export function PrintSingleOrderButton({
       <Printer className="h-3.5 w-3.5" aria-hidden="true" />
       {label}
     </Button>
+  );
+}
+
+export function InvoiceActionPopover({
+  orderId,
+  itemCount,
+}: Readonly<{
+  orderId: string;
+  itemCount: number;
+}>) {
+  const context = useContext(PrintOrderContext);
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const title =
+    itemCount > 1 ? `In hóa đơn (${itemCount} món)` : "In hóa đơn";
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
+        setOpen(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={containerRef} className="no-print relative inline-flex justify-end">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="inline-flex h-8 w-8 items-center justify-center rounded border border-ledgerBorder bg-surface text-ink shadow-sm hover:bg-paperWarm disabled:cursor-not-allowed disabled:opacity-55"
+        disabled={!context}
+        title={title}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <FileText className="h-4 w-4" aria-hidden="true" />
+        <span className="sr-only">{title}</span>
+      </button>
+
+      {open ? (
+        <div
+          role="menu"
+          className="absolute right-0 top-[calc(100%+4px)] z-40 w-40 max-w-[calc(100vw-2rem)] rounded border border-ledgerBorder bg-surface py-1 text-left shadow-[0_16px_40px_-18px_rgba(23,37,84,0.45),0_1px_0_var(--ledger-border)]"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              context?.printOrder(orderId);
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-[14px] font-semibold text-ink hover:bg-paperWarm"
+          >
+            <Printer className="h-4 w-4" aria-hidden="true" />
+            In hóa đơn
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              context?.exportOrderPdf(orderId);
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-[14px] font-semibold text-ink hover:bg-paperWarm disabled:cursor-not-allowed disabled:opacity-55"
+            disabled={!context || context.isExportingPdf}
+          >
+            <Download className="h-4 w-4" aria-hidden="true" />
+            {context?.isExportingPdf ? "Đang tạo PDF" : "Tải PDF"}
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
