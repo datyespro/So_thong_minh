@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import type { GroupedOrder } from "@/src/lib/customers/group-orders";
 import { dayjs } from "@/src/lib/dayjs";
 import { formatVietnameseMoney } from "@/src/lib/format/money";
+import { vietnameseAmountInWords } from "@/src/lib/format/number-to-words-vi";
 import type { ShopSettings } from "@/src/lib/shop/get-shop-settings";
 
 type InvoiceSingleViewProps = Readonly<{
@@ -19,14 +20,16 @@ function money(value: number | string | null | undefined) {
   return formatVietnameseMoney(Number.isFinite(numeric) ? numeric : 0);
 }
 
-function formatDate(value: string | null) {
+function formatFormalDate(value: string | null) {
   if (!value) {
     return "—";
   }
 
   const parsed = dayjs(value);
 
-  return parsed.isValid() ? parsed.format("DD/MM/YYYY") : "—";
+  return parsed.isValid()
+    ? `ngày ${parsed.format("DD")} tháng ${parsed.format("MM")} năm ${parsed.format("YYYY")}`
+    : "—";
 }
 
 const pageStyle = {
@@ -67,7 +70,7 @@ export function InvoiceSingleView({
     <article className="invoice-single-view" style={pageStyle}>
       <header
         style={{
-          borderBottom: "2px solid #111111",
+          borderBottom: "2px solid #2a5a8c",
           marginBottom: "14px",
           paddingBottom: "10px",
         }}
@@ -128,7 +131,7 @@ export function InvoiceSingleView({
           <strong>Khách hàng:</strong> {customerName}
           {customerPhone ? ` · SĐT: ${customerPhone}` : ""}
           {" · "}
-          <strong>Ngày:</strong> {formatDate(order.business_date)}
+          <strong>Ngày:</strong> {formatFormalDate(order.business_date)}
         </p>
         <p style={{ margin: 0 }}>
           <strong>Ngày in:</strong> {printDate}
@@ -142,47 +145,71 @@ export function InvoiceSingleView({
           width: "100%",
         }}
       >
-        <thead>
+        <thead
+          style={{
+            backgroundColor: "#eef1f4",
+            color: "#111111",
+            fontWeight: 700,
+            printColorAdjust: "exact",
+            WebkitPrintColorAdjust: "exact",
+          }}
+        >
           <tr>
             <th scope="col" style={{ ...numericCellStyle, width: "14mm" }}>
               STT
             </th>
             <th scope="col" style={tableCellStyle}>
-              Mặt hàng
+              Tên hàng hóa
             </th>
             <th scope="col" style={{ ...numericCellStyle, width: "18mm" }}>
               SL
             </th>
             <th scope="col" style={{ ...tableCellStyle, width: "20mm" }}>
-              ĐV
+              ĐVT
             </th>
             <th scope="col" style={{ ...numericCellStyle, width: "30mm" }}>
-              Giá
+              Đơn giá
             </th>
             <th scope="col" style={{ ...numericCellStyle, width: "32mm" }}>
-              TT
+              Thành tiền
             </th>
           </tr>
         </thead>
         <tbody>
-          {order.items.map((item, index) => (
-            <tr key={`${item.order_id}-${item.sort_order ?? "null"}-${index}`}>
-              <td style={numericCellStyle}>{index + 1}</td>
-              <td style={tableCellStyle}>{item.product_name_snapshot}</td>
-              <td style={numericCellStyle}>{String(item.quantity)}</td>
-              <td style={tableCellStyle}>{item.unit_snapshot || "—"}</td>
-              <td style={numericCellStyle}>{money(item.unit_price)}</td>
-              <td style={numericCellStyle}>{money(item.line_total)}</td>
-            </tr>
-          ))}
+          {order.items.map((item, index) => {
+            const isEven = (index + 1) % 2 === 0;
+            const rowStyle: CSSProperties | undefined = isEven
+              ? {
+                  backgroundColor: "#f7f8fa",
+                  printColorAdjust: "exact",
+                  WebkitPrintColorAdjust: "exact",
+                }
+              : undefined;
+
+            return (
+              <tr
+                key={`${item.order_id}-${item.sort_order ?? "null"}-${index}`}
+                style={rowStyle}
+              >
+                <td style={numericCellStyle}>{index + 1}</td>
+                <td style={tableCellStyle}>{item.product_name_snapshot}</td>
+                <td style={numericCellStyle}>{String(item.quantity)}</td>
+                <td style={tableCellStyle}>{item.unit_snapshot || "—"}</td>
+                <td style={numericCellStyle}>{money(item.unit_price)}</td>
+                <td style={numericCellStyle}>{money(item.line_total)}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
 
       <section
         style={{
           borderBottom: "1px solid #444444",
+          borderTop: "2px solid #2a5a8c",
           marginTop: "12px",
           paddingBottom: "12px",
+          paddingTop: "12px",
         }}
       >
         <div style={{ marginLeft: "auto", maxWidth: "82mm" }}>
@@ -199,6 +226,9 @@ export function InvoiceSingleView({
               {money(order.total)}
             </span>
           </div>
+          <div style={{ marginTop: "6px", fontStyle: "italic", textAlign: "right" }}>
+            Bằng chữ: {vietnameseAmountInWords(order.total)}
+          </div>
         </div>
       </section>
 
@@ -212,8 +242,8 @@ export function InvoiceSingleView({
           textAlign: "center",
         }}
       >
-        <SignatureBlock label="Chữ ký bên mua" />
-        <SignatureBlock label="Chữ ký bên bán" />
+        <SignatureBlock label="NGƯỜI MUA HÀNG" />
+        <SignatureBlock label="NGƯỜI BÁN HÀNG" />
       </footer>
     </article>
   );

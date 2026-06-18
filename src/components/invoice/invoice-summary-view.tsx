@@ -4,6 +4,7 @@ import type { CustomerDebtSummary } from "@/src/lib/customers/debt-summary";
 import type { CustomerPurchaseHistoryRow } from "@/src/lib/customers/purchase-history";
 import { APP_TIME_ZONE, dayjs } from "@/src/lib/dayjs";
 import { formatVietnameseMoney } from "@/src/lib/format/money";
+import { vietnameseAmountInWords } from "@/src/lib/format/number-to-words-vi";
 import type { ShopSettings } from "@/src/lib/shop/get-shop-settings";
 
 type CustomerPaymentRow = {
@@ -112,7 +113,7 @@ export function InvoiceSummaryView({
     <article className="invoice-summary-view" style={pageStyle}>
       <header
         style={{
-          borderBottom: "2px solid #111111",
+          borderBottom: "2px solid #2a5a8c",
           marginBottom: "14px",
           paddingBottom: "10px",
         }}
@@ -185,40 +186,62 @@ export function InvoiceSummaryView({
           width: "100%",
         }}
       >
-        <thead>
+        <thead
+          style={{
+            backgroundColor: "#eef1f4",
+            color: "#111111",
+            fontWeight: 700,
+            printColorAdjust: "exact",
+            WebkitPrintColorAdjust: "exact",
+          }}
+        >
           <tr>
             <th scope="col" style={{ ...tableCellStyle, width: "22mm" }}>
               Ngày
             </th>
             <th scope="col" style={tableCellStyle}>
-              Mặt hàng
+              Tên hàng hóa
             </th>
             <th scope="col" style={{ ...numericCellStyle, width: "18mm" }}>
               SL
             </th>
             <th scope="col" style={{ ...tableCellStyle, width: "20mm" }}>
-              ĐV
+              ĐVT
             </th>
             <th scope="col" style={{ ...numericCellStyle, width: "28mm" }}>
-              Giá
+              Đơn giá
             </th>
             <th scope="col" style={{ ...numericCellStyle, width: "30mm" }}>
-              TT
+              Thành tiền
             </th>
           </tr>
         </thead>
         <tbody>
           {rows.length > 0 ? (
-            rows.map((row, index) => (
-              <tr key={`${row.order_id}-${row.sort_order ?? "null"}-${index}`}>
-                <td style={tableCellStyle}>{formatDate(row.business_date)}</td>
-                <td style={tableCellStyle}>{row.product_name_snapshot}</td>
-                <td style={numericCellStyle}>{String(row.quantity)}</td>
-                <td style={tableCellStyle}>{row.unit_snapshot || "—"}</td>
-                <td style={numericCellStyle}>{money(row.unit_price)}</td>
-                <td style={numericCellStyle}>{money(row.line_total)}</td>
-              </tr>
-            ))
+            rows.map((row, index) => {
+              const isEven = (index + 1) % 2 === 0;
+              const rowStyle: CSSProperties | undefined = isEven
+                ? {
+                    backgroundColor: "#f7f8fa",
+                    printColorAdjust: "exact",
+                    WebkitPrintColorAdjust: "exact",
+                  }
+                : undefined;
+
+              return (
+                <tr
+                  key={`${row.order_id}-${row.sort_order ?? "null"}-${index}`}
+                  style={rowStyle}
+                >
+                  <td style={tableCellStyle}>{formatDate(row.business_date)}</td>
+                  <td style={tableCellStyle}>{row.product_name_snapshot}</td>
+                  <td style={numericCellStyle}>{String(row.quantity)}</td>
+                  <td style={tableCellStyle}>{row.unit_snapshot || "—"}</td>
+                  <td style={numericCellStyle}>{money(row.unit_price)}</td>
+                  <td style={numericCellStyle}>{money(row.line_total)}</td>
+                </tr>
+              );
+            })
           ) : (
             <tr>
               <td colSpan={6} style={{ ...tableCellStyle, textAlign: "center" }}>
@@ -232,8 +255,10 @@ export function InvoiceSummaryView({
       <section
         style={{
           borderBottom: "1px solid #444444",
+          borderTop: "2px solid #2a5a8c",
           marginTop: "12px",
           paddingBottom: "12px",
+          paddingTop: "12px",
         }}
       >
         <div style={{ marginLeft: "auto", maxWidth: "82mm" }}>
@@ -258,6 +283,9 @@ export function InvoiceSummaryView({
               value={money(debtSummary.debtTotal)}
             />
           </div>
+          <div style={{ marginTop: "6px", fontStyle: "italic", textAlign: "right" }}>
+            Bằng chữ: {vietnameseAmountInWords(debtSummary.debtTotal)}
+          </div>
         </div>
       </section>
 
@@ -271,8 +299,8 @@ export function InvoiceSummaryView({
           textAlign: "center",
         }}
       >
-        <SignatureBlock label="Chữ ký bên mua" />
-        <SignatureBlock label="Chữ ký bên bán" />
+        <SignatureBlock label="XÁC NHẬN CỦA KHÁCH HÀNG" />
+        <SignatureBlock label="ĐẠI DIỆN CỬA HÀNG" />
       </footer>
     </article>
   );
