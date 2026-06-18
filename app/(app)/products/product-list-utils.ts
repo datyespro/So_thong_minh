@@ -22,3 +22,11 @@ export function upsertProductSorted(
   newList.sort((a, b) => a.name.localeCompare(b.name, "vi"));
   return { newList, isDuplicate: false };
 }
+
+export function removeProductById(
+  list: ProductsTableRow[],
+  id: string
+): ProductsTableRow[] {
+  return list.filter((p) => p.id !== id);
+}
+

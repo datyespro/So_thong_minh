@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { upsertProductSorted } from "./product-list-utils";
+import { upsertProductSorted, removeProductById } from "./product-list-utils";
 import type { ProductsTableRow } from "./products-table";
 import type { CreatedProductView } from "@/app/(app)/chat/actions";
 
@@ -47,3 +47,25 @@ describe("upsertProductSorted", () => {
     expect(newList).toHaveLength(2);
   });
 });
+
+describe("removeProductById", () => {
+  const list: ProductsTableRow[] = [
+    { id: "1", name: "Cát vàng", unit: "m³", sell_price: 200000, current_stock: 10 },
+    { id: "2", name: "Đá 1x2", unit: "m³", sell_price: 300000, current_stock: 5 },
+  ];
+
+  test("removes the product with the given id and keeps order", () => {
+    const result = removeProductById(list, "1");
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("2");
+  });
+
+  test("returns original list shape if id not found", () => {
+    const result = removeProductById(list, "999");
+    expect(result).toHaveLength(2);
+    // filter returns a new array, but elements are same.
+    expect(result[0].id).toBe("1");
+    expect(result[1].id).toBe("2");
+  });
+});
+

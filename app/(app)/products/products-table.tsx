@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Save, X } from "lucide-react";
+import { Pencil, Save, X, Trash2 } from "lucide-react";
 import { updateProduct } from "@/app/(app)/chat/actions";
 import { formatUnitDisplay } from "@/src/lib/format/unit";
 import { Button } from "@/src/components/ui/button";
@@ -15,6 +15,8 @@ import {
   type ProductNumericValue,
 } from "@/src/lib/products/display";
 import { ProductCreateForm } from "./product-create-form";
+import { ProductDeleteModal } from "./product-delete-modal";
+import { removeProductById } from "./product-list-utils";
 
 export type ProductsTableRow = {
   id: string;
@@ -86,6 +88,7 @@ export function ProductsTable({
     {},
   );
   const [savingId, setSavingId] = React.useState<string | null>(null);
+  const [deletingProduct, setDeletingProduct] = React.useState<ProductsTableRow | null>(null);
   const [, startTransition] = React.useTransition();
 
   React.useEffect(() => {
@@ -157,6 +160,12 @@ export function ProductsTable({
   return (
     <div>
       <ProductCreateForm products={products} onCreated={setProducts} />
+      <ProductDeleteModal
+        product={deletingProduct}
+        isOpen={deletingProduct !== null}
+        onClose={() => setDeletingProduct(null)}
+        onDeleted={(id) => setProducts(removeProductById(products, id))}
+      />
       
       {products.length === 0 ? (
         <div className="rounded border border-ledgerBorder bg-surface px-4 py-10 text-center">
@@ -278,16 +287,28 @@ export function ProductsTable({
                       </Button>
                     </>
                   ) : (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      title={`Sửa ${product.name}`}
-                      aria-label={`Sửa ${product.name}`}
-                      className="h-10 rounded border-ledgerBorder bg-surface px-3 text-textMute hover:bg-paperWarm hover:text-ink"
-                      onClick={() => handleStartEdit(product)}
-                    >
-                      <Pencil className="h-4 w-4" aria-hidden="true" />
-                    </Button>
+                    <>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        title={`Sửa ${product.name}`}
+                        aria-label={`Sửa ${product.name}`}
+                        className="h-10 rounded border-ledgerBorder bg-surface px-3 text-textMute hover:bg-paperWarm hover:text-ink"
+                        onClick={() => handleStartEdit(product)}
+                      >
+                        <Pencil className="h-4 w-4" aria-hidden="true" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        title={`Xóa ${product.name}`}
+                        aria-label={`Xóa ${product.name}`}
+                        className="h-10 rounded border-ledgerBorder bg-surface px-3 text-textMute hover:bg-paperWarm hover:text-debt"
+                        onClick={() => setDeletingProduct(product)}
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden="true" />
+                      </Button>
+                    </>
                   )}
                 </div>
               </ProductField>
