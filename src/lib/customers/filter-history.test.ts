@@ -59,4 +59,28 @@ describe("filterHistoryRows + isHistoryFiltered", () => {
     const names = distinctProductNames(duplicateRows);
     expect(names).toEqual(["xi măng", "gạch đỏ"]);
   });
+  it("lọc theo một mặt hàng, tính tổng đúng", () => {
+    const result = filterHistoryRows(rows, { fromDate: null, toDate: null, productNames: ["Xi măng"] });
+    expect(result.rows.length).toBe(1);
+    expect(result.rows[0]?.product_name_snapshot).toBe("Xi măng");
+    expect(result.total).toBe(200);
+  });
+
+  it("lọc nhiều mặt hàng (OR)", () => {
+    const result = filterHistoryRows(rows, { fromDate: null, toDate: null, productNames: ["Gạch", "Cát"] });
+    expect(result.rows.length).toBe(2);
+    expect(result.rows.map(r => r.product_name_snapshot).sort()).toEqual(["Cát", "Gạch"]);
+  });
+
+  it("kết hợp ngày và mặt hàng (AND)", () => {
+    const result = filterHistoryRows(rows, { fromDate: "2026-06-16", toDate: null, productNames: ["Cát"] });
+    expect(result.rows.length).toBe(1);
+    expect(result.rows[0]?.product_name_snapshot).toBe("Cát");
+    expect(result.rows[0]?.business_date).toBe("2026-06-17");
+  });
+
+  it("isHistoryFiltered với productNames", () => {
+    expect(isHistoryFiltered({ fromDate: null, toDate: null, productNames: ["X"] })).toBe(true);
+    expect(isHistoryFiltered({ fromDate: null, toDate: null, productNames: [] })).toBe(false);
+  });
 });

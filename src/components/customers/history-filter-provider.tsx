@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
-import { filterHistoryRows, isHistoryFiltered, type HistoryFilter } from "@/src/lib/customers/filter-history";
+import { filterHistoryRows, isHistoryFiltered, distinctProductNames, type HistoryFilter } from "@/src/lib/customers/filter-history";
 import type { CustomerPurchaseHistoryRow } from "@/src/lib/customers/purchase-history";
 
 type HistoryFilterContextValue = {
@@ -10,6 +10,7 @@ type HistoryFilterContextValue = {
   filteredRows: CustomerPurchaseHistoryRow[];
   filteredTotal: number;
   isFiltered: boolean;
+  productNameOptions: string[];
 };
 
 const HistoryFilterContext = createContext<HistoryFilterContextValue | null>(null);
@@ -27,6 +28,8 @@ export function HistoryFilterProvider({
     productNames: null,
   });
 
+  const productNameOptions = useMemo(() => distinctProductNames(rows), [rows]);
+
   const contextValue = useMemo(() => {
     const { rows: filteredRows, total: filteredTotal } = filterHistoryRows(rows, filter);
     const filtered = isHistoryFiltered(filter);
@@ -37,8 +40,9 @@ export function HistoryFilterProvider({
       filteredRows,
       filteredTotal,
       isFiltered: filtered,
+      productNameOptions,
     };
-  }, [rows, filter]);
+  }, [rows, filter, productNameOptions]);
 
   return (
     <HistoryFilterContext.Provider value={contextValue}>

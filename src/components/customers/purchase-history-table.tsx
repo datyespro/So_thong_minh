@@ -246,7 +246,15 @@ export function PurchaseHistoryTable({
   sort: CustomerPurchaseHistorySortDirection;
   nextSort: CustomerPurchaseHistorySortDirection;
 }>) {
-  const { filter, setFilter, filteredRows: rows, filteredTotal: total, isFiltered } = useHistoryFilter();
+  const { filter, setFilter, filteredRows: rows, filteredTotal: total, isFiltered, productNameOptions } = useHistoryFilter();
+
+  const toggleProductName = (name: string) => {
+    const current = filter.productNames ?? [];
+    const next = current.includes(name)
+      ? current.filter((n) => n !== name)
+      : [...current, name];
+    setFilter({ ...filter, productNames: next.length > 0 ? next : null });
+  };
 
   const handleClearFilter = () => {
     setFilter({ ...filter, fromDate: null, toDate: null, productNames: null });
@@ -265,31 +273,56 @@ export function PurchaseHistoryTable({
     <div className="space-y-4">
       {/* Thanh lọc */}
       <div className="flex flex-wrap items-center gap-3 rounded border border-ledgerBorder bg-surface px-4 py-3 shadow-sm">
-        <div className="flex items-center gap-2">
-          <label htmlFor="fromDate" className="text-sm font-semibold text-inkDeep">Từ ngày:</label>
-          <input
-            type="date"
-            id="fromDate"
-            value={filter.fromDate ?? ""}
-            onChange={(e) => setFilter({ ...filter, fromDate: e.target.value || null })}
-            className="h-9 rounded border border-ledgerBorder bg-paper px-2 text-sm text-ink outline-none focus:border-brand"
-          />
+        <div className="flex flex-wrap items-center gap-3 w-full">
+          <div className="flex items-center gap-2">
+            <label htmlFor="fromDate" className="text-sm font-semibold text-inkDeep">Từ ngày:</label>
+            <input
+              type="date"
+              id="fromDate"
+              value={filter.fromDate ?? ""}
+              onChange={(e) => setFilter({ ...filter, fromDate: e.target.value || null })}
+              className="h-9 rounded border border-ledgerBorder bg-paper px-2 text-sm text-ink outline-none focus:border-brand"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <label htmlFor="toDate" className="text-sm font-semibold text-inkDeep">Đến ngày:</label>
+            <input
+              type="date"
+              id="toDate"
+              value={filter.toDate ?? ""}
+              onChange={(e) => setFilter({ ...filter, toDate: e.target.value || null })}
+              className="h-9 rounded border border-ledgerBorder bg-paper px-2 text-sm text-ink outline-none focus:border-brand"
+            />
+          </div>
+          {isFiltered && (
+            <Button variant="ghost" size="sm" onClick={handleClearFilter} className="h-9 text-textMute hover:text-ink">
+              <X className="mr-1 h-4 w-4" />
+              Xóa lọc
+            </Button>
+          )}
         </div>
-        <div className="flex items-center gap-2">
-          <label htmlFor="toDate" className="text-sm font-semibold text-inkDeep">Đến ngày:</label>
-          <input
-            type="date"
-            id="toDate"
-            value={filter.toDate ?? ""}
-            onChange={(e) => setFilter({ ...filter, toDate: e.target.value || null })}
-            className="h-9 rounded border border-ledgerBorder bg-paper px-2 text-sm text-ink outline-none focus:border-brand"
-          />
-        </div>
-        {isFiltered && (
-          <Button variant="ghost" size="sm" onClick={handleClearFilter} className="h-9 text-textMute hover:text-ink">
-            <X className="mr-1 h-4 w-4" />
-            Xóa lọc
-          </Button>
+        
+        {productNameOptions.length > 0 && (
+          <div className="flex w-full flex-wrap gap-2 pt-1">
+            {productNameOptions.map((name) => {
+              const isSelected = filter.productNames?.includes(name) ?? false;
+              return (
+                <button
+                  key={name}
+                  type="button"
+                  aria-pressed={isSelected}
+                  onClick={() => toggleProductName(name)}
+                  className={`rounded border px-3 py-1 text-sm ${
+                    isSelected
+                      ? "border-stamp bg-paperWarm font-semibold text-inkDeep ring-1 ring-stamp"
+                      : "border-ledgerBorder bg-surface text-textMain hover:bg-paperWarm hover:text-ink"
+                  }`}
+                >
+                  {name}
+                </button>
+              );
+            })}
+          </div>
         )}
       </div>
 
