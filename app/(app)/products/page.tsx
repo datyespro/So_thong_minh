@@ -11,13 +11,6 @@ type ProductRow = {
   current_stock: ProductNumericValue;
 };
 
-function ProductsEmptyState() {
-  return (
-    <div className="rounded border border-ledgerBorder bg-surface px-4 py-10 text-center">
-      <p className="font-display text-xl font-semibold text-inkDeep">Chưa có hàng nào.</p>
-    </div>
-  );
-}
 
 export default async function ProductsPage() {
   const user = await getAuthenticatedUser();
@@ -52,11 +45,7 @@ export default async function ProductsPage() {
           </h1>
         </div>
 
-        {products.length === 0 ? (
-          <ProductsEmptyState />
-        ) : (
-          <ProductsTable initialProducts={products} />
-        )}
+        <ProductsTable initialProducts={products} />
       </div>
     </section>
   );
