@@ -6,6 +6,7 @@ import { APP_TIME_ZONE, dayjs } from "@/src/lib/dayjs";
 import { formatVietnameseMoney } from "@/src/lib/format/money";
 import { vietnameseAmountInWords } from "@/src/lib/format/number-to-words-vi";
 import type { ShopSettings } from "@/src/lib/shop/get-shop-settings";
+import { earliestBusinessDate } from "@/src/lib/customers/reconciliation-period";
 
 type CustomerPaymentRow = {
   id: string;
@@ -108,6 +109,7 @@ export function InvoiceSummaryView({
   const phone = shopSettings.phone.trim();
   const address = shopSettings.address.trim();
   const orderedPayments = sortedPaymentsByPaidAt(payments);
+  const fromDate = earliestBusinessDate(rows);
 
   return (
     <article className="invoice-summary-view" style={pageStyle}>
@@ -173,6 +175,11 @@ export function InvoiceSummaryView({
         <p style={{ margin: "0 0 3px" }}>
           <strong>Khách hàng:</strong> {customerName}
           {customerPhone ? ` · SĐT: ${customerPhone}` : ""}
+        </p>
+        <p style={{ margin: "0 0 3px" }}>
+          {fromDate
+            ? `Kỳ đối chiếu: từ ${formatDate(fromDate)} đến ${printDate}`
+            : `Kỳ đối chiếu: đến ${printDate}`}
         </p>
         <p style={{ margin: 0 }}>
           <strong>Ngày in:</strong> {printDate}
@@ -262,7 +269,8 @@ export function InvoiceSummaryView({
         }}
       >
         <div style={{ marginLeft: "auto", maxWidth: "82mm" }}>
-          <SummaryLine label="Tổng mua" value={money(historyTotal)} />
+          <SummaryLine label="Nợ đầu kỳ" value="0 đ" />
+          <SummaryLine label="Tổng mua trong kỳ" value={money(historyTotal)} />
           {orderedPayments.map((payment) => (
             <SummaryLine
               key={payment.id}
@@ -279,7 +287,7 @@ export function InvoiceSummaryView({
           <div style={{ borderTop: "1px solid #111111", marginTop: "6px", paddingTop: "6px" }}>
             <SummaryLine
               bold
-              label="= Còn nợ"
+              label="= Còn nợ cuối kỳ"
               value={money(debtSummary.debtTotal)}
             />
           </div>
@@ -288,6 +296,10 @@ export function InvoiceSummaryView({
           </div>
         </div>
       </section>
+
+      <p style={{ marginTop: "10px", marginBottom: 0, textAlign: "left" }}>
+        Hai bên thống nhất số liệu công nợ nêu trên là đúng và đầy đủ.
+      </p>
 
       <footer
         style={{
