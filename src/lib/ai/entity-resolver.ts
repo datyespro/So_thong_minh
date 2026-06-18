@@ -82,6 +82,29 @@ function honorificGender(normalized: string): "male" | "female" | null {
   return null;
 }
 
+export function numberTokens(normalized: string): string[] {
+  const matches = normalized.match(/\d+/g);
+  if (!matches) {
+    return [];
+  }
+  return matches.sort();
+}
+
+export function numbersConflict(a: string[], b: string[]): boolean {
+  if (a.length === 0 || b.length === 0) {
+    return false;
+  }
+  if (a.length !== b.length) {
+    return true;
+  }
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function emptyResolution(
   raw: string | null,
   entityType: EntityType,
@@ -207,20 +230,31 @@ function bestFuzzyCandidate(raw: string, row: EntityRow): EntityCandidate {
   }
 
   const strippedRaw = stripHonorific(normalizeVi(raw));
+  const rawNums = numberTokens(strippedRaw);
 
-  let bestScore = diceSimilarity(
-    strippedRaw,
-    stripHonorific(normalizeVi(row.name)),
-  );
+  let bestScore = -1;
   let bestValue = row.name;
 
-  for (const alias of row.aliases) {
-    const score = diceSimilarity(strippedRaw, stripHonorific(normalizeVi(alias)));
+  const valuesToScore = [row.name, ...row.aliases];
+
+  for (const value of valuesToScore) {
+    const strippedValue = stripHonorific(normalizeVi(value));
+    const valueNums = numberTokens(strippedValue);
+
+    if (numbersConflict(rawNums, valueNums)) {
+      continue;
+    }
+
+    const score = diceSimilarity(strippedRaw, strippedValue);
 
     if (score > bestScore) {
       bestScore = score;
-      bestValue = alias;
+      bestValue = value;
     }
+  }
+
+  if (bestScore === -1) {
+    return candidateFor(row, 0, "fuzzy", row.name);
   }
 
   return candidateFor(row, bestScore, "fuzzy", bestValue);

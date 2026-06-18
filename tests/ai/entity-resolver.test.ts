@@ -367,6 +367,51 @@ describe("resolveOne — TIP-004-FIX-2 gendered honorific guard", () => {
   });
 });
 
+describe("resolveOne — TIP-FIX-RESOLVE number-guard", () => {
+  const thepRows: EntityRow[] = [
+    { id: "p-thep10", name: "Thép phi 10", aliases: ["thep cuon 10"] },
+  ];
+
+  it("blocks fuzzy match when query has numbers that conflict with candidate (AC1)", () => {
+    const r12 = resolveOne("thép phi 12", "product", thepRows);
+    expect(r12.status).toBe("not_found");
+    expect(r12.resolved_id).toBeNull();
+    
+    const r16 = resolveOne("thép phi 16", "product", thepRows);
+    expect(r16.status).toBe("not_found");
+  });
+
+  it("allows exact match and fuzzy match if numbers match (AC2)", () => {
+    const r10 = resolveOne("thép phi 10", "product", thepRows);
+    expect(r10.status).toBe("resolved");
+    expect(r10.resolved_id).toBe("p-thep10");
+
+    const r10_fuzzy = resolveOne("thep phi 10", "product", thepRows);
+    expect(r10_fuzzy.status).toBe("resolved");
+    expect(r10_fuzzy.resolved_id).toBe("p-thep10");
+  });
+
+  it("allows exact match for the conflicting number if both exist (AC2)", () => {
+    const thepRowsBoth: EntityRow[] = [
+      ...thepRows,
+      { id: "p-thep12", name: "Thép phi 12", aliases: [] }
+    ];
+    const r12 = resolveOne("thép phi 12", "product", thepRowsBoth);
+    expect(r12.status).toBe("resolved");
+    expect(r12.resolved_id).toBe("p-thep12");
+  });
+
+  it("does not block if query has no numbers (AC3)", () => {
+    const rXiMang = resolveOne("xi mang", "product", [
+      { id: "p-xm", name: "xi măng", aliases: [] }
+    ]);
+    expect(rXiMang.status).toBe("resolved");
+
+    const rThep = resolveOne("thép", "product", thepRows);
+    expect(rThep.status).not.toBe("not_found"); 
+  });
+});
+
 describe("resolveEntities", () => {
   it("passes manage_product through Stage 2 without special write handling", async () => {
     const resolved = await resolveEntities({
