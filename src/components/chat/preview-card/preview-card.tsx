@@ -101,6 +101,7 @@ import {
 } from "@/src/lib/ai/validate-schema";
 import { businessDateVN, dayjs } from "@/src/lib/dayjs";
 import { parseProductSellPriceInput } from "@/src/lib/products/update";
+import { formatUnitDisplay } from "@/src/lib/format/unit";
 import {
   clearDraft,
   saveDraft,
@@ -1001,7 +1002,7 @@ function QueryAnswerContent({
         return (
           <p className="mt-2 font-semibold text-inkDeep">
             {answer.productName} đang âm {formatInventoryStock(Math.abs(answer.stock))}{" "}
-            {answer.unit} (đã bán quá tồn) ạ.
+            {formatUnitDisplay(answer.unit)} (đã bán quá tồn) ạ.
           </p>
         );
       }
@@ -1010,7 +1011,7 @@ function QueryAnswerContent({
         <p className="mt-2 font-semibold text-inkDeep">
           Còn{" "}
           <span className="font-display text-2xl font-semibold tracking-normal text-paid">
-            {formatInventoryStock(answer.stock)} {answer.unit}
+            {formatInventoryStock(answer.stock)} {formatUnitDisplay(answer.unit)}
           </span>{" "}
           {answer.productName}
         </p>
@@ -2148,7 +2149,7 @@ function ProductManagementCreatePreviewContent({
             <div className="mt-3 grid gap-2 text-[16px] leading-7 sm:grid-cols-[140px_1fr]">
               <p className="font-semibold text-textMute">Đơn vị</p>
               <p className="font-semibold text-inkDeep">
-                {preview.product.unit ?? "—"}
+                {formatUnitDisplay(preview.product.unit) || "—"}
               </p>
               <p className="font-semibold text-textMute">Giá bán</p>
               <p className="font-semibold text-inkDeep">
@@ -2338,9 +2339,9 @@ function ProductManagementPreviewContent({
               {preview.action === "set_unit" ? (
                 <>
                   <p className="font-semibold text-textMute">Từ</p>
-                  <p className="font-semibold">{product.unit ?? "—"}</p>
+                  <p className="font-semibold">{formatUnitDisplay(product.unit) || "—"}</p>
                   <p className="font-semibold text-textMute">Thành</p>
-                  <p className="font-semibold text-paid">{newUnit}</p>
+                  <p className="font-semibold text-paid">{formatUnitDisplay(newUnit)}</p>
                 </>
               ) : (
                 <>
@@ -2365,7 +2366,7 @@ function ProductManagementPreviewContent({
           >
             <Check className="h-5 w-5 shrink-0" aria-hidden="true" />
             {preview.action === "set_unit"
-              ? `Đã đổi đơn vị hàng ${product.name} thành ${newUnit}.`
+              ? `Đã đổi đơn vị hàng ${product.name} thành ${formatUnitDisplay(newUnit)}.`
               : `Đã đặt giá bán hàng ${product.name} thành ${formatProductManagementPrice(newSellPrice)}.`}
           </p>
         ) : null}
@@ -2672,7 +2673,7 @@ function ProductManagementDeletePreviewContent({
               <p className="font-semibold text-textMute">Hàng</p>
               <p className="font-semibold text-inkDeep">{product.name}</p>
               <p className="font-semibold text-textMute">Đơn vị</p>
-              <p className="font-semibold">{product.unit ?? "—"}</p>
+              <p className="font-semibold">{formatUnitDisplay(product.unit) || "—"}</p>
               <p className="font-semibold text-textMute">Giá bán</p>
               <p className="font-semibold">
                 {formatProductManagementPrice(product.sell_price)}
@@ -5134,7 +5135,7 @@ export function PreviewCard({
                       </p>
                       <div>
                         <p className="font-semibold text-textMute">
-                          {displayItem.unit ?? ""}
+                          {formatUnitDisplay(displayItem.unit) || ""}
                         </p>
                       </div>
                     </div>
@@ -5146,7 +5147,7 @@ export function PreviewCard({
                         {showPriceInput ? (
                           <PatchInput
                             label={`Sửa giá ${displayItem.name}`}
-                            placeholder={`Nhập giá ${displayItem.unit ?? "1 đơn vị"}`}
+                            placeholder={`Nhập giá ${formatUnitDisplay(displayItem.unit) || "1 đơn vị"}`}
                             value={priceDraft}
                             onChange={(value) =>
                               handleDisplayPriceChange(displayItem, value)

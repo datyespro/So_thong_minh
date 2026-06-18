@@ -5,6 +5,7 @@ import type { CustomerPurchaseHistoryRow } from "@/src/lib/customers/purchase-hi
 import { APP_TIME_ZONE, dayjs } from "@/src/lib/dayjs";
 import { formatVietnameseMoney } from "@/src/lib/format/money";
 import { vietnameseAmountInWords } from "@/src/lib/format/number-to-words-vi";
+import { formatUnitDisplay } from "@/src/lib/format/unit";
 import type { ShopSettings } from "@/src/lib/shop/get-shop-settings";
 import { earliestBusinessDate } from "@/src/lib/customers/reconciliation-period";
 
@@ -243,7 +244,7 @@ export function InvoiceSummaryView({
                   <td style={tableCellStyle}>{formatDate(row.business_date)}</td>
                   <td style={tableCellStyle}>{row.product_name_snapshot}</td>
                   <td style={numericCellStyle}>{String(row.quantity)}</td>
-                  <td style={tableCellStyle}>{row.unit_snapshot || "—"}</td>
+                  <td style={tableCellStyle}>{formatUnitDisplay(row.unit_snapshot) || "—"}</td>
                   <td style={numericCellStyle}>{money(row.unit_price)}</td>
                   <td style={numericCellStyle}>{money(row.line_total)}</td>
                 </tr>

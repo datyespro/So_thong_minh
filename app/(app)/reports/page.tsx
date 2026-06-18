@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getAuthenticatedUser } from "@/src/components/shared/AuthGuard";
 import { APP_TIME_ZONE, businessDateVN, dayjs } from "@/src/lib/dayjs";
 import { formatVietnameseMoney } from "@/src/lib/format/money";
+import { formatUnitDisplay } from "@/src/lib/format/unit";
 import {
   nextDate,
   normalizeReportDate,
@@ -162,7 +163,7 @@ function OrderItemLines({ items }: Readonly<{ items: DailyOrderItem[] }>) {
             ·
           </span>
           <span className="text-textMute">
-            {String(item.quantity)} {item.unit_snapshot || "—"} × {formatMoney(item.unit_price)}
+            {String(item.quantity)} {formatUnitDisplay(item.unit_snapshot) || "—"} × {formatMoney(item.unit_price)}
           </span>
           <span className="min-w-6 flex-1 border-b border-dotted border-borderStrong" aria-hidden="true" />
           <span className="font-mono text-[14px] font-semibold text-inkDeep">

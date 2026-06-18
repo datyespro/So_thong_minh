@@ -26,6 +26,7 @@ import {
 } from "@/src/lib/customers/group-orders";
 import { APP_TIME_ZONE, dayjs } from "@/src/lib/dayjs";
 import { formatVietnameseMoney } from "@/src/lib/format/money";
+import { formatUnitDisplay } from "@/src/lib/format/unit";
 import { getShopSettings } from "@/src/lib/shop/get-shop-settings";
 import { createClient } from "@/src/lib/supabase/server";
 import { getAuthenticatedUser } from "@/src/components/shared/AuthGuard";
@@ -268,7 +269,7 @@ function MobileHistoryCard({
     ["Ngày", formatBusinessDate(row.business_date)],
     ["Mặt hàng", row.product_name_snapshot],
     ["Số lượng", formatQuantity(row.quantity)],
-    ["Đơn vị", row.unit_snapshot || "—"],
+    ["Đơn vị", formatUnitDisplay(row.unit_snapshot) || "—"],
     ["Đơn giá", formatMoneyValue(row.unit_price)],
     ["Thành tiền", formatMoneyValue(row.line_total)],
   ] as const;
@@ -374,7 +375,7 @@ function MobileGroupedHistoryCard({
               {item.product_name_snapshot}
             </p>
             <p className="mt-1 break-words font-semibold text-textMute">
-              {formatQuantity(item.quantity)} {item.unit_snapshot || "đơn vị"} ×{" "}
+              {formatQuantity(item.quantity)} {formatUnitDisplay(item.unit_snapshot) || "đơn vị"} ×{" "}
               {formatMoneyValue(item.unit_price)} ={" "}
               <span className="font-mono font-bold text-inkDeep">
                 {formatMoneyValue(item.line_total)}
@@ -597,7 +598,7 @@ function PurchaseHistoryTable({
                     {formatQuantity(row.quantity)}
                   </td>
                   <td className={`${tdClass} font-semibold text-textMute`}>
-                    {row.unit_snapshot || "—"}
+                    {formatUnitDisplay(row.unit_snapshot) || "—"}
                   </td>
                   <td className={`${tdClass} font-semibold`}>
                     {formatMoneyValue(row.unit_price)}

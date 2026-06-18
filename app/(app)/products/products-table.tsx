@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Save, X } from "lucide-react";
 import { updateProduct } from "@/app/(app)/chat/actions";
+import { formatUnitDisplay } from "@/src/lib/format/unit";
 import { Button } from "@/src/components/ui/button";
 import { cn } from "@/src/lib/utils";
 import {
@@ -205,7 +206,7 @@ export function ProductsTable({
                     />
                   </label>
                 ) : (
-                  <p className="font-semibold text-textMute">{product.unit}</p>
+                  <p className="font-semibold text-textMute">{formatUnitDisplay(product.unit) || "—"}</p>
                 )}
               </ProductField>
               <ProductField label="Giá bán">

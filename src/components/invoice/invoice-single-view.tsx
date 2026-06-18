@@ -4,6 +4,7 @@ import type { GroupedOrder } from "@/src/lib/customers/group-orders";
 import { dayjs } from "@/src/lib/dayjs";
 import { formatVietnameseMoney } from "@/src/lib/format/money";
 import { vietnameseAmountInWords } from "@/src/lib/format/number-to-words-vi";
+import { formatUnitDisplay } from "@/src/lib/format/unit";
 import type { ShopSettings } from "@/src/lib/shop/get-shop-settings";
 
 type InvoiceSingleViewProps = Readonly<{
@@ -194,7 +195,7 @@ export function InvoiceSingleView({
                 <td style={numericCellStyle}>{index + 1}</td>
                 <td style={tableCellStyle}>{item.product_name_snapshot}</td>
                 <td style={numericCellStyle}>{String(item.quantity)}</td>
-                <td style={tableCellStyle}>{item.unit_snapshot || "—"}</td>
+                <td style={tableCellStyle}>{formatUnitDisplay(item.unit_snapshot) || "—"}</td>
                 <td style={numericCellStyle}>{money(item.unit_price)}</td>
                 <td style={numericCellStyle}>{money(item.line_total)}</td>
               </tr>
