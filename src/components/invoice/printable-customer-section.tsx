@@ -13,6 +13,8 @@ import {
 } from "react";
 import { InvoiceSingleView } from "@/src/components/invoice/invoice-single-view";
 import { InvoiceSummaryView } from "@/src/components/invoice/invoice-summary-view";
+import { InvoiceItemListView } from "@/src/components/invoice/invoice-itemlist-view";
+import { useHistoryFilter } from "@/src/components/customers/history-filter-provider";
 import { Button } from "@/src/components/ui/button";
 import type { CustomerDebtSummary } from "@/src/lib/customers/debt-summary";
 import type { GroupedOrder } from "@/src/lib/customers/group-orders";
@@ -131,6 +133,7 @@ export function PrintableCustomerSection({
   const selectedOrder = printOrderId
     ? groupedOrders.find((order) => order.order_id === printOrderId) ?? null
     : null;
+  const { filteredRows, filteredTotal, isFiltered, filter } = useHistoryFilter();
 
   const printOrder = useCallback((orderId: string) => {
     setPendingSingleAction({ mode: "print", orderId });
@@ -238,9 +241,13 @@ export function PrintableCustomerSection({
       setIsExportingPdf(true);
 
       try {
+        const defaultFilename = isFiltered
+          ? `bang-ke-${filenamePart(customerName)}-${pdfDate()}.pdf`
+          : `cong-no-${filenamePart(customerName)}-${pdfDate()}.pdf`;
+          
         await exportVisibleInvoice(
-          ".invoice-summary-view",
-          filename ?? `cong-no-${filenamePart(customerName)}-${pdfDate()}.pdf`,
+          isFiltered ? ".invoice-itemlist-view" : ".invoice-summary-view",
+          filename ?? defaultFilename,
         );
       } catch (error) {
         console.error("Failed to export summary invoice PDF", error);
@@ -249,7 +256,7 @@ export function PrintableCustomerSection({
         setIsExportingPdf(false);
       }
     },
-    [customerName, exportVisibleInvoice],
+    [customerName, exportVisibleInvoice, isFiltered],
   );
 
   const exportSummaryImage = useCallback(
@@ -257,9 +264,13 @@ export function PrintableCustomerSection({
       setIsExportingImage(true);
 
       try {
+        const defaultFilename = isFiltered
+          ? `bang-ke-${filenamePart(customerName)}-${pdfDate()}.png`
+          : `cong-no-${filenamePart(customerName)}-${pdfDate()}.png`;
+
         await exportVisibleInvoiceImage(
-          ".invoice-summary-view",
-          filename ?? `cong-no-${filenamePart(customerName)}-${pdfDate()}.png`,
+          isFiltered ? ".invoice-itemlist-view" : ".invoice-summary-view",
+          filename ?? defaultFilename,
         );
       } catch (error) {
         console.error("Failed to export summary invoice image", error);
@@ -268,7 +279,7 @@ export function PrintableCustomerSection({
         setIsExportingImage(false);
       }
     },
-    [customerName, exportVisibleInvoiceImage],
+    [customerName, exportVisibleInvoiceImage, isFiltered],
   );
 
   const exportOrderPdf = useCallback((orderId: string) => {
@@ -383,6 +394,16 @@ export function PrintableCustomerSection({
             customerPhone={customerPhone}
             order={selectedOrder}
             printDate={printDate}
+          />
+        ) : isFiltered ? (
+          <InvoiceItemListView
+            shopSettings={shopSettings}
+            customerName={customerName}
+            customerPhone={customerPhone}
+            rows={filteredRows}
+            total={filteredTotal}
+            printDate={printDate}
+            filter={filter}
           />
         ) : (
           <InvoiceSummaryView
@@ -565,6 +586,7 @@ export function SummaryInvoicePopover({
   const context = useContext(PrintOrderContext);
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const { isFiltered } = useHistoryFilter();
 
   useEffect(() => {
     if (!open) return;
@@ -615,7 +637,7 @@ export function SummaryInvoicePopover({
             className="flex w-full items-center gap-2 px-3 py-2 text-[14px] font-semibold text-ink hover:bg-paperWarm"
           >
             <Printer className="h-4 w-4" aria-hidden="true" />
-            In tổng hợp
+            {isFiltered ? "In bảng kê" : "In tổng hợp"}
           </button>
           <button
             type="button"
