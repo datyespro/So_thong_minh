@@ -327,7 +327,7 @@ export function addedItemFromProductCandidate(
     tempId,
     product_id: candidate.id,
     product_name: candidate.name,
-    unit: candidate.unit ?? "cái",
+    unit: candidate.unit ?? "",
     quantity: 1,
     unit_price: candidate.sell_price ?? 0,
   };
@@ -641,10 +641,6 @@ export function validateProductManagementCreateForm(
   }
 
   const unit = input.unit.trim();
-
-  if (!unit) {
-    return { ok: false, message: "Đơn vị bắt buộc" };
-  }
 
   const parsedPrice = parseProductSellPriceInput(input.sellPriceInput);
 
@@ -1938,12 +1934,6 @@ export function ProductCreatePanel({
   function handleCreateClick() {
     const unit = unitDraft.trim();
 
-    if (!unit) {
-      setLocalError("Chọn đơn vị");
-      onDraftChange();
-      return;
-    }
-
     const parsedPrice = parseProductSellPriceInput(sellPriceDraft);
 
     if (!parsedPrice.ok) {
@@ -1976,6 +1966,7 @@ export function ProductCreatePanel({
             type="text"
             value={unitDraft}
             disabled={isSaving}
+            placeholder="Đơn vị (có thể bỏ trống)"
             className="mt-1 h-11 w-full rounded border border-stamp/35 bg-surface px-3 text-[16px] leading-6 text-textMain outline-none placeholder:text-textFaint focus:border-ink disabled:cursor-not-allowed disabled:opacity-60"
             onChange={(event) => {
               setUnitDraft(event.target.value);
@@ -5135,7 +5126,7 @@ export function PreviewCard({
                         {showPriceInput ? (
                           <PatchInput
                             label={`Sửa giá ${displayItem.name}`}
-                            placeholder={`Nhập giá ${formatUnitDisplay(displayItem.unit) || "1 đơn vị"}`}
+                            placeholder={`Nhập giá ${formatUnitDisplay(displayItem.unit) === "—" ? "1 đơn vị" : formatUnitDisplay(displayItem.unit)}`}
                             value={priceDraft}
                             onChange={(value) =>
                               handleDisplayPriceChange(displayItem, value)

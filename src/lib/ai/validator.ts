@@ -1,4 +1,5 @@
 import { normalizeVi } from "@/src/lib/ai/normalize";
+import { formatUnitDisplay } from "@/src/lib/format/unit";
 import type { IntentName } from "@/src/lib/ai/intent-schema";
 import type {
   ResolvedEntity,
@@ -244,7 +245,8 @@ function validateItem(
             unitPrice: pricing.amount / effectiveQuantity,
           }
       : null;
-    const displayUnit = item.unit ?? "đơn vị";
+    const displayUnit = formatUnitDisplay(item.unit);
+    const unitWord = displayUnit === "—" ? "đơn vị" : displayUnit;
 
     if (totalPricing !== null && Number.isInteger(totalPricing.unitPrice)) {
       effectiveUnitPrice = totalPricing.unitPrice;
@@ -254,7 +256,7 @@ function validateItem(
           severity: "warning",
           message: `Tính đơn giá ${formatMoney(totalPricing.unitPrice)}đ từ tổng ${formatMoney(
             totalPricing.amount,
-          )}đ cho ${formatMoney(totalPricing.quantity)} ${displayUnit}.`,
+          )}đ cho ${formatMoney(totalPricing.quantity)} ${unitWord}.`,
           field_path: `items[${itemIndex}].unit_price`,
           item_index: itemIndex,
         }),
@@ -266,7 +268,7 @@ function validateItem(
           severity: "blocking",
           message: `Tổng ${formatMoney(totalPricing.amount)}đ không chia đều cho ${formatMoney(
             totalPricing.quantity,
-          )} ${displayUnit} — bác cho giá từng ${displayUnit} ạ?`,
+          )} ${unitWord} — bác cho giá từng ${unitWord} ạ?`,
           field_path: `items[${itemIndex}].unit_price`,
           item_index: itemIndex,
         }),

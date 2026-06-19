@@ -107,7 +107,7 @@ export function ProductCreateForm({
             value={unit}
             onChange={(e) => setUnit(e.target.value)}
             disabled={isSaving}
-            placeholder="Ví dụ: bao"
+            placeholder="Đơn vị (có thể bỏ trống)"
             className="mb-2 h-10 w-full rounded border border-stamp/35 bg-paper px-3 text-[16px] text-textMain outline-none placeholder:text-textFaint focus:border-ink disabled:cursor-not-allowed disabled:opacity-60"
           />
           <div className="flex flex-wrap gap-1.5">

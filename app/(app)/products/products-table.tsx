@@ -253,6 +253,7 @@ export function ProductsTable({
                       type="text"
                       value={draft.unit}
                       disabled={isSaving}
+                      placeholder="Đơn vị (có thể bỏ trống)"
                       className="h-11 w-full min-w-[96px] rounded border border-stamp/35 bg-paperNote px-3 text-[16px] leading-6 text-textMain outline-none placeholder:text-textFaint focus:border-ink disabled:cursor-not-allowed disabled:opacity-60 sm:h-10"
                       onChange={(event) =>
                         setDraft((current) => ({

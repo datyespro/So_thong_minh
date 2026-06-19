@@ -95,10 +95,6 @@ export function validateProductUpdatePatch(
   if (hasOwnField(input, "unit")) {
     const unit = typeof input.unit === "string" ? input.unit.trim() : "";
 
-    if (unit.length === 0) {
-      return { ok: false, message: "Đơn vị không được để trống" };
-    }
-
     patch.unit = unit;
     fields.push("unit");
   }

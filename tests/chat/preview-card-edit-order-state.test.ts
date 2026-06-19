@@ -269,7 +269,7 @@ describe("PreviewCard edit-order interaction flags", () => {
       tempId: "temp-candidate",
       product_id: "product-xi-mang",
       product_name: "Xi măng",
-      unit: "cái",
+      unit: "",
       quantity: 1,
       unit_price: 0,
     });
@@ -350,7 +350,7 @@ describe("PreviewCard edit-order interaction flags", () => {
         },
         "temp-null-unit",
       ).unit,
-    ).toBe("cái");
+    ).toBe("");
 
     expect(
       addedItemFromCreatedProduct(

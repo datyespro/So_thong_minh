@@ -2186,14 +2186,6 @@ export async function createProduct(
   const normalizedUnit =
     unit === undefined ? undefined : typeof unit === "string" ? unit.trim() : "";
 
-  if (normalizedUnit !== undefined && normalizedUnit.length === 0) {
-    return {
-      ok: false,
-      code: "validation_failed",
-      message: "Đơn vị không được để trống",
-    };
-  }
-
   const parsedSellPrice = parseProductSellPriceInput(sell_price);
 
   if (!parsedSellPrice.ok) {

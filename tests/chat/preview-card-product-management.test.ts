@@ -303,7 +303,14 @@ describe("product-management preview helpers", () => {
         unit: "   ",
         sellPriceInput: "",
       }),
-    ).toEqual({ ok: false, message: "Đơn vị bắt buộc" });
+    ).toEqual({
+      ok: true,
+      data: {
+        name: "gạch đỏ",
+        unit: "",
+        sell_price: null,
+      },
+    });
 
     expect(
       validateProductManagementCreateForm({

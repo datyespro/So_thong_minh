@@ -5,10 +5,13 @@ import {
 } from "@/src/lib/products/update";
 
 describe("product update validation", () => {
-  it("rejects blank units", () => {
+  it("accepts blank units", () => {
     expect(validateProductUpdatePatch({ unit: "   " })).toEqual({
-      ok: false,
-      message: "Đơn vị không được để trống",
+      ok: true,
+      data: {
+        patch: { unit: "" },
+        fields: ["unit"],
+      },
     });
   });
 

@@ -1,5 +1,5 @@
 export function formatUnitDisplay(unit: string | null | undefined): string {
-  if (!unit) return "";
+  if (!unit || unit.trim().length === 0) return "—";
 
   // Normalize by converting to lowercase and collapsing multiple spaces
   const normalized = unit.trim().toLowerCase().replace(/\s+/g, " ");

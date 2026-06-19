@@ -410,7 +410,7 @@ async function answerInventory({
       state: "found",
       productName: row.name,
       stock: toNumber(row.current_stock),
-      unit: row.unit ?? "cái",
+      unit: row.unit ?? "",
     };
   }
 

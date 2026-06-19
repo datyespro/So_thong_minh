@@ -28,9 +28,9 @@ describe("formatUnitDisplay", () => {
   });
 
   it("handles null, undefined, and empty string", () => {
-    expect(formatUnitDisplay(null)).toBe("");
-    expect(formatUnitDisplay(undefined)).toBe("");
-    expect(formatUnitDisplay("")).toBe("");
-    expect(formatUnitDisplay("   ")).toBe("");
+    expect(formatUnitDisplay(null)).toBe("—");
+    expect(formatUnitDisplay(undefined)).toBe("—");
+    expect(formatUnitDisplay("")).toBe("—");
+    expect(formatUnitDisplay("   ")).toBe("—");
   });
 });

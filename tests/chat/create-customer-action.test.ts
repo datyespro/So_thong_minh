@@ -585,16 +585,19 @@ describe("createProduct", () => {
     expect(mocks.insert).not.toHaveBeenCalled();
   });
 
-  it("rejects blank product units without inserting", async () => {
+  it("accepts blank product units and inserts them as empty string", async () => {
     const result = await createProduct("Xi măng Hoàng Thạch", "   ");
 
     expect(result).toEqual({
-      ok: false,
-      code: "validation_failed",
-      message: "Đơn vị không được để trống",
+      ok: true,
+      data: expect.any(Object),
     });
-    expect(mocks.from).not.toHaveBeenCalled();
-    expect(mocks.insert).not.toHaveBeenCalled();
+    expect(mocks.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "Xi măng Hoàng Thạch",
+        unit: "",
+      }),
+    );
   });
 
   it("rejects negative product sell prices without inserting", async () => {
@@ -1100,19 +1103,20 @@ describe("updateProduct", () => {
     });
   });
 
-  it("rejects a blank unit without touching the database", async () => {
+  it("accepts a blank unit and updates the database with an empty string", async () => {
     const result = await updateProduct("product-xi-mang", {
       unit: " ",
     });
 
     expect(result).toEqual({
-      ok: false,
-      code: "validation_failed",
-      message: "Đơn vị không được để trống",
+      ok: true,
+      data: expect.any(Object),
     });
-    expect(mocks.from).not.toHaveBeenCalled();
-    expect(mocks.update).not.toHaveBeenCalled();
-    expect(mocks.insert).not.toHaveBeenCalled();
+    expect(mocks.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        unit: "",
+      }),
+    );
   });
 
   it("blocks products that are not visible through the owner filter", async () => {
