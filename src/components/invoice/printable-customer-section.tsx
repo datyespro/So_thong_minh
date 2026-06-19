@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, FileText, ImageDown, Printer } from "lucide-react";
+import { Download, FileText, ImageDown, Printer, Trash2 } from "lucide-react";
 import {
   createContext,
   useCallback,
@@ -11,6 +11,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { OrderDeleteModal } from "@/src/components/customers/order-delete-modal";
 import { InvoiceSingleView } from "@/src/components/invoice/invoice-single-view";
 import { InvoiceSummaryView } from "@/src/components/invoice/invoice-summary-view";
 import { InvoiceItemListView } from "@/src/components/invoice/invoice-itemlist-view";
@@ -450,12 +451,22 @@ export function PrintSingleOrderButton({
 export function InvoiceActionPopover({
   orderId,
   itemCount,
+  deletable,
+  orderSummary,
 }: Readonly<{
   orderId: string;
   itemCount: number;
+  deletable?: boolean;
+  orderSummary?: {
+    businessDate: string | null;
+    total: number;
+    itemCount: number;
+    firstItemName: string | null;
+  };
 }>) {
   const context = useContext(PrintOrderContext);
   const [open, setOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const title =
     itemCount > 1 ? `In hóa đơn (${itemCount} món)` : "In hóa đơn";
@@ -547,8 +558,40 @@ export function InvoiceActionPopover({
             <ImageDown className="h-4 w-4" aria-hidden="true" />
             {context?.isExportingImage ? "Đang tạo ảnh" : "Tải ảnh"}
           </button>
+          {deletable && orderSummary && (
+            <>
+              <div className="my-1 border-t border-ledgerBorder" />
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false);
+                  setDeleteOpen(true);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-[14px] font-semibold text-debt hover:bg-paperWarm"
+              >
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                Xóa đơn
+              </button>
+            </>
+          )}
         </div>
       ) : null}
+      {deletable && orderSummary && (
+        <OrderDeleteModal
+          open={deleteOpen}
+          orderId={orderId}
+          businessDate={orderSummary.businessDate}
+          total={orderSummary.total}
+          itemCount={orderSummary.itemCount}
+          firstItemName={orderSummary.firstItemName}
+          onClose={() => setDeleteOpen(false)}
+          onDeleted={() => {
+            setDeleteOpen(false);
+            window.location.reload();
+          }}
+        />
+      )}
     </div>
   );
 }

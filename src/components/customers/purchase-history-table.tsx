@@ -145,9 +145,13 @@ function MobileHistoryTotal({
 function MobileHistoryCard({
   row,
   isNewGroup,
+  deletable,
+  orderSummary,
 }: Readonly<{
   row: CustomerPurchaseHistoryRow;
   isNewGroup?: boolean;
+  deletable?: boolean;
+  orderSummary?: { businessDate: string | null; total: number; itemCount: number; firstItemName: string | null; };
 }>) {
   const fields = [
     ["Ngày", formatBusinessDate(row.business_date)],
@@ -171,7 +175,7 @@ function MobileHistoryCard({
           <p className="mt-1 font-semibold text-inkDeep">{row.product_name_snapshot}</p>
         </div>
         <div className="shrink-0">
-          <InvoiceActionPopover orderId={row.order_id} itemCount={1} />
+          <InvoiceActionPopover orderId={row.order_id} itemCount={1} deletable={deletable} orderSummary={orderSummary} />
         </div>
       </div>
       <div className="space-y-2">
@@ -189,9 +193,11 @@ function MobileHistoryCard({
 function MobileGroupedHistoryCard({
   order,
   isNewGroup,
+  deletable,
 }: Readonly<{
   order: GroupedOrder;
   isNewGroup?: boolean;
+  deletable?: boolean;
 }>) {
   const firstRow = order.items[0];
   if (!firstRow) return null;
@@ -215,7 +221,17 @@ function MobileGroupedHistoryCard({
           </div>
         </div>
         <div className="shrink-0">
-          <InvoiceActionPopover orderId={order.order_id} itemCount={order.items.length} />
+          <InvoiceActionPopover 
+            orderId={order.order_id} 
+            itemCount={order.items.length} 
+            deletable={deletable}
+            orderSummary={{
+              businessDate: order.business_date,
+              total: order.total,
+              itemCount: order.items.length,
+              firstItemName: order.items[0]?.product_name_snapshot ?? null,
+            }} 
+          />
         </div>
       </div>
       <ul className="space-y-2">
@@ -268,6 +284,7 @@ export function PurchaseHistoryTable({
   });
 
   const groupedDisplayRows = groupRowsByOrder(rows);
+  const orderById = new Map(groupedDisplayRows.map((o) => [o.order_id, o]));
 
   return (
     <div className="space-y-4">
@@ -382,7 +399,16 @@ export function PurchaseHistoryTable({
                       <td className={`${tdClass} font-semibold`}>{formatMoneyValue(row.unit_price)}</td>
                       <td className={`${tdClass} text-right font-semibold text-inkDeep`}>{formatMoneyValue(row.line_total)}</td>
                       <td className={lastTdClass}>
-                        {shouldShowInvoiceAction ? <InvoiceActionPopover orderId={row.order_id} itemCount={itemCount} /> : null}
+                        {shouldShowInvoiceAction ? (() => {
+                          const orderData = orderById.get(row.order_id);
+                          const orderSummary = orderData ? {
+                            businessDate: orderData.business_date,
+                            total: orderData.total,
+                            itemCount: orderData.items.length,
+                            firstItemName: orderData.items[0]?.product_name_snapshot ?? null,
+                          } : undefined;
+                          return <InvoiceActionPopover orderId={row.order_id} itemCount={itemCount} deletable={true} orderSummary={orderSummary} />;
+                        })() : null}
                       </td>
                     </tr>
                   );
@@ -411,9 +437,20 @@ export function PurchaseHistoryTable({
               if (!firstRow) return null;
               const isNewGroup = index > 0;
               return order.items.length > 1 ? (
-                <MobileGroupedHistoryCard key={order.order_id} order={order} isNewGroup={isNewGroup} />
+                <MobileGroupedHistoryCard key={order.order_id} order={order} isNewGroup={isNewGroup} deletable={true} />
               ) : (
-                <MobileHistoryCard key={order.order_id} row={firstRow} isNewGroup={isNewGroup} />
+                <MobileHistoryCard 
+                  key={order.order_id} 
+                  row={firstRow} 
+                  isNewGroup={isNewGroup} 
+                  deletable={true} 
+                  orderSummary={{
+                    businessDate: order.business_date,
+                    total: order.total,
+                    itemCount: order.items.length,
+                    firstItemName: firstRow.product_name_snapshot ?? null,
+                  }}
+                />
               );
             })}
             <MobileHistoryTotal total={total} summary={summary} payments={payments} />
