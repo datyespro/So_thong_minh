@@ -44,7 +44,7 @@ describe("OrderDeleteModal (pure components & fns)", () => {
 
     it("trả về error khi ok: false", () => {
       expect(resolveUndoOutcome({ ok: false })).toBe("error");
-      expect(resolveUndoOutcome({ ok: false, code: "db_error" } as any)).toBe("error");
+      expect(resolveUndoOutcome({ ok: false, code: "db_error" } as { ok: boolean })).toBe("error");
     });
   });
 
