@@ -423,8 +423,9 @@ export function PurchaseHistoryTable({
                   </tr>
                 ) : (
                   <tr>
-                    <td colSpan={6} className="px-3 py-3 text-right font-display text-[18px] font-semibold text-inkDeep">Tổng cộng</td>
+                    <td colSpan={5} className="px-3 py-3 text-right font-display text-[18px] font-semibold text-inkDeep">Tổng cộng</td>
                     <td className="px-3 py-3 text-right font-mono text-[18px] font-bold text-inkDeep">{formatMoneyValue(total)}</td>
+                    <td className="px-3 py-3"></td>
                   </tr>
                 )}
               </tfoot>
