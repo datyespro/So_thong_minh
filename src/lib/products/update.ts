@@ -1,11 +1,13 @@
 export type ProductSellPriceInput = string | number | null | undefined;
 
 export type ProductUpdateInput = Readonly<{
+  name?: string;
   unit?: string;
   sell_price?: ProductSellPriceInput;
 }>;
 
 export type ProductUpdatePayload = Partial<{
+  name: string;
   unit: string;
   sell_price: number | null;
 }>;
@@ -78,6 +80,17 @@ export function validateProductUpdatePatch(
 
   const patch: ProductUpdatePayload = {};
   const fields: ProductUpdateField[] = [];
+
+  if (hasOwnField(input, "name")) {
+    const name = typeof input.name === "string" ? input.name.trim() : "";
+
+    if (name.length === 0) {
+      return { ok: false, message: "Tên không được để trống" };
+    }
+
+    patch.name = name;
+    fields.push("name");
+  }
 
   if (hasOwnField(input, "unit")) {
     const unit = typeof input.unit === "string" ? input.unit.trim() : "";

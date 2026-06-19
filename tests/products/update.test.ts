@@ -54,4 +54,27 @@ describe("product update validation", () => {
       },
     });
   });
+
+  it("validates and trims product name", () => {
+    expect(validateProductUpdatePatch({ name: " Thép phi 12 " })).toEqual({
+      ok: true,
+      data: {
+        patch: { name: "Thép phi 12" },
+        fields: ["name"],
+      },
+    });
+
+    expect(validateProductUpdatePatch({ name: "   " })).toEqual({
+      ok: false,
+      message: "Tên không được để trống",
+    });
+
+    expect(validateProductUpdatePatch({ name: "x", unit: "cây", sell_price: "95.000" })).toEqual({
+      ok: true,
+      data: {
+        patch: { name: "x", unit: "cây", sell_price: 95000 },
+        fields: ["name", "unit", "sell_price"],
+      },
+    });
+  });
 });

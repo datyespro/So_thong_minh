@@ -117,6 +117,7 @@ type ProductManagementSearchRow = ProductSearchRow & {
 
 type ProductUpdateRow = {
   id: string;
+  name: string;
   unit: string;
   sell_price: number | string | null;
 };
@@ -135,6 +136,7 @@ export type CreatedProductView = {
 };
 export type UpdatedProductView = {
   id: string;
+  name: string;
   unit: string;
   sell_price: number | null;
 };
@@ -2482,7 +2484,7 @@ export async function updateProduct(
 
   const { data: beforeData, error: beforeError } = await supabase
     .from("products")
-    .select("id,unit,sell_price")
+    .select("id,name,unit,sell_price")
     .eq("owner_id", user.id)
     .eq("id", trimmedProductId)
     .eq("is_active", true)
@@ -2506,6 +2508,31 @@ export async function updateProduct(
   }
 
   const before = beforeData as ProductUpdateRow;
+
+  if (validation.data.patch.name) {
+    const existingRead = await supabase
+      .from("products")
+      .select("id,name,unit,sell_price")
+      .eq("owner_id", user.id)
+      .eq("is_active", true)
+      .is("deleted_at", null);
+
+    if (!existingRead.error) {
+      const duplicate = findProductByName(
+        existingRead.data as ProductRow[] | null,
+        validation.data.patch.name,
+      );
+
+      if (duplicate && duplicate.id !== trimmedProductId) {
+        return {
+          ok: false,
+          code: "validation_failed",
+          message: "Đã có hàng tên này rồi ạ.",
+        };
+      }
+    }
+  }
+
   const { data, error } = await supabase
     .from("products")
     .update(validation.data.patch)
@@ -2513,7 +2540,7 @@ export async function updateProduct(
     .eq("id", trimmedProductId)
     .eq("is_active", true)
     .is("deleted_at", null)
-    .select("id,unit,sell_price")
+    .select("id,name,unit,sell_price")
     .maybeSingle();
 
   if (error) {
@@ -2534,10 +2561,12 @@ export async function updateProduct(
 
   const updated = data as ProductUpdateRow;
   const beforeAudit = {
+    name: before.name,
     unit: before.unit,
     sell_price: nullableProductMoney(before.sell_price),
   };
   const afterAudit = {
+    name: updated.name,
     unit: updated.unit,
     sell_price: nullableProductMoney(updated.sell_price),
   };
@@ -2569,6 +2598,7 @@ export async function updateProduct(
     ok: true,
     data: {
       id: updated.id,
+      name: updated.name,
       unit: updated.unit,
       sell_price: nullableProductMoney(updated.sell_price),
     },

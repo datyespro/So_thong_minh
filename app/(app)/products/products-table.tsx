@@ -30,6 +30,7 @@ const PRODUCT_GRID_COLUMNS =
   "sm:grid-cols-[minmax(0,1.7fr)_0.7fr_0.9fr_0.8fr_auto]";
 
 type DraftState = {
+  name: string;
   unit: string;
   sellPrice: string;
 };
@@ -59,12 +60,13 @@ function priceDraftValue(value: ProductNumericValue) {
 
 function applyUpdatedProduct(
   products: ProductsTableRow[],
-  updated: Readonly<{ id: string; unit: string; sell_price: number | null }>,
+  updated: Readonly<{ id: string; name: string; unit: string; sell_price: number | null }>,
 ) {
   return products.map((product) =>
     product.id === updated.id
       ? {
           ...product,
+          name: updated.name,
           unit: updated.unit,
           sell_price: updated.sell_price,
         }
@@ -81,6 +83,7 @@ export function ProductsTable({
   const [products, setProducts] = React.useState(initialProducts);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [draft, setDraft] = React.useState<DraftState>({
+    name: "",
     unit: "",
     sellPrice: "",
   });
@@ -98,6 +101,7 @@ export function ProductsTable({
   function handleStartEdit(product: ProductsTableRow) {
     setEditingId(product.id);
     setDraft({
+      name: product.name,
       unit: product.unit,
       sellPrice: priceDraftValue(product.sell_price),
     });
@@ -110,7 +114,7 @@ export function ProductsTable({
 
   function handleCancelEdit(productId: string) {
     setEditingId(null);
-    setDraft({ unit: "", sellPrice: "" });
+    setDraft({ name: "", unit: "", sellPrice: "" });
     setErrorByProduct((current) => {
       const next = { ...current };
       delete next[productId];
@@ -128,6 +132,7 @@ export function ProductsTable({
 
     try {
       const result = await updateProduct(productId, {
+        name: draft.name,
         unit: draft.unit,
         sell_price: draft.sellPrice,
       });
@@ -142,7 +147,7 @@ export function ProductsTable({
 
       setProducts((current) => applyUpdatedProduct(current, result.data));
       setEditingId(null);
-      setDraft({ unit: "", sellPrice: "" });
+      setDraft({ name: "", unit: "", sellPrice: "" });
       startTransition(() => {
         router.refresh();
       });
@@ -204,7 +209,25 @@ export function ProductsTable({
                 <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-stamp sm:hidden">
                   Tên
                 </p>
-                <p className="truncate font-semibold text-inkDeep">{product.name}</p>
+                {isEditing ? (
+                  <label>
+                    <span className="sr-only">Sửa tên {product.name}</span>
+                    <input
+                      type="text"
+                      value={draft.name}
+                      disabled={isSaving}
+                      className="h-11 w-full min-w-[120px] rounded border border-stamp/35 bg-paperNote px-3 text-[16px] leading-6 text-textMain outline-none placeholder:text-textFaint focus:border-ink disabled:cursor-not-allowed disabled:opacity-60 sm:h-10"
+                      onChange={(event) =>
+                        setDraft((current) => ({
+                          ...current,
+                          name: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                ) : (
+                  <p className="truncate font-semibold text-inkDeep">{product.name}</p>
+                )}
               </div>
               <ProductField label="Đơn vị">
                 {isEditing ? (
