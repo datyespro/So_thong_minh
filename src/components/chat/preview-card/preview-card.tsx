@@ -2930,6 +2930,8 @@ export function PreviewCard({
   );
   const [dismissedProductCreateIndices, setDismissedProductCreateIndices] =
     React.useState<number[]>([]);
+  const [forceCreateProductIndices, setForceCreateProductIndices] =
+    React.useState<number[]>([]);
   const [productSearchOpen, setProductSearchOpen] = React.useState(false);
   const [productSearchInput, setProductSearchInput] = React.useState("");
   const [productSearchResult, setProductSearchResult] =
@@ -4001,6 +4003,9 @@ export function PreviewCard({
 
       onPatchChange(result.patch);
       setDismissedProductCreateIndices((indices) =>
+        indices.filter((index) => index !== itemIndex),
+      );
+      setForceCreateProductIndices((indices) =>
         indices.filter((index) => index !== itemIndex),
       );
       setProductCreateItemIndex(null);
@@ -5090,11 +5095,13 @@ export function PreviewCard({
                   >
                     <div className="min-w-0">
                       <p className="font-semibold text-inkDeep">{displayItem.name}</p>
-                      {productNeedsChoice ? (
+                      {productNeedsChoice &&
+                       !forceCreateProductIndices.includes(displayItem.index) ? (
                         <EntityChoicePanel
                           entity={displayItem.resolution}
                           label="Hàng"
-                          allowCreate={false}
+                          allowCreate
+                          createLabel="hàng"
                           onSelect={(candidate) =>
                             handleSelectCandidate(
                               {
@@ -5105,6 +5112,18 @@ export function PreviewCard({
                               candidate,
                             )
                           }
+                          onCreate={() => {
+                            setForceCreateProductIndices((indices) =>
+                              indices.includes(displayItem.index)
+                                ? indices
+                                : [...indices, displayItem.index],
+                            );
+                            setDismissedProductCreateIndices((indices) =>
+                              indices.filter((i) => i !== displayItem.index),
+                            );
+                            setProductCreateItemIndex(displayItem.index);
+                            setCreateProductError(null);
+                          }}
                         />
                       ) : null}
                     </div>
@@ -5185,7 +5204,9 @@ export function PreviewCard({
                         </Button>
                       </div>
                     ) : null}
-                    {productNotFound && productCreateDismissed ? (
+                    {(productNotFound ||
+                      forceCreateProductIndices.includes(displayItem.index)) &&
+                     productCreateDismissed ? (
                       <div className="min-w-0 sm:col-span-full">
                         <ProductMissingNotice
                           raw={inlineProductRaw}
@@ -5199,7 +5220,9 @@ export function PreviewCard({
                         />
                       </div>
                     ) : null}
-                    {productNotFound && !productCreateDismissed ? (
+                    {(productNotFound ||
+                      forceCreateProductIndices.includes(displayItem.index)) &&
+                     !productCreateDismissed ? (
                       <div className="min-w-0 sm:col-span-full">
                         <ProductCreatePanel
                           raw={inlineProductRaw}
@@ -5228,6 +5251,9 @@ export function PreviewCard({
                               indices.includes(displayItem.index)
                                 ? indices
                                 : [...indices, displayItem.index],
+                            );
+                            setForceCreateProductIndices((indices) =>
+                              indices.filter((i) => i !== displayItem.index),
                             );
                             setProductCreateItemIndex(null);
                             setCreateProductError(null);

@@ -962,6 +962,123 @@ describe("PreviewCard", () => {
     expect(html).toContain("Minh Phát");
   });
 
+  it("renders near-match product with create-new escape hatch", () => {
+    const html = renderCard(
+      baseValidated({
+        items: [
+          item({
+            product_name: "Thép đặc",
+            quantity: 10,
+            unit: "cây",
+            unit_price: 120000,
+            effective_quantity: 10,
+            effective_unit: "cây",
+            effective_unit_price: 120000,
+            line_total: 1200000,
+            resolution: {
+              raw: "Thép đặc",
+              entity_type: "product",
+              status: "needs_confirmation",
+              resolved_id: null,
+              resolved_name: null,
+              confidence: 0.75,
+              candidates: [
+                {
+                  id: "product-thep-phi-10",
+                  name: "thép phi 10",
+                  score: 0.75,
+                  matched_on: "fuzzy",
+                  matched_value: "thép phi 10",
+                },
+              ],
+            },
+            issues: [productUnresolvedIssue()],
+          }),
+        ],
+        ready_for_preview: false,
+        blocking_count: 1,
+      }),
+    );
+
+    expect(html).toContain('data-testid="product-confirm-panel"');
+    expect(html).toContain("thép phi 10");
+    expect(html).toContain("thêm hàng mới");
+    expect(html).toContain("Thép đặc");
+  });
+
+  it("does not show create-new escape hatch for not_found product (F1 regression)", () => {
+    const html = renderCard(
+      baseValidated({
+        items: [
+          item({
+            product_name: "xi măng",
+            resolution: {
+              raw: "xi măng",
+              entity_type: "product",
+              status: "not_found",
+              resolved_id: null,
+              resolved_name: null,
+              confidence: 0,
+              candidates: [],
+            },
+            issues: [productUnresolvedIssue()],
+          }),
+        ],
+        ready_for_preview: false,
+        blocking_count: 1,
+      }),
+    );
+
+    expect(html).toContain('data-testid="product-create-panel"');
+    expect(html).not.toContain('data-testid="product-confirm-panel"');
+    expect(html).not.toContain("thêm hàng mới");
+  });
+
+  it("still shows candidate choices for near-match product selection (regression)", () => {
+    const html = renderCard(
+      baseValidated({
+        items: [
+          item({
+            product_name: "xi mang",
+            resolution: {
+              raw: "xi mang",
+              entity_type: "product",
+              status: "ambiguous",
+              resolved_id: null,
+              resolved_name: null,
+              confidence: 0.7,
+              candidates: [
+                {
+                  id: "product-xi-mang-a",
+                  name: "Xi măng A",
+                  score: 0.8,
+                  matched_on: "fuzzy",
+                  matched_value: "Xi măng A",
+                },
+                {
+                  id: "product-xi-mang-b",
+                  name: "Xi măng B",
+                  score: 0.7,
+                  matched_on: "fuzzy",
+                  matched_value: "Xi măng B",
+                },
+              ],
+            },
+            issues: [productUnresolvedIssue()],
+          }),
+        ],
+        ready_for_preview: false,
+        blocking_count: 1,
+      }),
+    );
+
+    expect(html).toContain('data-testid="product-confirm-panel"');
+    expect(html).toContain("Xi măng A");
+    expect(html).toContain("Xi măng B");
+    expect(html).toContain("thêm hàng mới");
+    expect(html).not.toContain('data-testid="product-create-panel"');
+  });
+
   it("renders inline product creation with order unit and sell-price prefill", () => {
     const html = renderCard(
       baseValidated({
