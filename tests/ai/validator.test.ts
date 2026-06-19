@@ -179,7 +179,7 @@ describe("validateResolvedIntent create_order", () => {
     const result = validateResolvedIntent(
       baseResolved({
         amount: 2000000,
-        payment_status: "unpaid",
+        payment_status: "debt",
         items: [productItem({ quantity: null, unit_price: null })],
       }),
       masters,
@@ -197,7 +197,7 @@ describe("validateResolvedIntent create_order", () => {
     const result = validateResolvedIntent(
       baseResolved({
         amount: null,
-        payment_status: "unpaid",
+        payment_status: "debt",
         items: [productItem({ quantity: null, unit_price: null })],
       }),
       masters,
@@ -211,7 +211,7 @@ describe("validateResolvedIntent create_order", () => {
     const result = validateResolvedIntent(
       baseResolved({
         amount: 5000000,
-        payment_status: "unpaid",
+        payment_status: "debt",
         items: [
           productItem({ quantity: null, unit_price: null }),
           productItem({ quantity: null, unit_price: null, raw: "cát", product_name: "cát" }),
