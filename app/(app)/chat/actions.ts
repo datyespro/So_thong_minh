@@ -2715,6 +2715,37 @@ export async function deleteProduct(
   };
 }
 
+export async function adjustProductStock(
+  productId: string,
+  newQuantity: number,
+  note: string,
+): Promise<ActionResult<{ adjusted: boolean; current_stock: number; delta: number }>> {
+  if (typeof productId !== "string" || productId.trim().length === 0) {
+    return { ok: false, code: "validation_failed", message: "Không tìm thấy hàng để kiểm kho." };
+  }
+  if (!Number.isFinite(newQuantity) || newQuantity < 0) {
+    return { ok: false, code: "validation_failed", message: "Số lượng không hợp lệ." };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("adjust_product_stock", {
+    p_product_id: productId.trim(),
+    p_new_quantity: newQuantity,
+    p_note: note.trim() || null,
+  });
+
+  if (error) {
+    if (error.message?.includes("product_not_found")) {
+      return { ok: false, code: "validation_failed", message: "Không tìm thấy hàng để kiểm kho." };
+    }
+    console.error("adjust_product_stock RPC failed", error);
+    return { ok: false, code: "db_error", message: "Chưa điều chỉnh được tồn kho, bác thử lại ạ." };
+  }
+
+  const result = data as { adjusted: boolean; current_stock: number; delta: number };
+  return { ok: true, data: result };
+}
+
 export type CommitOrderItemInput = Readonly<{
   product_id: string;
   product_name_snapshot: string;

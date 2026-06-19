@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Save, X, Trash2 } from "lucide-react";
+import { Pencil, Save, X, Trash2, ClipboardCheck } from "lucide-react";
 import { updateProduct } from "@/app/(app)/chat/actions";
 import { formatUnitDisplay } from "@/src/lib/format/unit";
 import { Button } from "@/src/components/ui/button";
@@ -16,6 +16,7 @@ import {
 } from "@/src/lib/products/display";
 import { ProductCreateForm } from "./product-create-form";
 import { ProductDeleteModal } from "./product-delete-modal";
+import { ProductAdjustStockModal } from "./product-adjust-stock-modal";
 import { removeProductById } from "./product-list-utils";
 
 export type ProductsTableRow = {
@@ -92,6 +93,7 @@ export function ProductsTable({
   );
   const [savingId, setSavingId] = React.useState<string | null>(null);
   const [deletingProduct, setDeletingProduct] = React.useState<ProductsTableRow | null>(null);
+  const [adjustingProduct, setAdjustingProduct] = React.useState<ProductsTableRow | null>(null);
   const [, startTransition] = React.useTransition();
 
   React.useEffect(() => {
@@ -170,6 +172,20 @@ export function ProductsTable({
         isOpen={deletingProduct !== null}
         onClose={() => setDeletingProduct(null)}
         onDeleted={(id) => setProducts(removeProductById(products, id))}
+      />
+      <ProductAdjustStockModal
+        product={adjustingProduct}
+        isOpen={adjustingProduct !== null}
+        onClose={() => setAdjustingProduct(null)}
+        onAdjusted={(id, newStock) => {
+          setProducts((current) =>
+            current.map((p) => (p.id === id ? { ...p, current_stock: newStock } : p))
+          );
+          setAdjustingProduct(null);
+          startTransition(() => {
+            router.refresh();
+          });
+        }}
       />
       
       {products.length === 0 ? (
@@ -320,6 +336,16 @@ export function ProductsTable({
                         onClick={() => handleStartEdit(product)}
                       >
                         <Pencil className="h-4 w-4" aria-hidden="true" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        title={`Kiểm kho ${product.name}`}
+                        aria-label={`Kiểm kho ${product.name}`}
+                        className="h-10 rounded border-ledgerBorder bg-surface px-3 text-textMute hover:bg-paperWarm hover:text-ink"
+                        onClick={() => setAdjustingProduct(product)}
+                      >
+                        <ClipboardCheck className="h-4 w-4" aria-hidden="true" />
                       </Button>
                       <Button
                         type="button"
