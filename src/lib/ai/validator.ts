@@ -205,9 +205,17 @@ function validateItem(
     );
   }
 
-  const effectiveQuantity = item.quantity;
+  let effectiveQuantity = item.quantity;
 
-  if (effectiveQuantity === null || effectiveQuantity <= 0) {
+  if (
+    effectiveQuantity === null &&
+    pricing.amount !== null &&
+    pricing.amount > 0 &&
+    pricing.itemCount === 1
+  ) {
+    // Dịch vụ/thỏa thuận: chỉ có tổng tiền, không SL → coi 1 lần = 1 đơn vị
+    effectiveQuantity = 1;
+  } else if (effectiveQuantity === null || effectiveQuantity <= 0) {
     itemIssues.push(
       issue({
         code: "invalid_quantity",

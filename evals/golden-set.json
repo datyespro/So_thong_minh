@@ -442,6 +442,42 @@
     "mode": "assert"
   },
   {
+    "id": "A24",
+    "group": "A",
+    "text": "chị Lan mua Công làm, tổng 2 triệu",
+    "expect": {
+      "intent": "create_order",
+      "fields": [
+        { "path": "entities.customer_name", "match": "name", "value": "Lan" },
+        {
+          "path": "entities.items",
+          "match": "items",
+          "value": [{ "product_name": "Công làm", "quantity": null, "unit_price": null }]
+        },
+        { "path": "entities.amount", "match": "exact", "value": 2000000 }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "A25",
+    "group": "A",
+    "text": "anh Bình mua sơn tường, tổng 500 ngàn",
+    "expect": {
+      "intent": "create_order",
+      "fields": [
+        { "path": "entities.customer_name", "match": "name", "value": "Bình" },
+        {
+          "path": "entities.items",
+          "match": "items",
+          "value": [{ "product_name": "sơn tường", "quantity": null, "unit_price": null }]
+        },
+        { "path": "entities.amount", "match": "exact", "value": 500000 }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
     "id": "B1",
     "group": "B",
     "text": "nhập 100 bao xi măng từ Minh Phát",

@@ -175,6 +175,54 @@ describe("validateResolvedIntent create_order", () => {
     expect(result.items[0].line_total).toBe(850000);
   });
 
+  it("auto-fills quantity=1 when quantity is null but amount is provided for a single item", () => {
+    const result = validateResolvedIntent(
+      baseResolved({
+        amount: 2000000,
+        payment_status: "unpaid",
+        items: [productItem({ quantity: null, unit_price: null })],
+      }),
+      masters,
+    );
+
+    expect(hasIssue(result, "invalid_quantity")).toBe(false);
+    expect(result.items[0].effective_quantity).toBe(1);
+    expect(result.items[0].effective_unit_price).toBe(2000000);
+    expect(result.items[0].line_total).toBe(2000000);
+    expect(hasIssue(result, "price_from_total")).toBe(true);
+    expect(result.blocking_count).toBe(0);
+  });
+
+  it("still blocks invalid_quantity when quantity is null and no amount", () => {
+    const result = validateResolvedIntent(
+      baseResolved({
+        amount: null,
+        payment_status: "unpaid",
+        items: [productItem({ quantity: null, unit_price: null })],
+      }),
+      masters,
+    );
+
+    expect(hasIssue(result, "invalid_quantity")).toBe(true);
+    expect(result.blocking_count).toBeGreaterThan(0);
+  });
+
+  it("still blocks invalid_quantity when quantity is null with amount but multiple items", () => {
+    const result = validateResolvedIntent(
+      baseResolved({
+        amount: 5000000,
+        payment_status: "unpaid",
+        items: [
+          productItem({ quantity: null, unit_price: null }),
+          productItem({ quantity: null, unit_price: null, raw: "cát", product_name: "cát" }),
+        ],
+      }),
+      masters,
+    );
+
+    expect(hasIssue(result, "invalid_quantity")).toBe(true);
+  });
+
   it("autofills missing sell price from product master", () => {
     const result = validateResolvedIntent(
       baseResolved({
