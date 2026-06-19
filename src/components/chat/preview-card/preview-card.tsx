@@ -5095,37 +5095,6 @@ export function PreviewCard({
                   >
                     <div className="min-w-0">
                       <p className="font-semibold text-inkDeep">{displayItem.name}</p>
-                      {productNeedsChoice &&
-                       !forceCreateProductIndices.includes(displayItem.index) ? (
-                        <EntityChoicePanel
-                          entity={displayItem.resolution}
-                          label="Hàng"
-                          allowCreate
-                          createLabel="hàng"
-                          onSelect={(candidate) =>
-                            handleSelectCandidate(
-                              {
-                                type: "product",
-                                entity: displayItem.resolution,
-                                itemIndex: displayItem.index,
-                              },
-                              candidate,
-                            )
-                          }
-                          onCreate={() => {
-                            setForceCreateProductIndices((indices) =>
-                              indices.includes(displayItem.index)
-                                ? indices
-                                : [...indices, displayItem.index],
-                            );
-                            setDismissedProductCreateIndices((indices) =>
-                              indices.filter((i) => i !== displayItem.index),
-                            );
-                            setProductCreateItemIndex(displayItem.index);
-                            setCreateProductError(null);
-                          }}
-                        />
-                      ) : null}
                     </div>
                     <div className="mt-3 grid grid-cols-[92px_minmax(0,1fr)] items-center gap-2 sm:mt-0 sm:block">
                       <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-stamp sm:hidden">
@@ -5202,6 +5171,39 @@ export function PreviewCard({
                         >
                           <Trash2 className="h-4 w-4" aria-hidden="true" />
                         </Button>
+                      </div>
+                    ) : null}
+                    {productNeedsChoice &&
+                     !forceCreateProductIndices.includes(displayItem.index) ? (
+                      <div className="min-w-0 sm:col-span-full">
+                        <EntityChoicePanel
+                          entity={displayItem.resolution}
+                          label="Hàng"
+                          allowCreate
+                          createLabel="hàng"
+                          onSelect={(candidate) =>
+                            handleSelectCandidate(
+                              {
+                                type: "product",
+                                entity: displayItem.resolution,
+                                itemIndex: displayItem.index,
+                              },
+                              candidate,
+                            )
+                          }
+                          onCreate={() => {
+                            setForceCreateProductIndices((indices) =>
+                              indices.includes(displayItem.index)
+                                ? indices
+                                : [...indices, displayItem.index],
+                            );
+                            setDismissedProductCreateIndices((indices) =>
+                              indices.filter((i) => i !== displayItem.index),
+                            );
+                            setProductCreateItemIndex(displayItem.index);
+                            setCreateProductError(null);
+                          }}
+                        />
                       </div>
                     ) : null}
                     {(productNotFound ||
