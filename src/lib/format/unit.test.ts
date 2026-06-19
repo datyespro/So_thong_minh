@@ -10,6 +10,7 @@ describe("formatUnitDisplay", () => {
     expect(formatUnitDisplay("khối")).toBe("m³");
     expect(formatUnitDisplay("khoi")).toBe("m³");
     expect(formatUnitDisplay("met khoi")).toBe("m³");
+    expect(formatUnitDisplay("m khối")).toBe("m³");
     expect(formatUnitDisplay("  mét   khối  ")).toBe("m³");
   });
 
@@ -18,6 +19,7 @@ describe("formatUnitDisplay", () => {
     expect(formatUnitDisplay("met vuong")).toBe("m²");
     expect(formatUnitDisplay("m2")).toBe("m²");
     expect(formatUnitDisplay("m²")).toBe("m²");
+    expect(formatUnitDisplay("m vuông")).toBe("m²");
   });
 
   it("keeps other units unchanged", () => {

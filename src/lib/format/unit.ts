@@ -4,11 +4,11 @@ export function formatUnitDisplay(unit: string | null | undefined): string {
   // Normalize by converting to lowercase and collapsing multiple spaces
   const normalized = unit.trim().toLowerCase().replace(/\s+/g, " ");
 
-  if (["mét khối", "met khoi", "m3", "m³", "khối", "khoi"].includes(normalized)) {
+  if (["mét khối", "met khoi", "m3", "m³", "khối", "khoi", "m khối"].includes(normalized)) {
     return "m³";
   }
 
-  if (["mét vuông", "met vuong", "m2", "m²"].includes(normalized)) {
+  if (["mét vuông", "met vuong", "m2", "m²", "m vuông"].includes(normalized)) {
     return "m²";
   }
 
