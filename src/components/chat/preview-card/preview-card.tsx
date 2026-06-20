@@ -1594,6 +1594,7 @@ export async function commitRestoredPreviewDraft(
         customer_name: entityName,
         amount,
         raw_input: validated.raw_text,
+        ...businessDateCommitInput(validated.business_date),
       });
 
       if (!result.ok) {
@@ -1606,7 +1607,7 @@ export async function commitRestoredPreviewDraft(
         validated,
         committedInfo: {
           id: result.data.payment_id,
-          business_date: null,
+          business_date: result.data.business_date,
           message: commitConfirmationMessage({
             type: "record_payment",
             entityName,
@@ -4155,6 +4156,7 @@ export function PreviewCard({
         customer_name: entityName,
         amount,
         raw_input: validated.raw_text,
+        ...businessDateCommitInput(validated.business_date),
       });
 
       if (!result.ok) {
@@ -4165,7 +4167,7 @@ export function PreviewCard({
 
       setCommittedInfo({
         id: result.data.payment_id,
-        business_date: null,
+        business_date: result.data.business_date,
         message: commitConfirmationMessage({
           type: "record_payment",
           entityName,

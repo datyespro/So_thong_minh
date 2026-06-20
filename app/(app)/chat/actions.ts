@@ -3194,6 +3194,7 @@ export type CommitPaymentInput = Readonly<{
   customer_name?: string | null;
   amount: number;
   raw_input: string;
+  business_date?: string | null;
   ai_turn_id?: string;
 }>;
 
@@ -3201,12 +3202,14 @@ export type CommitPaymentView = {
   payment_id: string;
   amount: number;
   new_debt_total: number;
+  business_date: string | null;
 };
 
 type CommitPaymentRpcResult = {
   payment_id: string;
   amount: number | string;
   new_debt_total: number | string;
+  business_date?: string;
   idempotent_reuse?: boolean;
 };
 
@@ -3235,12 +3238,23 @@ export async function commitPayment(
     return { ok: false, code: "validation_failed", message: "Số tiền chưa hợp lệ ạ." };
   }
 
+  const businessDateResult = resolveRequestedBusinessDate(input.business_date);
+
+  if (!businessDateResult.ok) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: businessDateResult.message,
+    };
+  }
+
   const { data, error } = await supabase.rpc("commit_payment", {
     p_idempotency_key: input.idempotency_key,
     p_customer_id: input.customer_id,
     p_amount: input.amount,
     p_method: null,
     p_note: input.raw_input ?? null,
+    p_business_date: businessDateResult.businessDate,
   });
 
   if (error || !data) {
@@ -3301,6 +3315,11 @@ export async function commitPayment(
       payment_id: result.payment_id,
       amount: Number(result.amount),
       new_debt_total: Number(result.new_debt_total),
+      business_date:
+        typeof result.business_date === "string" &&
+        result.business_date.length > 0
+          ? result.business_date
+          : businessDateResult.businessDate,
     },
   };
 }

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { businessDateVN } from "@/src/lib/dayjs";
 
 const mocks = vi.hoisted(() => ({
   getUser: vi.fn(),
@@ -73,6 +74,7 @@ describe("commitPayment", () => {
         payment_id: "payment-1",
         amount: 200000,
         new_debt_total: 100000,
+        business_date: "2025-10-11",
         idempotent_reuse: false,
       },
       error: null,
@@ -108,7 +110,12 @@ describe("commitPayment", () => {
 
     expect(result).toEqual({
       ok: true,
-      data: { payment_id: "payment-1", amount: 200000, new_debt_total: 100000 },
+      data: {
+        payment_id: "payment-1",
+        amount: 200000,
+        new_debt_total: 100000,
+        business_date: "2025-10-11",
+      },
     });
 
     const [fnName, params] = mocks.rpc.mock.calls[0];
@@ -177,6 +184,7 @@ describe("commitPayment", () => {
         payment_id: "payment-1",
         amount: 200000,
         new_debt_total: 100000,
+        business_date: "2025-10-11",
         idempotent_reuse: true,
       },
       error: null,
@@ -189,7 +197,12 @@ describe("commitPayment", () => {
 
     expect(result).toEqual({
       ok: true,
-      data: { payment_id: "payment-1", amount: 200000, new_debt_total: 100000 },
+      data: {
+        payment_id: "payment-1",
+        amount: 200000,
+        new_debt_total: 100000,
+        business_date: "2025-10-11",
+      },
     });
     expect(mocks.from).not.toHaveBeenCalledWith("chat_messages");
     expect(mocks.insert).toHaveBeenCalledTimes(1);
@@ -248,5 +261,58 @@ describe("commitPayment", () => {
     if (!result.ok) {
       expect(result.code).toBe("db_error");
     }
+  });
+
+  // TIP-PAY-DATE (VĐ1) — ghi đúng ngày người dùng nói.
+  it("passes the requested business_date to the rpc and view (AC1)", async () => {
+    const result = await commitPayment({
+      ...validInput,
+      business_date: "2025-10-11",
+    });
+
+    const [fnName, params] = mocks.rpc.mock.calls[0];
+    expect(fnName).toBe("commit_payment");
+    expect(params.p_business_date).toBe("2025-10-11");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.business_date).toBe("2025-10-11");
+    }
+  });
+
+  it("defaults a null business_date to today VN without breaking (AC2)", async () => {
+    // RPC bỏ trống business_date -> view dùng ngày đã resolve (hôm nay VN).
+    mocks.rpc.mockResolvedValue({
+      data: {
+        payment_id: "payment-1",
+        amount: 200000,
+        new_debt_total: 100000,
+        idempotent_reuse: false,
+      },
+      error: null,
+    });
+
+    const result = await commitPayment({ ...validInput, business_date: null });
+
+    const [, params] = mocks.rpc.mock.calls[0];
+    expect(params.p_business_date).toBe(businessDateVN());
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.business_date).toBe(businessDateVN());
+    }
+  });
+
+  it("rejects a future business_date without calling the rpc (AC3)", async () => {
+    const result = await commitPayment({
+      ...validInput,
+      business_date: "2999-12-31",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe("validation_failed");
+    }
+    expect(mocks.rpc).not.toHaveBeenCalled();
   });
 });
