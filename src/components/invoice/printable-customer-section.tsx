@@ -6,11 +6,14 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
+  type RefObject,
 } from "react";
+import { createPortal } from "react-dom";
 import { OrderDeleteModal } from "@/src/components/customers/order-delete-modal";
 import { InvoiceSingleView } from "@/src/components/invoice/invoice-single-view";
 import { InvoiceSummaryView } from "@/src/components/invoice/invoice-summary-view";
@@ -448,6 +451,226 @@ export function PrintSingleOrderButton({
   );
 }
 
+export const POPOVER_GAP = 4;
+
+// Pure: chọn hướng mở (lên/xuống) cho popover dựa trên chỗ trống quanh nút.
+// Ưu tiên mở xuống (giữ hành vi cũ); thiếu chỗ dưới thì lật lên; cả hai chật
+// thì chọn bên rộng hơn và kẹp top trong viewport. Không đụng DOM để test được.
+export function resolvePopoverVerticalPlacement(args: {
+  triggerTop: number;
+  triggerBottom: number;
+  viewportHeight: number;
+  menuHeight: number;
+  gap?: number;
+}): { direction: "up" | "down"; top: number } {
+  const gap = args.gap ?? POPOVER_GAP;
+  const spaceBelow = args.viewportHeight - args.triggerBottom;
+  const spaceAbove = args.triggerTop;
+  const need = args.menuHeight + gap;
+
+  if (spaceBelow >= need) {
+    return { direction: "down", top: args.triggerBottom + gap };
+  }
+
+  if (spaceAbove >= need) {
+    return { direction: "up", top: args.triggerTop - gap - args.menuHeight };
+  }
+
+  if (spaceBelow >= spaceAbove) {
+    return { direction: "down", top: args.triggerBottom + gap };
+  }
+
+  return {
+    direction: "up",
+    top: Math.max(gap, args.triggerTop - gap - args.menuHeight),
+  };
+}
+
+// Dựng menu popover ra ngoài mọi khung overflow bằng portal + định vị fixed từ
+// rect của nút bấm, tự lật lên khi thiếu chỗ. Đo menu (visibility:hidden) trước
+// khi hiện để tránh nháy. Đóng khi click ngoài (nút + menu), ESC, hoặc scroll/resize.
+function ActionPopoverMenu({
+  open,
+  onClose,
+  triggerRef,
+  children,
+}: Readonly<{
+  open: boolean;
+  onClose: () => void;
+  triggerRef: RefObject<HTMLButtonElement | null>;
+  children: ReactNode;
+}>) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{ top: number; left: number } | null>(
+    null,
+  );
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPosition(null);
+      return;
+    }
+
+    const trigger = triggerRef.current;
+    const menu = menuRef.current;
+
+    if (!trigger || !menu) {
+      return;
+    }
+
+    const rect = trigger.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const { top } = resolvePopoverVerticalPlacement({
+      triggerTop: rect.top,
+      triggerBottom: rect.bottom,
+      viewportHeight: window.innerHeight,
+      menuHeight: menuRect.height,
+    });
+    const rawLeft = rect.right - menuRect.width;
+    const left = Math.max(
+      8,
+      Math.min(rawLeft, window.innerWidth - menuRect.width - 8),
+    );
+
+    setPosition({ top, left });
+  }, [open, triggerRef]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target as Node;
+
+      if (
+        triggerRef.current?.contains(target) ||
+        menuRef.current?.contains(target)
+      ) {
+        return;
+      }
+
+      onClose();
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    function handleReposition() {
+      onClose();
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("scroll", handleReposition, true);
+    window.addEventListener("resize", handleReposition);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("scroll", handleReposition, true);
+      window.removeEventListener("resize", handleReposition);
+    };
+  }, [open, onClose, triggerRef]);
+
+  if (!open || typeof document === "undefined") {
+    return null;
+  }
+
+  return createPortal(
+    <div
+      ref={menuRef}
+      className="no-print"
+      style={{
+        position: "fixed",
+        top: position?.top ?? 0,
+        left: position?.left ?? 0,
+        zIndex: 60,
+        visibility: position ? "visible" : "hidden",
+      }}
+    >
+      {children}
+    </div>,
+    document.body,
+  );
+}
+
+// Pure: nội dung menu hành động đơn (4 mục). Tách riêng để test bằng
+// renderToStaticMarkup; phần định vị/portal do ActionPopoverMenu lo.
+export function InvoiceActionMenuItems({
+  onPrint,
+  onPdf,
+  onImage,
+  onDelete,
+  isExportingPdf,
+  isExportingImage,
+  disabled,
+  showDelete,
+}: Readonly<{
+  onPrint: () => void;
+  onPdf: () => void;
+  onImage: () => void;
+  onDelete: () => void;
+  isExportingPdf: boolean;
+  isExportingImage: boolean;
+  disabled: boolean;
+  showDelete: boolean;
+}>) {
+  return (
+    <div
+      role="menu"
+      className="no-print w-40 max-w-[calc(100vw-2rem)] rounded border border-ledgerBorder bg-surface py-1 text-left shadow-[0_16px_40px_-18px_rgba(23,37,84,0.45),0_1px_0_var(--ledger-border)]"
+    >
+      <button
+        type="button"
+        role="menuitem"
+        onClick={onPrint}
+        className="flex w-full items-center gap-2 px-3 py-2 text-[14px] font-semibold text-ink hover:bg-paperWarm"
+      >
+        <Printer className="h-4 w-4" aria-hidden="true" />
+        In hóa đơn
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        onClick={onPdf}
+        className="flex w-full items-center gap-2 px-3 py-2 text-[14px] font-semibold text-ink hover:bg-paperWarm disabled:cursor-not-allowed disabled:opacity-55"
+        disabled={disabled || isExportingPdf}
+      >
+        <Download className="h-4 w-4" aria-hidden="true" />
+        {isExportingPdf ? "Đang tạo PDF" : "Tải PDF"}
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        onClick={onImage}
+        className="flex w-full items-center gap-2 px-3 py-2 text-[14px] font-semibold text-ink hover:bg-paperWarm disabled:cursor-not-allowed disabled:opacity-55"
+        disabled={disabled || isExportingImage}
+      >
+        <ImageDown className="h-4 w-4" aria-hidden="true" />
+        {isExportingImage ? "Đang tạo ảnh" : "Tải ảnh"}
+      </button>
+      {showDelete && (
+        <>
+          <div className="my-1 border-t border-ledgerBorder" />
+          <button
+            type="button"
+            role="menuitem"
+            onClick={onDelete}
+            className="flex w-full items-center gap-2 px-3 py-2 text-[14px] font-semibold text-debt hover:bg-paperWarm"
+          >
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+            Xóa đơn
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function InvoiceActionPopover({
   orderId,
   itemCount,
@@ -467,42 +690,15 @@ export function InvoiceActionPopover({
   const context = useContext(PrintOrderContext);
   const [open, setOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const closeMenu = useCallback(() => setOpen(false), []);
   const title =
     itemCount > 1 ? `In hóa đơn (${itemCount} món)` : "In hóa đơn";
 
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    function handlePointerDown(event: PointerEvent) {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(event.target as Node)
-      ) {
-        setOpen(false);
-      }
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setOpen(false);
-      }
-    }
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open]);
-
   return (
-    <div ref={containerRef} className="no-print relative inline-flex justify-end">
+    <div className="no-print relative inline-flex justify-end">
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((value) => !value)}
         className="inline-flex h-8 w-8 items-center justify-center rounded border border-ledgerBorder bg-surface text-ink shadow-sm hover:bg-paperWarm disabled:cursor-not-allowed disabled:opacity-55"
@@ -515,68 +711,30 @@ export function InvoiceActionPopover({
         <span className="sr-only">{title}</span>
       </button>
 
-      {open ? (
-        <div
-          role="menu"
-          className="absolute right-0 top-[calc(100%+4px)] z-40 w-40 max-w-[calc(100vw-2rem)] rounded border border-ledgerBorder bg-surface py-1 text-left shadow-[0_16px_40px_-18px_rgba(23,37,84,0.45),0_1px_0_var(--ledger-border)]"
-        >
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              context?.printOrder(orderId);
-            }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-[14px] font-semibold text-ink hover:bg-paperWarm"
-          >
-            <Printer className="h-4 w-4" aria-hidden="true" />
-            In hóa đơn
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              context?.exportOrderPdf(orderId);
-            }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-[14px] font-semibold text-ink hover:bg-paperWarm disabled:cursor-not-allowed disabled:opacity-55"
-            disabled={!context || context.isExportingPdf}
-          >
-            <Download className="h-4 w-4" aria-hidden="true" />
-            {context?.isExportingPdf ? "Đang tạo PDF" : "Tải PDF"}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              context?.exportOrderImage(orderId);
-            }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-[14px] font-semibold text-ink hover:bg-paperWarm disabled:cursor-not-allowed disabled:opacity-55"
-            disabled={!context || context.isExportingImage}
-          >
-            <ImageDown className="h-4 w-4" aria-hidden="true" />
-            {context?.isExportingImage ? "Đang tạo ảnh" : "Tải ảnh"}
-          </button>
-          {deletable && orderSummary && (
-            <>
-              <div className="my-1 border-t border-ledgerBorder" />
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setOpen(false);
-                  setDeleteOpen(true);
-                }}
-                className="flex w-full items-center gap-2 px-3 py-2 text-[14px] font-semibold text-debt hover:bg-paperWarm"
-              >
-                <Trash2 className="h-4 w-4" aria-hidden="true" />
-                Xóa đơn
-              </button>
-            </>
-          )}
-        </div>
-      ) : null}
+      <ActionPopoverMenu open={open} onClose={closeMenu} triggerRef={triggerRef}>
+        <InvoiceActionMenuItems
+          onPrint={() => {
+            setOpen(false);
+            context?.printOrder(orderId);
+          }}
+          onPdf={() => {
+            setOpen(false);
+            context?.exportOrderPdf(orderId);
+          }}
+          onImage={() => {
+            setOpen(false);
+            context?.exportOrderImage(orderId);
+          }}
+          onDelete={() => {
+            setOpen(false);
+            setDeleteOpen(true);
+          }}
+          isExportingPdf={Boolean(context?.isExportingPdf)}
+          isExportingImage={Boolean(context?.isExportingImage)}
+          disabled={!context}
+          showDelete={Boolean(deletable && orderSummary)}
+        />
+      </ActionPopoverMenu>
       {deletable && orderSummary && (
         <OrderDeleteModal
           open={deleteOpen}
@@ -628,32 +786,14 @@ export function SummaryInvoicePopover({
 }>) {
   const context = useContext(PrintOrderContext);
   const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const closeMenu = useCallback(() => setOpen(false), []);
   const { isFiltered } = useHistoryFilter();
 
-  useEffect(() => {
-    if (!open) return;
-
-    function handlePointerDown(event: PointerEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
-    }
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open]);
-
   return (
-    <div ref={containerRef} className="no-print relative inline-flex">
+    <div className="no-print relative inline-flex">
       <Button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="h-11 rounded border border-ledgerBorder bg-surface px-4 text-[16px] font-semibold text-ink hover:bg-paperWarm"
@@ -665,10 +805,10 @@ export function SummaryInvoicePopover({
         Xuất hóa đơn
       </Button>
 
-      {open ? (
+      <ActionPopoverMenu open={open} onClose={closeMenu} triggerRef={triggerRef}>
         <div
           role="menu"
-          className="absolute right-0 top-[calc(100%+4px)] z-40 w-48 rounded border border-ledgerBorder bg-surface py-1 text-left shadow-[0_16px_40px_-18px_rgba(23,37,84,0.45),0_1px_0_var(--ledger-border)]"
+          className="no-print w-48 max-w-[calc(100vw-2rem)] rounded border border-ledgerBorder bg-surface py-1 text-left shadow-[0_16px_40px_-18px_rgba(23,37,84,0.45),0_1px_0_var(--ledger-border)]"
         >
           <button
             type="button"
@@ -709,7 +849,7 @@ export function SummaryInvoicePopover({
             {context?.isExportingImage ? "Đang tạo ảnh..." : "Tải ảnh"}
           </button>
         </div>
-      ) : null}
+      </ActionPopoverMenu>
     </div>
   );
 }
