@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   resolveOne,
   RESOLVE_THRESHOLDS,
+  distinctiveTokenConflict,
   type EntityRow,
 } from "@/src/lib/ai/entity-resolver";
 import { resolveEntities, type OwnerEntityRows } from "@/src/lib/ai/resolve-entities";
@@ -409,6 +410,80 @@ describe("resolveOne — TIP-FIX-RESOLVE number-guard", () => {
 
     const rThep = resolveOne("thép", "product", thepRows);
     expect(rThep.status).not.toBe("not_found"); 
+  });
+});
+
+describe("resolveOne — TIP-FIX-RESOLVE-2 distinctive-token guard", () => {
+  // seed: chỉ có "Công trình nhà Tiến Trung" (đã có khách), no aliases để ép
+  // đi nhánh fuzzy giống các block sẵn có.
+  const congTrinhRows: EntityRow[] = [
+    { id: "c-tien-trung", name: "Công trình nhà Tiến Trung", aliases: [] },
+  ];
+
+  it("blocks a long name that differs only in the last token (CA LỖI THẬT) (AC1)", () => {
+    const resolved = resolveOne(
+      "Công trình nhà Tiến Tâm",
+      "customer",
+      congTrinhRows,
+    );
+
+    expect(resolved.status).toBe("not_found");
+    expect(resolved.resolved_id).toBeNull();
+    expect(resolved.candidates).toEqual([]);
+  });
+
+  it("the full name still resolves correctly (AC2)", () => {
+    // Spec AC2 variant "công trình nhà tiến trung": khớp exact-name -> resolved.
+    const resolved = resolveOne(
+      "công trình nhà tiến trung",
+      "customer",
+      congTrinhRows,
+    );
+
+    expect(resolved.status).toBe("resolved");
+    expect(resolved.resolved_id).toBe("c-tien-trung");
+  });
+
+  it("the guard does not over-block a subset name into not_found (AC2)", () => {
+    // "Tiến Trung" là subset của tên dài: dice=0.571 (baseline) => needs_confirmation,
+    // KHÔNG bị guard chặn thành not_found. distinctiveTokenConflict = false ở đây.
+    const resolved = resolveOne("Tiến Trung", "customer", congTrinhRows);
+
+    expect(resolved.status).not.toBe("not_found");
+    expect(resolved.candidates[0]?.id).toBe("c-tien-trung");
+  });
+
+  it("a one-character typo still points to the right person (AC3)", () => {
+    const resolved = resolveOne(
+      "Công trình nhà Tiến Trunng",
+      "customer",
+      congTrinhRows,
+    );
+
+    expect(resolved.status).not.toBe("not_found");
+    expect(resolved.candidates[0]?.id).toBe("c-tien-trung");
+  });
+
+  it("two different product types are not merged (AC4)", () => {
+    const resolved = resolveOne("cát đen", "product", [
+      { id: "p-cat-vang", name: "Cát vàng", aliases: [] },
+    ]);
+
+    expect(resolved.status).toBe("not_found");
+  });
+
+  it("the pure helper matches the spec (AC5)", () => {
+    expect(
+      distinctiveTokenConflict(
+        "cong trinh nha tien tam",
+        "cong trinh nha tien trung",
+      ),
+    ).toBe(true);
+    expect(
+      distinctiveTokenConflict("tien trung", "cong trinh nha tien trung"),
+    ).toBe(false);
+    expect(distinctiveTokenConflict("hung", "hung")).toBe(false);
+    expect(distinctiveTokenConflict("cat den", "cat vang")).toBe(true);
   });
 });
 

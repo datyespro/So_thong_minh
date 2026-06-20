@@ -105,6 +105,23 @@ export function numbersConflict(a: string[], b: string[]): boolean {
   return false;
 }
 
+// Hai chuỗi ĐÃ normalizeVi + stripHonorific. Trả true khi mỗi bên còn ít nhất
+// một token "đặc trưng" (không tìm được token đối ứng đủ giống ở bên kia) — tức
+// hai tên cùng một khúc soạn sẵn nhưng chỉ tên riêng khác nhau => khác thực thể.
+export const TOKEN_MATCH_MIN = 0.5;
+export function distinctiveTokenConflict(a: string, b: string): boolean {
+  const aTokens = a.split(" ").filter(Boolean);
+  const bTokens = b.split(" ").filter(Boolean);
+  if (aTokens.length === 0 || bTokens.length === 0) {
+    return false;
+  }
+  const matched = (token: string, others: string[]) =>
+    others.some((o) => o === token || diceSimilarity(token, o) >= TOKEN_MATCH_MIN);
+  const aUnmatched = aTokens.some((t) => !matched(t, bTokens));
+  const bUnmatched = bTokens.some((t) => !matched(t, aTokens));
+  return aUnmatched && bUnmatched;
+}
+
 function emptyResolution(
   raw: string | null,
   entityType: EntityType,
@@ -242,6 +259,10 @@ function bestFuzzyCandidate(raw: string, row: EntityRow): EntityCandidate {
     const valueNums = numberTokens(strippedValue);
 
     if (numbersConflict(rawNums, valueNums)) {
+      continue;
+    }
+
+    if (distinctiveTokenConflict(strippedRaw, strippedValue)) {
       continue;
     }
 
