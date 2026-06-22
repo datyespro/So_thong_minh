@@ -317,4 +317,63 @@ describe("commitPayment", () => {
     }
     expect(mocks.rpc).not.toHaveBeenCalled();
   });
+
+  // TIP-DC-4 — gắn nhãn nhóm (danh mục) cho cọc qua scope params.
+  it("passes scope_category_id to the rpc when provided (AC1)", async () => {
+    const result = await commitPayment({
+      ...validInput,
+      scope_category_id: "cat-1",
+    });
+
+    const [fnName, params] = mocks.rpc.mock.calls[0];
+    expect(fnName).toBe("commit_payment");
+    expect(params.p_scope_category_id).toBe("cat-1");
+    expect(params.p_scope_product_id).toBeNull();
+    expect(result.ok).toBe(true);
+  });
+
+  it("defaults scope params to null when omitted (AC2)", async () => {
+    await commitPayment(validInput);
+
+    const [, params] = mocks.rpc.mock.calls[0];
+    expect(params.p_scope_category_id).toBeNull();
+    expect(params.p_scope_product_id).toBeNull();
+  });
+
+  it("maps a scope_category not found rpc error to validation_failed (AC3)", async () => {
+    mocks.rpc.mockResolvedValue({
+      data: null,
+      error: { message: "scope_category not found" },
+    });
+
+    const result = await commitPayment({
+      ...validInput,
+      scope_category_id: "cat-bad",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      code: "validation_failed",
+      message: "Nhóm không hợp lệ ạ.",
+    });
+  });
+
+  it("maps a scope must be product OR category rpc error to validation_failed (AC3)", async () => {
+    mocks.rpc.mockResolvedValue({
+      data: null,
+      error: { message: "scope must be product OR category" },
+    });
+
+    const result = await commitPayment({
+      ...validInput,
+      scope_category_id: "cat-1",
+      scope_product_id: "prod-1",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      code: "validation_failed",
+      message: "Nhóm không hợp lệ ạ.",
+    });
+  });
 });

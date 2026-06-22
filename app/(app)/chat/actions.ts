@@ -3573,6 +3573,8 @@ export type CommitPaymentInput = Readonly<{
   amount: number;
   raw_input: string;
   business_date?: string | null;
+  scope_category_id?: string | null;
+  scope_product_id?: string | null;
   ai_turn_id?: string;
 }>;
 
@@ -3633,9 +3635,21 @@ export async function commitPayment(
     p_method: null,
     p_note: input.raw_input ?? null,
     p_business_date: businessDateResult.businessDate,
+    p_scope_category_id: input.scope_category_id ?? null,
+    p_scope_product_id: input.scope_product_id ?? null,
   });
 
   if (error || !data) {
+    // DC-4: RPC v4 RAISE nhãn xấu (owner/sống/loại trừ) → validation_failed gọn,
+    // KHÔNG để rơi vào db_error chung mù.
+    const msg = error?.message ?? "";
+    if (
+      msg.includes("scope_category not found") ||
+      msg.includes("scope_product not found") ||
+      msg.includes("scope must be product OR category")
+    ) {
+      return { ok: false, code: "validation_failed", message: "Nhóm không hợp lệ ạ." };
+    }
     // VĐ3: RPC v3 không còn RAISE 'exceeds' (trả vượt nợ được phép) → mọi lỗi RPC
     // còn lại đều là lỗi thật, map về db_error chung.
     return { ok: false, code: "db_error", message: "Chưa ghi được, bác thử lại ạ." };

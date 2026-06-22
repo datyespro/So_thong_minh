@@ -13,6 +13,7 @@ import {
   createProductFromChat,
   deleteProduct,
   getCustomerDebt,
+  listCategories,
   persistDismissedPreviewMessage,
   persistCustomerManagementMessage,
   persistProductManagementMessage,
@@ -102,6 +103,7 @@ import {
 } from "@/src/lib/ai/validate-schema";
 import { businessDateVN, dayjs } from "@/src/lib/dayjs";
 import { parseProductSellPriceInput } from "@/src/lib/products/update";
+import type { CategoryView } from "@/src/lib/products/category";
 import { formatUnitDisplay } from "@/src/lib/format/unit";
 import {
   clearDraft,
@@ -222,6 +224,11 @@ export function getPreviewBusinessDate(
 
 export function businessDateCommitInput(value?: string | null) {
   return value != null ? { business_date: value } : {};
+}
+
+// DC-4: gắn nhãn nhóm (danh mục) lúc tạo cọc. v1 chỉ category; spread rỗng khi "Chung".
+export function scopeCommitInput(categoryId: string | null) {
+  return categoryId ? { scope_category_id: categoryId } : {};
 }
 
 export function formatPreviewBusinessDate(value: string) {
@@ -896,7 +903,7 @@ export async function saveCustomerManagementPreview(
 const TITLE_BY_INTENT: Record<string, string> = {
   create_order: "Đơn bán hàng",
   create_purchase: "Đơn nhập hàng",
-  record_payment: "Thu / trả nợ",
+  record_payment: "Thu / trả nợ / đặt cọc",
 };
 
 const BUTTON_BY_INTENT: Record<string, string> = {
@@ -1539,6 +1546,7 @@ async function validateRestoredDraft(draft: PreviewDraft) {
 
 export async function commitRestoredPreviewDraft(
   draft: PreviewDraft,
+  scopeCategoryId: string | null = null,
 ): Promise<RestoredDraftCommitResult> {
   clearDraft(draft.ownerId);
 
@@ -1630,6 +1638,7 @@ export async function commitRestoredPreviewDraft(
         amount,
         raw_input: validated.raw_text,
         ...businessDateCommitInput(validated.business_date),
+        ...scopeCommitInput(scopeCategoryId),
       });
 
       if (!result.ok) {
@@ -3012,6 +3021,10 @@ export function PreviewCard({
   // record_payment. null = unknown (loading/failed) -> client doesn't block; the
   // DB function still defends.
   const [customerDebt, setCustomerDebt] = React.useState<number | null>(null);
+  // DC-4: nhãn nhóm (danh mục) tùy chọn gắn lúc tạo cọc. "" = "Chung" (NULL scope).
+  // 1 state phủ cả live + restored (cùng component). KHÔNG persist qua reload (v1).
+  const [selectedScopeCategoryId, setSelectedScopeCategoryId] = React.useState("");
+  const [scopeCategories, setScopeCategories] = React.useState<CategoryView[]>([]);
   const [drafts, setDrafts] = React.useState<DraftInputs>({
     prices: {},
     quantities: {},
@@ -3145,6 +3158,28 @@ export function PreviewCard({
       cancelled = true;
     };
   }, [paymentCustomerId]);
+
+  // DC-4: nạp danh mục active để gắn nhãn nhóm cho cọc (mirror getCustomerDebt
+  // effect). List rỗng → selector vẫn render mỗi "Chung", không lỗi.
+  React.useEffect(() => {
+    if (validated.intent !== "record_payment") {
+      return;
+    }
+
+    let cancelled = false;
+
+    listCategories()
+      .then((result) => {
+        if (!cancelled && result.ok) {
+          setScopeCategories(result.data);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [validated.intent]);
 
   function handleSelectCustomerManagementCandidate(
     candidate: CustomerManagementCandidate,
@@ -4189,6 +4224,7 @@ export function PreviewCard({
         amount,
         raw_input: validated.raw_text,
         ...businessDateCommitInput(validated.business_date),
+        ...scopeCommitInput(selectedScopeCategoryId || null),
       });
 
       if (!result.ok) {
@@ -4297,7 +4333,10 @@ export function PreviewCard({
     setCommitError(null);
     setNotice(null);
 
-    const result = await commitRestoredPreviewDraft(restoredDraft);
+    const result = await commitRestoredPreviewDraft(
+      restoredDraft,
+      selectedScopeCategoryId || null,
+    );
 
     if (result.validated) {
       setRestoredValidated(result.validated);
@@ -5052,6 +5091,36 @@ export function PreviewCard({
               >
                 {formatOverpaymentInfo(overpaymentCreditAmount)}
               </p>
+            ) : null}
+            {liveInteractions && !committedInfo ? (
+              <div className="mt-3">
+                <label
+                  className="mb-1 block text-[14px] font-medium text-textMute"
+                  htmlFor={`scope-select-${idempotencyKey}`}
+                >
+                  Gắn nhóm (tùy chọn)
+                </label>
+                <select
+                  id={`scope-select-${idempotencyKey}`}
+                  data-testid="scope-category-select"
+                  value={selectedScopeCategoryId}
+                  disabled={isCommitting}
+                  onChange={(event) =>
+                    setSelectedScopeCategoryId(event.target.value)
+                  }
+                  className="h-11 w-full rounded border border-ledgerBorder bg-paper px-3 text-[16px] text-inkDeep"
+                >
+                  <option value="">— Chung (không gắn) —</option>
+                  {scopeCategories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-[13px] leading-5 text-textMute">
+                  Gắn khoản này cho một nhóm hàng để theo dõi (không bắt buộc).
+                </p>
+              </div>
             ) : null}
           </div>
         ) : (

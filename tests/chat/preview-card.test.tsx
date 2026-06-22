@@ -7,6 +7,7 @@ import {
   overpaymentCredit,
   PreviewCard,
   ProductCreatePanel,
+  scopeCommitInput,
 } from "@/src/components/chat/preview-card/preview-card";
 import { createEmptyPreviewCardPatch } from "@/src/components/chat/preview-card";
 import { getPatchedPreviewState } from "@/src/components/chat/preview-card/preview-state";
@@ -794,7 +795,7 @@ describe("PreviewCard", () => {
     expect(purchaseHtml).toContain("Đơn vị");
     expect(purchaseHtml).toContain("Ghi nhập hàng");
     expect(purchaseHtml).toContain(">Bỏ</button>");
-    expect(paymentHtml).toContain("Thu / trả nợ");
+    expect(paymentHtml).toContain("Thu / trả nợ / đặt cọc");
     expect(paymentHtml).toContain("500.000 đ");
     expect(paymentHtml).not.toContain("Đơn vị");
     expect(paymentHtml).toContain("Ghi thu nợ");
@@ -813,7 +814,7 @@ describe("PreviewCard", () => {
     );
 
     // Header "Tổng tiền" shows the unsettled dash instead of a misleading number.
-    expect(html).toContain("Thu / trả nợ");
+    expect(html).toContain("Thu / trả nợ / đặt cọc");
     expect(html).toContain("—");
   });
 
@@ -1369,5 +1370,16 @@ describe("formatOverpaymentInfo", () => {
     const text = formatOverpaymentInfo(77_416_000);
     expect(text).toContain("Khách trả trước 77.416.000");
     expect(text).toContain("ghi xong mình nợ lại khách khoản này");
+  });
+});
+
+// TIP-DC-4 — pure helper gắn nhãn nhóm vào input commitPayment.
+describe("scopeCommitInput", () => {
+  it("returns scope_category_id when a category is chosen", () => {
+    expect(scopeCommitInput("cat-1")).toEqual({ scope_category_id: "cat-1" });
+  });
+
+  it("returns an empty object for 'Chung' (null)", () => {
+    expect(scopeCommitInput(null)).toEqual({});
   });
 });
