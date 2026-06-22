@@ -16,6 +16,7 @@ export function upsertProductSorted(
     unit: created.unit,
     sell_price: created.sell_price,
     current_stock: 0,
+    category_id: null,
   };
 
   const newList = [...list, newRow];

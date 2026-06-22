@@ -80,4 +80,46 @@ describe("product update validation", () => {
       },
     });
   });
+
+  it("keeps a non-empty category_id as a trimmed string", () => {
+    expect(
+      validateProductUpdatePatch({ category_id: "  cat-123  " }),
+    ).toEqual({
+      ok: true,
+      data: {
+        patch: { category_id: "cat-123" },
+        fields: ["category_id"],
+      },
+    });
+  });
+
+  it("treats null and blank category_id as removing the category", () => {
+    expect(validateProductUpdatePatch({ category_id: null })).toEqual({
+      ok: true,
+      data: {
+        patch: { category_id: null },
+        fields: ["category_id"],
+      },
+    });
+
+    expect(validateProductUpdatePatch({ category_id: "   " })).toEqual({
+      ok: true,
+      data: {
+        patch: { category_id: null },
+        fields: ["category_id"],
+      },
+    });
+  });
+
+  it("combines category_id with other product fields", () => {
+    expect(
+      validateProductUpdatePatch({ sell_price: "80.000", category_id: "cat-1" }),
+    ).toEqual({
+      ok: true,
+      data: {
+        patch: { sell_price: 80000, category_id: "cat-1" },
+        fields: ["sell_price", "category_id"],
+      },
+    });
+  });
 });

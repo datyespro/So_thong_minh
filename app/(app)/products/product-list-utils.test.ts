@@ -5,8 +5,8 @@ import type { CreatedProductView } from "@/app/(app)/chat/actions";
 
 describe("upsertProductSorted", () => {
   const initialList: ProductsTableRow[] = [
-    { id: "1", name: "Cát vàng", unit: "m³", sell_price: 200000, current_stock: 10 },
-    { id: "2", name: "Đá 1x2", unit: "m³", sell_price: 300000, current_stock: 5 },
+    { id: "1", name: "Cát vàng", unit: "m³", sell_price: 200000, current_stock: 10, category_id: null },
+    { id: "2", name: "Đá 1x2", unit: "m³", sell_price: 300000, current_stock: 5, category_id: null },
   ];
 
   test("adds a new product and sorts alphabetically by name", () => {
@@ -50,8 +50,8 @@ describe("upsertProductSorted", () => {
 
 describe("removeProductById", () => {
   const list: ProductsTableRow[] = [
-    { id: "1", name: "Cát vàng", unit: "m³", sell_price: 200000, current_stock: 10 },
-    { id: "2", name: "Đá 1x2", unit: "m³", sell_price: 300000, current_stock: 5 },
+    { id: "1", name: "Cát vàng", unit: "m³", sell_price: 200000, current_stock: 10, category_id: null },
+    { id: "2", name: "Đá 1x2", unit: "m³", sell_price: 300000, current_stock: 5, category_id: null },
   ];
 
   test("removes the product with the given id and keeps order", () => {

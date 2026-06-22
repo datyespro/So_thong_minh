@@ -57,6 +57,10 @@ import {
   type ProductSellPriceInput,
   type ProductUpdateInput,
 } from "@/src/lib/products/update";
+import {
+  validateCategoryName,
+  type CategoryView,
+} from "@/src/lib/products/category";
 import { createClient } from "@/src/lib/supabase/server";
 import { businessDateVN } from "@/src/lib/dayjs";
 
@@ -120,6 +124,12 @@ type ProductUpdateRow = {
   name: string;
   unit: string;
   sell_price: number | string | null;
+  category_id: string | null;
+};
+
+type ProductCategoryRow = {
+  id: string;
+  name: string;
 };
 
 type ProductDeleteRow = ProductUpdateRow & {
@@ -139,6 +149,7 @@ export type UpdatedProductView = {
   name: string;
   unit: string;
   sell_price: number | null;
+  category_id: string | null;
 };
 export type UpdatedCustomerView = CustomerRow;
 export type UpdatedCustomerPhoneView = CustomerRow & {
@@ -773,6 +784,18 @@ function findProductByName(rows: ProductRow[] | null, name: string) {
 
   return (rows ?? []).find(
     (row) => normalizeProductName(row.name) === normalized,
+  ) ?? null;
+}
+
+function normalizeCategoryName(name: string) {
+  return name.trim().toLocaleLowerCase("vi-VN");
+}
+
+function findCategoryByName(rows: ProductCategoryRow[] | null, name: string) {
+  const normalized = normalizeCategoryName(name);
+
+  return (rows ?? []).find(
+    (row) => normalizeCategoryName(row.name) === normalized,
   ) ?? null;
 }
 
@@ -2476,7 +2499,7 @@ export async function updateProduct(
 
   const { data: beforeData, error: beforeError } = await supabase
     .from("products")
-    .select("id,name,unit,sell_price")
+    .select("id,name,unit,sell_price,category_id")
     .eq("owner_id", user.id)
     .eq("id", trimmedProductId)
     .eq("is_active", true)
@@ -2525,6 +2548,30 @@ export async function updateProduct(
     }
   }
 
+  // R1: chỉ kiểm khi GÁN MỚI một danh mục (khác danh mục hàng đang trỏ). Danh
+  // mục hợp lệ = active của owner. Giữ nguyên category_id cũ (kể cả danh mục đã
+  // xóa mềm) hoặc gỡ về null thì không chặn — tránh chặn nhầm khi sửa giá/đơn vị.
+  if (
+    validation.data.patch.category_id != null &&
+    validation.data.patch.category_id !== before.category_id
+  ) {
+    const categoryRead = await supabase
+      .from("product_categories")
+      .select("id")
+      .eq("owner_id", user.id)
+      .eq("id", validation.data.patch.category_id)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (categoryRead.error || !categoryRead.data) {
+      return {
+        ok: false,
+        code: "validation_failed",
+        message: "Danh mục không hợp lệ ạ.",
+      };
+    }
+  }
+
   const { data, error } = await supabase
     .from("products")
     .update(validation.data.patch)
@@ -2532,7 +2579,7 @@ export async function updateProduct(
     .eq("id", trimmedProductId)
     .eq("is_active", true)
     .is("deleted_at", null)
-    .select("id,name,unit,sell_price")
+    .select("id,name,unit,sell_price,category_id")
     .maybeSingle();
 
   if (error) {
@@ -2556,11 +2603,13 @@ export async function updateProduct(
     name: before.name,
     unit: before.unit,
     sell_price: nullableProductMoney(before.sell_price),
+    category_id: before.category_id,
   };
   const afterAudit = {
     name: updated.name,
     unit: updated.unit,
     sell_price: nullableProductMoney(updated.sell_price),
+    category_id: updated.category_id,
   };
 
   const { error: auditError } = await supabase.from("audit_log").insert({
@@ -2593,6 +2642,7 @@ export async function updateProduct(
       name: updated.name,
       unit: updated.unit,
       sell_price: nullableProductMoney(updated.sell_price),
+      category_id: updated.category_id ?? null,
     },
   };
 }
@@ -2736,6 +2786,334 @@ export async function adjustProductStock(
 
   const result = data as { adjusted: boolean; current_stock: number; delta: number };
   return { ok: true, data: result };
+}
+
+export async function listCategories(): Promise<ActionResult<CategoryView[]>> {
+  const user = await getAuthenticatedUser();
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("product_categories")
+    .select("id,name")
+    .eq("owner_id", user.id)
+    .is("deleted_at", null)
+    .order("name", { ascending: true });
+
+  if (error) {
+    return {
+      ok: false,
+      code: "db_error",
+      message: "Chưa đọc được danh mục, bác thử lại ạ.",
+    };
+  }
+
+  return { ok: true, data: (data ?? []) as CategoryView[] };
+}
+
+export async function createCategory(
+  name: string,
+): Promise<ActionResult<CategoryView>> {
+  const validation = validateCategoryName(name);
+
+  if (!validation.ok) {
+    return { ok: false, code: "validation_failed", message: validation.message };
+  }
+
+  const user = await getAuthenticatedUser();
+  const supabase = await createClient();
+
+  const existingRead = await supabase
+    .from("product_categories")
+    .select("id,name")
+    .eq("owner_id", user.id)
+    .is("deleted_at", null);
+
+  if (existingRead.error) {
+    return {
+      ok: false,
+      code: "db_error",
+      message: "Chưa kiểm được danh mục, bác thử lại ạ.",
+    };
+  }
+
+  const existing = findCategoryByName(
+    existingRead.data as ProductCategoryRow[] | null,
+    validation.value,
+  );
+
+  if (existing) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Đã có danh mục tên này rồi ạ.",
+    };
+  }
+
+  const { data, error } = await supabase
+    .from("product_categories")
+    .insert({ owner_id: user.id, name: validation.value })
+    .select("id,name")
+    .single();
+
+  if (error || !data) {
+    if (isUniqueViolation(error)) {
+      return {
+        ok: false,
+        code: "validation_failed",
+        message: "Đã có danh mục tên này rồi ạ.",
+      };
+    }
+
+    return {
+      ok: false,
+      code: "db_error",
+      message: "Chưa thêm được danh mục, bác thử lại ạ.",
+    };
+  }
+
+  const created = data as CategoryView;
+  const { error: auditError } = await supabase.from("audit_log").insert({
+    owner_id: user.id,
+    actor_id: user.id,
+    entity_type: "product_category",
+    entity_id: created.id,
+    action: "create",
+    before_data: null,
+    after_data: { name: created.name },
+    metadata: { source: "createCategory" },
+  });
+
+  if (auditError) {
+    console.error("audit_log insert failed for createCategory", auditError);
+
+    return {
+      ok: false,
+      code: "db_error",
+      message: "Đã thêm danh mục nhưng chưa ghi được nhật ký, bác tải lại kiểm tra giúp em ạ.",
+    };
+  }
+
+  return { ok: true, data: created };
+}
+
+export async function renameCategory(
+  id: string,
+  name: string,
+): Promise<ActionResult<CategoryView>> {
+  if (typeof id !== "string" || id.trim().length === 0) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Không tìm thấy danh mục để sửa.",
+    };
+  }
+
+  const validation = validateCategoryName(name);
+
+  if (!validation.ok) {
+    return { ok: false, code: "validation_failed", message: validation.message };
+  }
+
+  const user = await getAuthenticatedUser();
+  const supabase = await createClient();
+  const trimmedId = id.trim();
+
+  const { data: beforeData, error: beforeError } = await supabase
+    .from("product_categories")
+    .select("id,name")
+    .eq("owner_id", user.id)
+    .eq("id", trimmedId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (beforeError) {
+    return {
+      ok: false,
+      code: "db_error",
+      message: "Chưa đọc được danh mục, bác thử lại ạ.",
+    };
+  }
+
+  if (!beforeData) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Không tìm thấy danh mục để sửa.",
+    };
+  }
+
+  const before = beforeData as ProductCategoryRow;
+
+  const existingRead = await supabase
+    .from("product_categories")
+    .select("id,name")
+    .eq("owner_id", user.id)
+    .is("deleted_at", null);
+
+  if (!existingRead.error) {
+    const duplicate = findCategoryByName(
+      existingRead.data as ProductCategoryRow[] | null,
+      validation.value,
+    );
+
+    if (duplicate && duplicate.id !== trimmedId) {
+      return {
+        ok: false,
+        code: "validation_failed",
+        message: "Đã có danh mục tên này rồi ạ.",
+      };
+    }
+  }
+
+  const { data, error } = await supabase
+    .from("product_categories")
+    .update({ name: validation.value })
+    .eq("owner_id", user.id)
+    .eq("id", trimmedId)
+    .is("deleted_at", null)
+    .select("id,name")
+    .maybeSingle();
+
+  if (error) {
+    if (isUniqueViolation(error)) {
+      return {
+        ok: false,
+        code: "validation_failed",
+        message: "Đã có danh mục tên này rồi ạ.",
+      };
+    }
+
+    return {
+      ok: false,
+      code: "db_error",
+      message: "Chưa sửa được danh mục, bác thử lại ạ.",
+    };
+  }
+
+  if (!data) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Không tìm thấy danh mục để sửa.",
+    };
+  }
+
+  const updated = data as CategoryView;
+  const { error: auditError } = await supabase.from("audit_log").insert({
+    owner_id: user.id,
+    actor_id: user.id,
+    entity_type: "product_category",
+    entity_id: updated.id,
+    action: "update",
+    before_data: { name: before.name },
+    after_data: { name: updated.name },
+    metadata: { fields: ["name"] },
+  });
+
+  if (auditError) {
+    console.error("audit_log insert failed for renameCategory", auditError);
+
+    return {
+      ok: false,
+      code: "db_error",
+      message: "Đã sửa danh mục nhưng chưa ghi được nhật ký, bác tải lại kiểm tra giúp em ạ.",
+    };
+  }
+
+  return { ok: true, data: updated };
+}
+
+export async function deleteCategory(
+  id: string,
+): Promise<ActionResult<{ id: string }>> {
+  if (typeof id !== "string" || id.trim().length === 0) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Không tìm thấy danh mục để xóa.",
+    };
+  }
+
+  const user = await getAuthenticatedUser();
+  const supabase = await createClient();
+  const trimmedId = id.trim();
+
+  const { data: beforeData, error: beforeError } = await supabase
+    .from("product_categories")
+    .select("id,name")
+    .eq("owner_id", user.id)
+    .eq("id", trimmedId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (beforeError) {
+    return {
+      ok: false,
+      code: "db_error",
+      message: "Chưa đọc được danh mục, bác thử lại ạ.",
+    };
+  }
+
+  if (!beforeData) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Không tìm thấy danh mục để xóa.",
+    };
+  }
+
+  const before = beforeData as ProductCategoryRow;
+  const deletedAt = new Date().toISOString();
+
+  // Soft-delete: chỉ set deleted_at. KHÔNG null-hóa products.category_id của các
+  // SP đang trỏ (DC-5 sẽ fallback "Chưa phân loại" cho danh mục đã xóa).
+  const { data, error } = await supabase
+    .from("product_categories")
+    .update({ deleted_at: deletedAt })
+    .eq("owner_id", user.id)
+    .eq("id", trimmedId)
+    .is("deleted_at", null)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    return {
+      ok: false,
+      code: "db_error",
+      message: "Chưa xóa được danh mục, bác thử lại ạ.",
+    };
+  }
+
+  if (!data) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Không tìm thấy danh mục để xóa.",
+    };
+  }
+
+  const { error: auditError } = await supabase.from("audit_log").insert({
+    owner_id: user.id,
+    actor_id: user.id,
+    entity_type: "product_category",
+    entity_id: trimmedId,
+    action: "delete",
+    before_data: { name: before.name },
+    after_data: { deleted: true },
+    metadata: { deleted_at: deletedAt },
+  });
+
+  if (auditError) {
+    console.error("audit_log insert failed for deleteCategory", auditError);
+
+    return {
+      ok: false,
+      code: "db_error",
+      message: "Đã xóa danh mục nhưng chưa ghi được nhật ký, bác tải lại kiểm tra giúp em ạ.",
+    };
+  }
+
+  return { ok: true, data: { id: trimmedId } };
 }
 
 export type CommitOrderItemInput = Readonly<{

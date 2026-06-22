@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Save, X, Trash2, ClipboardCheck } from "lucide-react";
+import { Pencil, Save, X, Trash2, ClipboardCheck, Tags } from "lucide-react";
 import { updateProduct } from "@/app/(app)/chat/actions";
 import { formatUnitDisplay } from "@/src/lib/format/unit";
 import { Button } from "@/src/components/ui/button";
@@ -17,7 +17,9 @@ import {
 import { ProductCreateForm } from "./product-create-form";
 import { ProductDeleteModal } from "./product-delete-modal";
 import { ProductAdjustStockModal } from "./product-adjust-stock-modal";
+import { CategoryManageModal } from "./category-manage-modal";
 import { removeProductById } from "./product-list-utils";
+import type { CategoryView } from "@/src/lib/products/category";
 
 export type ProductsTableRow = {
   id: string;
@@ -25,15 +27,19 @@ export type ProductsTableRow = {
   unit: string;
   sell_price: ProductNumericValue;
   current_stock: ProductNumericValue;
+  category_id: string | null;
 };
 
 const PRODUCT_GRID_COLUMNS =
-  "sm:grid-cols-[minmax(0,1.7fr)_0.7fr_0.9fr_0.8fr_auto]";
+  "sm:grid-cols-[minmax(0,1.5fr)_0.7fr_0.8fr_0.7fr_0.9fr_auto]";
+
+const UNCATEGORIZED_LABEL = "Chưa phân loại";
 
 type DraftState = {
   name: string;
   unit: string;
   sellPrice: string;
+  categoryId: string;
 };
 
 function ProductField({
@@ -61,7 +67,13 @@ function priceDraftValue(value: ProductNumericValue) {
 
 function applyUpdatedProduct(
   products: ProductsTableRow[],
-  updated: Readonly<{ id: string; name: string; unit: string; sell_price: number | null }>,
+  updated: Readonly<{
+    id: string;
+    name: string;
+    unit: string;
+    sell_price: number | null;
+    category_id: string | null;
+  }>,
 ) {
   return products.map((product) =>
     product.id === updated.id
@@ -70,6 +82,7 @@ function applyUpdatedProduct(
           name: updated.name,
           unit: updated.unit,
           sell_price: updated.sell_price,
+          category_id: updated.category_id,
         }
       : product,
   );
@@ -77,16 +90,20 @@ function applyUpdatedProduct(
 
 export function ProductsTable({
   initialProducts,
+  initialCategories,
 }: Readonly<{
   initialProducts: ProductsTableRow[];
+  initialCategories: CategoryView[];
 }>) {
   const router = useRouter();
   const [products, setProducts] = React.useState(initialProducts);
+  const [categories, setCategories] = React.useState(initialCategories);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [draft, setDraft] = React.useState<DraftState>({
     name: "",
     unit: "",
     sellPrice: "",
+    categoryId: "",
   });
   const [errorByProduct, setErrorByProduct] = React.useState<Record<string, string>>(
     {},
@@ -94,11 +111,21 @@ export function ProductsTable({
   const [savingId, setSavingId] = React.useState<string | null>(null);
   const [deletingProduct, setDeletingProduct] = React.useState<ProductsTableRow | null>(null);
   const [adjustingProduct, setAdjustingProduct] = React.useState<ProductsTableRow | null>(null);
+  const [isManagingCategories, setIsManagingCategories] = React.useState(false);
   const [, startTransition] = React.useTransition();
 
   React.useEffect(() => {
     setProducts(initialProducts);
   }, [initialProducts]);
+
+  React.useEffect(() => {
+    setCategories(initialCategories);
+  }, [initialCategories]);
+
+  const categoryNameById = React.useMemo(
+    () => new Map(categories.map((category) => [category.id, category.name])),
+    [categories],
+  );
 
   function handleStartEdit(product: ProductsTableRow) {
     setEditingId(product.id);
@@ -106,6 +133,7 @@ export function ProductsTable({
       name: product.name,
       unit: product.unit,
       sellPrice: priceDraftValue(product.sell_price),
+      categoryId: product.category_id ?? "",
     });
     setErrorByProduct((current) => {
       const next = { ...current };
@@ -116,7 +144,7 @@ export function ProductsTable({
 
   function handleCancelEdit(productId: string) {
     setEditingId(null);
-    setDraft({ name: "", unit: "", sellPrice: "" });
+    setDraft({ name: "", unit: "", sellPrice: "", categoryId: "" });
     setErrorByProduct((current) => {
       const next = { ...current };
       delete next[productId];
@@ -137,6 +165,7 @@ export function ProductsTable({
         name: draft.name,
         unit: draft.unit,
         sell_price: draft.sellPrice,
+        category_id: draft.categoryId === "" ? null : draft.categoryId,
       });
 
       if (!result.ok) {
@@ -149,7 +178,7 @@ export function ProductsTable({
 
       setProducts((current) => applyUpdatedProduct(current, result.data));
       setEditingId(null);
-      setDraft({ name: "", unit: "", sellPrice: "" });
+      setDraft({ name: "", unit: "", sellPrice: "", categoryId: "" });
       startTransition(() => {
         router.refresh();
       });
@@ -166,6 +195,27 @@ export function ProductsTable({
 
   return (
     <div>
+      <div className="mb-4 flex justify-end">
+        <Button
+          type="button"
+          variant="outline"
+          className="h-10 rounded border-ledgerBorder bg-surface px-3 text-[15px] font-semibold text-textMute hover:bg-paperWarm hover:text-ink"
+          onClick={() => setIsManagingCategories(true)}
+        >
+          <Tags className="mr-2 h-4 w-4" aria-hidden="true" />
+          Quản lý danh mục
+        </Button>
+      </div>
+      <CategoryManageModal
+        isOpen={isManagingCategories}
+        categories={categories}
+        onClose={() => setIsManagingCategories(false)}
+        onChanged={() => {
+          startTransition(() => {
+            router.refresh();
+          });
+        }}
+      />
       <ProductCreateForm products={products} onCreated={setProducts} />
       <ProductDeleteModal
         product={deletingProduct}
@@ -203,6 +253,7 @@ export function ProductsTable({
         <span>Tên</span>
         <span>Đơn vị</span>
         <span>Giá bán</span>
+        <span>Danh mục</span>
         <span>Tồn kho</span>
         <span className="text-right">Thao tác</span>
       </div>
@@ -292,6 +343,37 @@ export function ProductsTable({
                   </p>
                 )}
               </ProductField>
+              <ProductField label="Danh mục">
+                {isEditing ? (
+                  <label>
+                    <span className="sr-only">Sửa danh mục {product.name}</span>
+                    <select
+                      value={draft.categoryId}
+                      disabled={isSaving}
+                      className="h-11 w-full min-w-[120px] rounded border border-stamp/35 bg-paperNote px-3 text-[16px] leading-6 text-textMain outline-none focus:border-ink disabled:cursor-not-allowed disabled:opacity-60 sm:h-10"
+                      onChange={(event) =>
+                        setDraft((current) => ({
+                          ...current,
+                          categoryId: event.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">— {UNCATEGORIZED_LABEL} —</option>
+                      {categories.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <p className="font-semibold text-textMute">
+                    {product.category_id !== null
+                      ? categoryNameById.get(product.category_id) ?? UNCATEGORIZED_LABEL
+                      : UNCATEGORIZED_LABEL}
+                  </p>
+                )}
+              </ProductField>
               <ProductField label="Tồn kho">
                 <p
                   className={cn(
@@ -364,7 +446,7 @@ export function ProductsTable({
               </ProductField>
               {isEditing && error ? (
                 <p
-                  className="mt-2 text-[15px] leading-6 text-debt sm:col-span-5"
+                  className="mt-2 text-[15px] leading-6 text-debt sm:col-span-6"
                   role="alert"
                 >
                   {error}

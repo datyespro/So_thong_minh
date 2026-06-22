@@ -4,12 +4,14 @@ export type ProductUpdateInput = Readonly<{
   name?: string;
   unit?: string;
   sell_price?: ProductSellPriceInput;
+  category_id?: string | null;
 }>;
 
 export type ProductUpdatePayload = Partial<{
   name: string;
   unit: string;
   sell_price: number | null;
+  category_id: string | null;
 }>;
 
 export type ProductUpdateField = keyof ProductUpdatePayload;
@@ -108,6 +110,21 @@ export function validateProductUpdatePatch(
 
     patch.sell_price = parsed.value;
     fields.push("sell_price");
+  }
+
+  if (hasOwnField(input, "category_id")) {
+    const raw = input.category_id;
+
+    if (raw === null || raw === undefined) {
+      patch.category_id = null;
+    } else if (typeof raw === "string") {
+      const trimmed = raw.trim();
+      patch.category_id = trimmed.length === 0 ? null : trimmed;
+    } else {
+      return { ok: false, message: "Danh mục không hợp lệ" };
+    }
+
+    fields.push("category_id");
   }
 
   if (fields.length === 0) {

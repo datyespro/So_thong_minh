@@ -1067,6 +1067,7 @@ describe("updateProduct", () => {
         id: "product-xi-mang",
         unit: "bao",
         sell_price: 80000,
+        category_id: null,
       },
     });
     expect(mocks.from).toHaveBeenNthCalledWith(1, "products");
