@@ -1,14 +1,20 @@
 "use client";
 
+import * as React from "react";
 import { Check } from "lucide-react";
 import type { HistoryCommitCard } from "@/src/lib/chat/history-card";
 import { dayjs } from "@/src/lib/dayjs";
 import { formatVietnameseMoney } from "@/src/lib/format/money";
+import { Button } from "@/src/components/ui/button";
+import { PaymentUndoModal } from "@/src/components/chat/payment-undo-modal";
 
 type HistoryCommitCardProps = Readonly<{
   card: HistoryCommitCard;
   confirmationText: string;
   confirmationTone?: "committed" | "dismissed";
+  messageId?: string;
+  undone?: boolean;
+  onUndone?: () => void;
 }>;
 
 const CARD_TITLE: Record<HistoryCommitCard["kind"], string> = {
@@ -54,8 +60,21 @@ export function HistoryCommitCard({
   card,
   confirmationText,
   confirmationTone = "committed",
+  undone = false,
+  onUndone,
 }: HistoryCommitCardProps) {
   const items = card.items ?? [];
+  const [undoModalOpen, setUndoModalOpen] = React.useState(false);
+
+  // UNDO-HIST: khi đã hoàn tác, trạng thái "Đã hoàn tác" THẮNG cả confirmationText
+  // (bỏ qua "Đã ghi thu nợ…" gốc) lẫn confirmationTone (xám, không tick, không nút).
+  const effectiveTone = undone ? "dismissed" : confirmationTone;
+  const effectiveText = undone ? "Đã hoàn tác" : confirmationText;
+  const canUndoPayment =
+    card.kind === "record_payment" &&
+    confirmationTone === "committed" &&
+    Boolean(card.source_id) &&
+    !undone;
 
   return (
     <div className="flex w-full justify-start">
@@ -160,17 +179,44 @@ export function HistoryCommitCard({
         ) : null}
 
         <div className="mt-4 border-t border-ledgerBorder pt-3">
-          <p
-            className={`flex items-center gap-2 text-[16px] font-semibold leading-6 ${
-              confirmationTone === "dismissed" ? "text-textMute" : "text-paid"
-            }`}
-          >
-            {confirmationTone === "committed" ? (
-              <Check className="h-5 w-5 shrink-0" aria-hidden="true" />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p
+              className={`flex items-center gap-2 text-[16px] font-semibold leading-6 ${
+                effectiveTone === "dismissed" ? "text-textMute" : "text-paid"
+              }`}
+            >
+              {effectiveTone === "committed" ? (
+                <Check className="h-5 w-5 shrink-0" aria-hidden="true" />
+              ) : null}
+              {effectiveText}
+            </p>
+            {canUndoPayment ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10 rounded border-ledgerBorder bg-surface px-4 text-[15px] font-semibold text-textMute hover:bg-paperWarm hover:text-ink"
+                onClick={() => setUndoModalOpen(true)}
+              >
+                Hoàn tác
+              </Button>
             ) : null}
-            {confirmationText}
-          </p>
+          </div>
         </div>
+
+        {canUndoPayment && card.source_id ? (
+          <PaymentUndoModal
+            open={undoModalOpen}
+            paymentId={card.source_id}
+            amount={card.amount}
+            entityName={card.entity_name}
+            businessDate={card.business_date}
+            onClose={() => setUndoModalOpen(false)}
+            onUndone={() => {
+              setUndoModalOpen(false);
+              onUndone?.();
+            }}
+          />
+        ) : null}
       </article>
     </div>
   );

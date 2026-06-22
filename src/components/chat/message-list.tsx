@@ -3,6 +3,7 @@
 import * as React from "react";
 import { CapabilityChipRow } from "@/src/components/chat/capability-chip-row";
 import { HistoryCommitCard } from "@/src/components/chat/history-commit-card";
+import { markChatMessageUndone } from "@/app/(app)/chat/actions";
 import { HistoryCustomerCard } from "@/src/components/chat/history-customer-card";
 import { HistoryProductCard } from "@/src/components/chat/history-product-card";
 import { MessageBubble } from "@/src/components/chat/message-bubble";
@@ -46,6 +47,15 @@ function isDismissedHistoryMessage(metadata: unknown) {
     typeof metadata === "object" &&
     "source" in metadata &&
     (metadata as { source?: unknown }).source === "tip_22_dismiss"
+  );
+}
+
+function isUndoneHistoryMessage(metadata: unknown) {
+  return (
+    metadata !== null &&
+    typeof metadata === "object" &&
+    "undone" in metadata &&
+    (metadata as { undone?: unknown }).undone === true
   );
 }
 
@@ -140,6 +150,14 @@ export function MessageList({
                       ? "dismissed"
                       : "committed"
                   }
+                  messageId={message.id}
+                  undone={isUndoneHistoryMessage(message.metadata)}
+                  onUndone={async () => {
+                    // Undo (hoàn nợ) đã chạy trong modal; giờ mới đánh dấu cờ +
+                    // reload để làm tươi thẻ lẫn "Khách nợ" sidebar. Mark best-effort.
+                    await markChatMessageUndone(message.id);
+                    window.location.reload();
+                  }}
                 />
               ) : historyProductCard ? (
                 <HistoryProductCard

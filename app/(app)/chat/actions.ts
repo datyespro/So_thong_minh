@@ -4043,6 +4043,50 @@ export async function undoCommit(
   };
 }
 
+export async function markChatMessageUndone(messageId: string): Promise<void> {
+  // UNDO-HIST: best-effort cờ hiển thị. CHỈ UPDATE chat_messages.metadata owner-scoped.
+  // KHÔNG đụng payments/orders/ledger/debt — hoàn nợ đã do undoCommit("payment") làm.
+  try {
+    if (typeof messageId !== "string" || messageId.length === 0) {
+      return;
+    }
+
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("chat_messages")
+      .select("metadata")
+      .eq("id", messageId)
+      .eq("owner_id", user.id)
+      .maybeSingle();
+
+    if (error || !data) {
+      return;
+    }
+
+    const currentMetadata =
+      data.metadata && typeof data.metadata === "object"
+        ? (data.metadata as Record<string, unknown>)
+        : {};
+
+    await supabase
+      .from("chat_messages")
+      .update({ metadata: { ...currentMetadata, undone: true } })
+      .eq("id", messageId)
+      .eq("owner_id", user.id);
+  } catch (error) {
+    // Cờ hỏng KHÔNG được làm sai nợ → nuốt êm.
+    console.warn("markChatMessageUndone failed (best-effort)", error);
+  }
+}
+
 export async function processMessage(
   content: string,
 ): Promise<ProcessMessageResult> {
