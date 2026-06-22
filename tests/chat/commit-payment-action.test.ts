@@ -214,7 +214,9 @@ describe("commitPayment", () => {
     );
   });
 
-  it("maps the overpayment guard to a friendly blocking message", async () => {
+  it("maps any rpc error to a generic db_error (no special 'exceeds' handling — VĐ3)", async () => {
+    // VĐ3: trả vượt nợ được phép, RPC v3 không còn RAISE 'exceeds'. Kể cả lỗi chứa
+    // "exceeds" cũng map về db_error chung — không còn nhánh validation_failed riêng.
     mocks.rpc.mockResolvedValue({
       data: null,
       error: { message: "payment 999000 exceeds current debt 100000" },
@@ -224,8 +226,8 @@ describe("commitPayment", () => {
 
     expect(result).toEqual({
       ok: false,
-      code: "validation_failed",
-      message: "Số tiền trả lớn hơn số nợ hiện tại ạ.",
+      code: "db_error",
+      message: "Chưa ghi được, bác thử lại ạ.",
     });
   });
 

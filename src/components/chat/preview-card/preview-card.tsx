@@ -313,6 +313,28 @@ export function formatDeleteOrderSummary(
   return parts.join(" - ");
 }
 
+// VĐ3: trả/đặt vượt nợ KHÔNG còn bị chặn. Tính phần dư khách trả trước (credit)
+// = amount − customerDebt khi record_payment và biết nợ; ngược lại null.
+export function overpaymentCredit(input: {
+  intent: string;
+  customerDebt: number | null;
+  amount: number | null;
+}): number | null {
+  if (
+    input.intent === "record_payment" &&
+    input.customerDebt !== null &&
+    input.amount !== null &&
+    input.amount > input.customerDebt
+  ) {
+    return input.amount - input.customerDebt;
+  }
+  return null;
+}
+
+export function formatOverpaymentInfo(credit: number): string {
+  return `Khách trả trước ${formatVietnameseMoney(credit)} ạ — ghi xong mình nợ lại khách khoản này.`;
+}
+
 function makeAddedItemTempId() {
   return `added-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
 }
@@ -3544,13 +3566,13 @@ export function PreviewCard({
     isResaving,
     canConfirm: state.canConfirm,
   });
-  // Plan B: block paying more than the customer currently owes. Recomputed live
-  // against the patched amount + fetched debt; the DB function defends too.
-  const overpaymentBlocking =
-    validated.intent === "record_payment" &&
-    customerDebt !== null &&
-    state.amount !== null &&
-    state.amount > customerDebt;
+  // VĐ3: trả vượt nợ KHÔNG chặn nữa (RPC v3 đã hết RAISE 'exceeds'). Tính phần dư
+  // để hiện dòng info "Khách trả trước X"; KHÔNG đưa vào commitDisabled/canConfirm.
+  const overpaymentCreditAmount = overpaymentCredit({
+    intent: validated.intent,
+    customerDebt,
+    amount: state.amount,
+  });
   const showAmountPatch =
     interactive &&
     validated.intent === "record_payment" &&
@@ -3560,15 +3582,13 @@ export function PreviewCard({
           (issue) =>
             issue.code === "missing_amount" || issue.code === "invalid_amount",
         )) ||
-      overpaymentBlocking ||
       // Keep the editor open once the amount has been touched, so it doesn't
       // vanish the moment an overpayment is corrected mid-typing.
       patched.amount !== null
     );
-  const commitDisabled =
-    !state.canConfirm || isCommitting || overpaymentBlocking;
+  const commitDisabled = !state.canConfirm || isCommitting;
   const restoredCommitDisabled =
-    !state.canConfirm || isCommitting || overpaymentBlocking || committedInfo !== null;
+    !state.canConfirm || isCommitting || committedInfo !== null;
   const dismissDisabled = isCommitting || isDismissingPreview || committedInfo !== null;
   const cardVisualActive = interactive || isRestored;
   const previewCardTestId = isRestored
@@ -3577,12 +3597,11 @@ export function PreviewCard({
       ? "preview-card-live"
       : "preview-card-frozen";
   // For a payment, the header "Tổng tiền" mirrors the amount. While that amount
-  // isn't valid-to-commit, show "—" instead of a number so a green total never
-  // contradicts the red overpayment warning. Reuses the 007b overpaymentBlocking
-  // flag (+ empty/<=0 amount); no new debt comparison.
+  // isn't valid-to-commit (empty/<=0), show "—" instead of a number. Overpayment
+  // is allowed now (VĐ3) so it no longer unsettles the total.
   const paymentTotalUnsettled =
     validated.intent === "record_payment" &&
-    (state.amount === null || state.amount <= 0 || overpaymentBlocking);
+    (state.amount === null || state.amount <= 0);
   const immediatePaid =
     validated.intent === "create_order" && !paymentTotalUnsettled
       ? paidForCommit(
@@ -4126,7 +4145,7 @@ export function PreviewCard({
       return;
     }
 
-    if (!state.canConfirm || overpaymentBlocking || isCommitting || committedInfo) {
+    if (!state.canConfirm || isCommitting || committedInfo) {
       return;
     }
 
@@ -5013,14 +5032,12 @@ export function PreviewCard({
                 </p>
               )}
             </div>
-            {overpaymentBlocking ? (
+            {overpaymentCreditAmount !== null ? (
               <p
-                className="mt-2 text-[15px] leading-6 text-debt"
-                role="alert"
-                data-testid="overpayment-blocking"
+                className="mt-2 text-[15px] leading-6 text-textMute"
+                data-testid="overpayment-info"
               >
-                Số tiền trả {formatVietnameseMoney(state.amount)} lớn hơn số nợ hiện
-                tại ({formatVietnameseMoney(customerDebt)}). Bác sửa xuống cho khớp ạ.
+                {formatOverpaymentInfo(overpaymentCreditAmount)}
               </p>
             ) : null}
           </div>

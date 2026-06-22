@@ -3,6 +3,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createProductPatchForItem,
+  formatOverpaymentInfo,
+  overpaymentCredit,
   PreviewCard,
   ProductCreatePanel,
 } from "@/src/components/chat/preview-card/preview-card";
@@ -1275,5 +1277,66 @@ describe("PreviewCard", () => {
     expect(html).not.toContain("Nhập giá");
     expect(html).not.toContain("Ghi đơn");
     expect(html).not.toContain(">Bỏ</button>");
+  });
+});
+
+describe("overpaymentCredit (VĐ3 — trả vượt nợ được phép)", () => {
+  it("returns the credit when a payment exceeds the known debt", () => {
+    expect(
+      overpaymentCredit({
+        intent: "record_payment",
+        customerDebt: 22_584_000,
+        amount: 100_000_000,
+      }),
+    ).toBe(77_416_000);
+  });
+
+  it("returns null when the payment is at or below the debt", () => {
+    expect(
+      overpaymentCredit({
+        intent: "record_payment",
+        customerDebt: 100_000,
+        amount: 100_000,
+      }),
+    ).toBeNull();
+    expect(
+      overpaymentCredit({
+        intent: "record_payment",
+        customerDebt: 100_000,
+        amount: 40_000,
+      }),
+    ).toBeNull();
+  });
+
+  it("returns null outside record_payment or when debt/amount is unknown", () => {
+    expect(
+      overpaymentCredit({
+        intent: "create_order",
+        customerDebt: 0,
+        amount: 100_000_000,
+      }),
+    ).toBeNull();
+    expect(
+      overpaymentCredit({
+        intent: "record_payment",
+        customerDebt: null,
+        amount: 100_000_000,
+      }),
+    ).toBeNull();
+    expect(
+      overpaymentCredit({
+        intent: "record_payment",
+        customerDebt: 22_584_000,
+        amount: null,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("formatOverpaymentInfo", () => {
+  it("phrases the prepaid credit as a neutral info line", () => {
+    const text = formatOverpaymentInfo(77_416_000);
+    expect(text).toContain("Khách trả trước 77.416.000");
+    expect(text).toContain("ghi xong mình nợ lại khách khoản này");
   });
 });

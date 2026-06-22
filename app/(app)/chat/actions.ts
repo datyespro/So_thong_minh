@@ -3258,14 +3258,8 @@ export async function commitPayment(
   });
 
   if (error || !data) {
-    // Plan B overpayment guard surfaces as a check violation mentioning "exceeds".
-    if (error?.message?.includes("exceeds")) {
-      return {
-        ok: false,
-        code: "validation_failed",
-        message: "Số tiền trả lớn hơn số nợ hiện tại ạ.",
-      };
-    }
+    // VĐ3: RPC v3 không còn RAISE 'exceeds' (trả vượt nợ được phép) → mọi lỗi RPC
+    // còn lại đều là lỗi thật, map về db_error chung.
     return { ok: false, code: "db_error", message: "Chưa ghi được, bác thử lại ạ." };
   }
 
