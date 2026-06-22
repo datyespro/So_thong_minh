@@ -47,7 +47,7 @@ QUẢN LÝ HÀNG HÓA:
   - set_price: có product_raw và sell_price.
   - create: có product_raw; nếu người dùng nói rõ đơn vị hoặc giá thì BẮT BUỘC điền unit/sell_price tương ứng.
   - delete: có product_raw; luôn để unit=null và sell_price=null.
-- "thêm/đặt hàng X" là create; "xóa/bỏ hàng X khỏi danh sách" là delete.
+- "thêm hàng X" hoặc "đặt hàng [tên hàng]" TRƠN (không kèm số lượng, không kèm tiền) là create; "xóa/bỏ hàng X khỏi danh sách" là delete.
 - "bỏ/hủy đơn vừa ghi" là undo, KHÔNG phải delete sản phẩm.
 - Ví dụ "đổi đơn vị thép phi 12 thành cây" => manage_product, action=set_unit, product_raw="thép phi 12", unit="cây".
 - Ví dụ "đặt giá xi măng 80k" => manage_product, action=set_price, product_raw="xi măng", sell_price=80000.
@@ -99,6 +99,13 @@ TRẢ NGAY KHI MUA (chỉ cho create_order, KHÔNG cho record_payment):
 - Nếu số tiền trả ngay bằng đúng toàn bộ tổng đơn đã xác định từ câu (ví dụ 1 món giá 80k và "trả luôn 80k") thì payment_status=paid.
 - Câu CHỈ "[tên] trả X" (không có mặt hàng) vẫn là record_payment, KHÔNG phải create_order; paid_amount=null.
 - Không nói trả => payment_status giữ như cũ, paid_amount=null.
+
+PHÂN BIỆT "ĐẶT" / "CỌC" (xét theo thứ tự ưu tiên từ trên xuống):
+1. Có chữ "giá" + mặt hàng (vd "đặt giá xi măng 80k") => manage_product, action=set_price.
+2. Có số lượng + mặt hàng kèm "đặt"/"đặt hàng" (vd "đặt hàng 100 bao xi măng", "anh Bình đặt 50 viên gạch") => create_order (khách đặt mua hàng): điền items; có tên người thì customer_name=tên, không có thì null; supplier_name=null.
+3. Có tên người + số tiền nhưng KHÔNG có mặt hàng, kèm "đặt"/"cọc"/"đặt cọc" (vd "chị Lan đặt 10tr", "anh Tâm cọc 5tr") => record_payment (khách đặt/cọc tiền trước): customer_name=tên, amount=số tiền (normalize VND), items=[], supplier_name=null. Giống hệt luật "[tên] trả X". KHÔNG dùng paid_amount/payment_status cho nhánh này.
+4. "đặt hàng [tên hàng]" TRƠN, không số lượng, không tiền (vd "đặt hàng cát vàng") => manage_product, action=create (thêm vào danh mục).
+- Nếu "đặt/cọc [số tiền]" KHÔNG có tên người (vd "đặt 10tr" trơn) => vẫn record_payment, customer_name=null (sẽ hỏi ở bước sau), KHÔNG biến thành create_order.
 
 VÍ DỤ:
 User: "..."
@@ -238,6 +245,13 @@ supplier_name: null
 items: [{ product_name: "cát", quantity: 5, unit: "khối", unit_price: null }]
 next_stage_hint: resolve_entities
 
+User: "anh Bình đặt hàng 100 bao xi măng"
+Intent: create_order
+customer_name: "anh Bình"
+supplier_name: null
+items: [{ product_name: "xi măng", quantity: 100, unit: "bao", unit_price: null }]
+next_stage_hint: resolve_entities
+
 User: "nhập 100 bao xi măng từ Minh Phát"
 Intent: create_purchase
 customer_name: null
@@ -300,6 +314,13 @@ User: "Cô Lan trả 500k"
 Intent: record_payment
 customer_name: "cô Lan"
 amount: 500000
+next_stage_hint: resolve_entities
+
+User: "chị Lan đặt 10tr"
+Intent: record_payment
+customer_name: "chị Lan"
+amount: 10000000
+items: []
 next_stage_hint: resolve_entities
 
 User: "Còn bao nhiêu xi măng?"
