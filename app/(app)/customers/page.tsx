@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { getAuthenticatedUser } from "@/src/components/shared/AuthGuard";
+import { DebtValue } from "@/src/components/customers/debt-display";
 import { createClient } from "@/src/lib/supabase/server";
-import { formatVietnameseMoney } from "@/src/lib/format/money";
-import { cn } from "@/src/lib/utils";
 
 type CustomerRow = {
   id: string;
@@ -16,16 +15,6 @@ const CUSTOMER_COLUMNS = ["Tên khách", "Số nợ", "Điện thoại", "Xem"] 
 
 function customerDetailHref(customerId: string) {
   return `/customers/${customerId}`;
-}
-
-function coerceMoneyValue(value: number | string | null | undefined) {
-  const numeric = Number(value ?? 0);
-
-  return Number.isFinite(numeric) ? numeric : 0;
-}
-
-function formatMoneyValue(value: number | string | null | undefined) {
-  return formatVietnameseMoney(coerceMoneyValue(value));
 }
 
 function formatPhone(value: string | null) {
@@ -44,21 +33,6 @@ function CustomersEmptyState() {
         Khi bác ghi đơn bán hoặc tạo khách mới, khách sẽ xuất hiện ở đây.
       </p>
     </div>
-  );
-}
-
-function DebtValue({ value }: Readonly<{ value: number | string | null }>) {
-  const numeric = coerceMoneyValue(value);
-
-  return (
-    <span
-      className={cn(
-        "font-mono font-semibold",
-        numeric > 0 ? "text-debt" : "text-textMain",
-      )}
-    >
-      {formatMoneyValue(value)}
-    </span>
   );
 }
 

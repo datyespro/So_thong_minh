@@ -96,6 +96,21 @@ describe("terminal chat text helpers", () => {
     ).toBe("Anh Hùng không còn nợ ạ.");
   });
 
+  it("formats negative debt as customer credit, not as cleared (VĐ3)", () => {
+    const text = queryAnswerToText({
+      type: "debt",
+      state: "found",
+      customerName: "chị Lan",
+      debt: -77416000,
+      lastOrderAt: null,
+      lastPaymentAt: null,
+    });
+    expect(text).toBe(
+      "chị Lan đã trả trước 77.416.000 đ (mình đang nợ lại khách) ạ.",
+    );
+    expect(text).not.toContain("không còn nợ");
+  });
+
   it("formats positive sales answers", () => {
     expect(
       queryAnswerToText({

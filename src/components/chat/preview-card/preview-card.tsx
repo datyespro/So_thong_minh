@@ -50,6 +50,7 @@ import {
   parseVietnameseNumber,
 } from "@/src/components/chat/preview-card/number-utils";
 import { paidForCommit } from "@/src/lib/chat/paid-for-commit";
+import { debtStanding } from "@/src/lib/customers/debt-standing";
 import {
   commitConfirmationMessage,
   dismissedPreviewMessage,
@@ -952,7 +953,8 @@ function QueryAnswerContent({
 
   if (answer.type === "debt") {
     if (answer.state === "found") {
-      if (answer.debt <= 0) {
+      const standing = debtStanding(answer.debt);
+      if (standing.kind === "settled") {
         return (
           <p className="mt-2 font-semibold text-inkDeep">
             {answer.customerName} không còn nợ ạ.
@@ -968,15 +970,26 @@ function QueryAnswerContent({
           ? `Trả gần nhất ${formatAnswerDate(answer.lastPaymentAt)}`
           : null,
       ].filter((detail): detail is string => Boolean(detail));
+      const isCredit = standing.kind === "credit";
 
       return (
         <div className="mt-2">
           <p className="font-semibold text-inkDeep">
-            {answer.customerName} đang nợ{" "}
-            <span className="font-display text-2xl font-semibold tracking-normal text-debt">
-              {formatVietnameseMoney(answer.debt)}
+            {isCredit ? "Khách trả trước" : `${answer.customerName} đang nợ`}{" "}
+            <span
+              className={cn(
+                "font-display text-2xl font-semibold tracking-normal",
+                isCredit ? "text-paid" : "text-debt",
+              )}
+            >
+              {formatVietnameseMoney(standing.amount)}
             </span>
           </p>
+          {isCredit ? (
+            <p className="mt-1 text-[14px] leading-5 text-textMute">
+              Mình đang nợ lại khách khoản này.
+            </p>
+          ) : null}
           {details.length > 0 ? (
             <p className="mt-1 text-[14px] leading-5 text-textMute">
               {details.join(" · ")}

@@ -1,4 +1,5 @@
 import type { QueryAnswer } from "@/src/lib/ai/answer-query";
+import { debtStandingSentence } from "@/src/lib/customers/debt-standing";
 import { formatVietnameseMoney } from "@/src/lib/format/money";
 
 export type CommitConfirmationMessageInput =
@@ -82,11 +83,7 @@ export function queryAnswerToText(answer: QueryAnswer): string {
 
   if (answer.type === "debt") {
     if (answer.state === "found") {
-      if (answer.debt <= 0) {
-        return `${answer.customerName} không còn nợ ạ.`;
-      }
-
-      return `${answer.customerName} đang nợ ${formatVietnameseMoney(answer.debt)}`;
+      return debtStandingSentence(answer.customerName, answer.debt);
     }
 
     if (answer.state === "ambiguous") {

@@ -555,6 +555,37 @@ describe("PreviewCard", () => {
     expect(html).not.toContain("Phần trả lời sẽ có ở bước sau ạ.");
   });
 
+  it("renders a negative debt as customer credit (VĐ3), not as a raw negative", () => {
+    const html = renderCard(
+      baseValidated({
+        intent: "query_debt",
+        kind: "query",
+        raw_text: "chị Lan nợ bao nhiêu?",
+        items: [],
+        effective_amount: null,
+        ready_for_preview: false,
+      }),
+      {
+        answer: {
+          type: "debt",
+          state: "found",
+          customerName: "chị Lan",
+          debt: -77416000,
+          lastOrderAt: null,
+          lastPaymentAt: null,
+        },
+      },
+    );
+
+    expect(html).toContain("Khách trả trước");
+    expect(html).toContain("77.416.000 đ");
+    expect(html).toContain("text-paid");
+    expect(html).toContain("Mình đang nợ lại khách khoản này.");
+    expect(html).not.toContain("không còn nợ");
+    expect(html).not.toContain("-77");
+    expect(html).not.toContain("−77");
+  });
+
   it("keeps the other debt answer copy unchanged", () => {
     const validated = baseValidated({
       intent: "query_debt",

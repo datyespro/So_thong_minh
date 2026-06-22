@@ -20,6 +20,7 @@ import {
   buildCustomerDebtSummary,
   type CustomerDebtSummary,
 } from "@/src/lib/customers/debt-summary";
+import { DebtHeadline } from "@/src/components/customers/debt-display";
 import { groupRowsByOrder } from "@/src/lib/customers/group-orders";
 import { APP_TIME_ZONE, dayjs } from "@/src/lib/dayjs";
 import { formatVietnameseMoney } from "@/src/lib/format/money";
@@ -301,12 +302,7 @@ export default async function CustomerDetailPage({
 
         <div className="mb-6 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
           <div className="rounded border border-ledgerBorder bg-surface px-4 py-4">
-            <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-stamp">
-              Số nợ hiện tại
-            </p>
-            <p className="mt-2 font-mono text-[34px] font-bold leading-none text-debt sm:text-[40px]">
-              {formatMoneyValue(customer.debt_total)}
-            </p>
+            <DebtHeadline debtTotal={customer.debt_total} />
             <DebtReconciliationLine summary={debtSummary} />
           </div>
 
