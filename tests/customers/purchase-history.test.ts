@@ -19,6 +19,7 @@ function makeHistoryRow(
     unit_price: 1000,
     line_total: 1000,
     sort_order: 0,
+    category_name: null,
     ...overrides,
   };
 }
@@ -59,6 +60,7 @@ describe("flattenCustomerPurchaseHistory", () => {
         unit_price: "80000",
         line_total: "200000",
         sort_order: 0,
+        category_name: null,
       },
       {
         order_id: "order-1",
@@ -69,8 +71,40 @@ describe("flattenCustomerPurchaseHistory", () => {
         unit_price: 250000,
         line_total: 250000,
         sort_order: 1,
+        category_name: null,
       },
     ]);
+  });
+
+  it("carry category_name từ item ra row; thiếu → null", () => {
+    const rows = flattenCustomerPurchaseHistory(
+      [{ id: "order-1", business_date: "2026-06-02" }],
+      [
+        {
+          order_id: "order-1",
+          product_name_snapshot: "Xi măng PCB40",
+          quantity: 1,
+          unit_snapshot: "bao",
+          unit_price: 80000,
+          line_total: 80000,
+          sort_order: 0,
+          category_name: "Xi măng",
+        },
+        {
+          order_id: "order-1",
+          product_name_snapshot: "Đinh",
+          quantity: 1,
+          unit_snapshot: "kg",
+          unit_price: 20000,
+          line_total: 20000,
+          sort_order: 1,
+          // không khai báo category_name → row.category_name == null
+        },
+      ],
+    );
+
+    expect(rows[0]?.category_name).toBe("Xi măng");
+    expect(rows[1]?.category_name).toBeNull();
   });
 
   it("defaults to date_asc when no sort direction is provided", () => {

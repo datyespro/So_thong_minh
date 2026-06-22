@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { filterHistoryRows, isHistoryFiltered, distinctProductNames } from "./filter-history";
+import { filterHistoryRows, isHistoryFiltered, distinctProductNames, distinctCategoryNames } from "./filter-history";
+import { UNCLASSIFIED_LABEL } from "./category-breakdown";
 import type { CustomerPurchaseHistoryRow } from "./purchase-history";
 
-function createRow(business_date: string | null, product_name: string, line_total: number): CustomerPurchaseHistoryRow {
+function createRow(
+  business_date: string | null,
+  product_name: string,
+  line_total: number,
+  category_name: string | null = null,
+): CustomerPurchaseHistoryRow {
   return {
     business_date,
     product_name_snapshot: product_name,
@@ -12,6 +18,7 @@ function createRow(business_date: string | null, product_name: string, line_tota
     line_total,
     order_id: "order-1",
     sort_order: 1,
+    category_name,
   };
 }
 
@@ -23,7 +30,7 @@ describe("filterHistoryRows + isHistoryFiltered", () => {
   ];
 
   it("giữ dòng trong khoảng, tính tổng chính xác", () => {
-    const result = filterHistoryRows(rows, { fromDate: "2026-06-15", toDate: "2026-06-16", productNames: null });
+    const result = filterHistoryRows(rows, { fromDate: "2026-06-15", toDate: "2026-06-16", productNames: null, categoryNames: null });
     expect(result.rows.length).toBe(2);
     expect(result.rows[0]?.business_date).toBe("2026-06-15");
     expect(result.rows[1]?.business_date).toBe("2026-06-16");
@@ -31,21 +38,21 @@ describe("filterHistoryRows + isHistoryFiltered", () => {
   });
 
   it("giữ hết khi không có filter, isHistoryFiltered=false", () => {
-    const result = filterHistoryRows(rows, { fromDate: null, toDate: null, productNames: null });
+    const result = filterHistoryRows(rows, { fromDate: null, toDate: null, productNames: null, categoryNames: null });
     expect(result.rows.length).toBe(3);
     expect(result.total).toBe(600);
-    expect(isHistoryFiltered({ fromDate: null, toDate: null, productNames: null })).toBe(false);
+    expect(isHistoryFiltered({ fromDate: null, toDate: null, productNames: null, categoryNames: null })).toBe(false);
   });
 
   it("loại dòng business_date=null khi có filter ngày", () => {
     const rowsWithNull = [...rows, createRow(null, "Sắt", 400)];
-    const result = filterHistoryRows(rowsWithNull, { fromDate: "2026-06-15", toDate: null, productNames: null });
+    const result = filterHistoryRows(rowsWithNull, { fromDate: "2026-06-15", toDate: null, productNames: null, categoryNames: null });
     expect(result.rows.length).toBe(3); // 15, 16, 17
     expect(result.rows.some(r => r.business_date === null)).toBe(false);
   });
 
   it("trả về rỗng khi from > to", () => {
-    const result = filterHistoryRows(rows, { fromDate: "2026-06-17", toDate: "2026-06-16", productNames: null });
+    const result = filterHistoryRows(rows, { fromDate: "2026-06-17", toDate: "2026-06-16", productNames: null, categoryNames: null });
     expect(result.rows.length).toBe(0);
     expect(result.total).toBe(0);
   });
@@ -60,27 +67,91 @@ describe("filterHistoryRows + isHistoryFiltered", () => {
     expect(names).toEqual(["xi măng", "gạch đỏ"]);
   });
   it("lọc theo một mặt hàng, tính tổng đúng", () => {
-    const result = filterHistoryRows(rows, { fromDate: null, toDate: null, productNames: ["Xi măng"] });
+    const result = filterHistoryRows(rows, { fromDate: null, toDate: null, productNames: ["Xi măng"], categoryNames: null });
     expect(result.rows.length).toBe(1);
     expect(result.rows[0]?.product_name_snapshot).toBe("Xi măng");
     expect(result.total).toBe(200);
   });
 
   it("lọc nhiều mặt hàng (OR)", () => {
-    const result = filterHistoryRows(rows, { fromDate: null, toDate: null, productNames: ["Gạch", "Cát"] });
+    const result = filterHistoryRows(rows, { fromDate: null, toDate: null, productNames: ["Gạch", "Cát"], categoryNames: null });
     expect(result.rows.length).toBe(2);
     expect(result.rows.map(r => r.product_name_snapshot).sort()).toEqual(["Cát", "Gạch"]);
   });
 
   it("kết hợp ngày và mặt hàng (AND)", () => {
-    const result = filterHistoryRows(rows, { fromDate: "2026-06-16", toDate: null, productNames: ["Cát"] });
+    const result = filterHistoryRows(rows, { fromDate: "2026-06-16", toDate: null, productNames: ["Cát"], categoryNames: null });
     expect(result.rows.length).toBe(1);
     expect(result.rows[0]?.product_name_snapshot).toBe("Cát");
     expect(result.rows[0]?.business_date).toBe("2026-06-17");
   });
 
   it("isHistoryFiltered với productNames", () => {
-    expect(isHistoryFiltered({ fromDate: null, toDate: null, productNames: ["X"] })).toBe(true);
-    expect(isHistoryFiltered({ fromDate: null, toDate: null, productNames: [] })).toBe(false);
+    expect(isHistoryFiltered({ fromDate: null, toDate: null, productNames: ["X"], categoryNames: null })).toBe(true);
+    expect(isHistoryFiltered({ fromDate: null, toDate: null, productNames: [], categoryNames: null })).toBe(false);
+  });
+});
+
+describe("DC-5b — lọc theo nhóm (categoryNames)", () => {
+  const rows: CustomerPurchaseHistoryRow[] = [
+    createRow("2026-06-15", "Xi măng PCB40", 100, "Xi măng"),
+    createRow("2026-06-16", "Cát vàng", 200, "Cát"),
+    createRow("2026-06-17", "Đinh 5cm", 300, null), // chưa phân loại
+  ];
+
+  it("lọc 1 nhóm, tính tổng đúng", () => {
+    const result = filterHistoryRows(rows, { fromDate: null, toDate: null, productNames: null, categoryNames: ["Xi măng"] });
+    expect(result.rows.length).toBe(1);
+    expect(result.rows[0]?.product_name_snapshot).toBe("Xi măng PCB40");
+    expect(result.total).toBe(100);
+  });
+
+  it('chip "Chưa phân loại" khớp dòng category_name=null', () => {
+    const result = filterHistoryRows(rows, { fromDate: null, toDate: null, productNames: null, categoryNames: [UNCLASSIFIED_LABEL] });
+    expect(result.rows.length).toBe(1);
+    expect(result.rows[0]?.product_name_snapshot).toBe("Đinh 5cm");
+    expect(result.total).toBe(300);
+  });
+
+  it("lọc nhiều nhóm (OR)", () => {
+    const result = filterHistoryRows(rows, { fromDate: null, toDate: null, productNames: null, categoryNames: ["Xi măng", "Cát"] });
+    expect(result.rows.map((r) => r.category_name).sort()).toEqual(["Cát", "Xi măng"]);
+    expect(result.total).toBe(300);
+  });
+
+  it("kết hợp nhóm + ngày + tên (AND cả ba lớp)", () => {
+    const richRows: CustomerPurchaseHistoryRow[] = [
+      createRow("2026-06-15", "Xi măng PCB40", 100, "Xi măng"),
+      createRow("2026-06-20", "Xi măng PCB40", 150, "Xi măng"),
+      createRow("2026-06-20", "Cát vàng", 200, "Cát"),
+    ];
+    const result = filterHistoryRows(richRows, {
+      fromDate: "2026-06-18",
+      toDate: null,
+      productNames: ["Xi măng PCB40"],
+      categoryNames: ["Xi măng"],
+    });
+    expect(result.rows.length).toBe(1);
+    expect(result.rows[0]?.business_date).toBe("2026-06-20");
+    expect(result.total).toBe(150);
+  });
+
+  it("distinctCategoryNames: sort A→Z (vi), Chưa phân loại cuối", () => {
+    const dupRows: CustomerPurchaseHistoryRow[] = [
+      createRow("2026-06-17", "Đinh", 300, null),
+      createRow("2026-06-15", "Xi măng PCB40", 100, "Xi măng"),
+      createRow("2026-06-16", "Cát vàng", 200, "Cát"),
+      createRow("2026-06-18", "Xi măng trắng", 100, "Xi măng"), // trùng nhóm
+    ];
+    expect(distinctCategoryNames(dupRows)).toEqual([
+      "Cát",
+      "Xi măng",
+      UNCLASSIFIED_LABEL,
+    ]);
+  });
+
+  it("isHistoryFiltered nhận categoryNames", () => {
+    expect(isHistoryFiltered({ fromDate: null, toDate: null, productNames: null, categoryNames: ["Xi măng"] })).toBe(true);
+    expect(isHistoryFiltered({ fromDate: null, toDate: null, productNames: null, categoryNames: [] })).toBe(false);
   });
 });

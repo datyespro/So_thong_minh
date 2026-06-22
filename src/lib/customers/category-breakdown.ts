@@ -47,7 +47,8 @@ function numericMoney(value: MoneyInput): number {
 
 // Tên nhóm của 1 mặt hàng mua. product_id null / chưa gắn nhóm / danh mục đã xóa
 // mềm (không có trong categoryName) → UNCLASSIFIED_LABEL.
-function resolveItemGroupName(
+// DC-5b: export làm nguồn nhãn dùng chung (page resolve nhãn dòng mua qua hàm này).
+export function resolveItemGroupName(
   productId: string | null,
   productCategory: Map<string, string | null>,
   categoryName: Map<string, string>,

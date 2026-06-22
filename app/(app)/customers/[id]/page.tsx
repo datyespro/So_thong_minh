@@ -23,7 +23,10 @@ import {
 import { DebtHeadline } from "@/src/components/customers/debt-display";
 import { CategoryBreakdownPanel } from "@/src/components/customers/category-breakdown-panel";
 import { reconciliationFinalLine } from "@/src/lib/customers/debt-standing";
-import { buildCategoryBreakdown } from "@/src/lib/customers/category-breakdown";
+import {
+  buildCategoryBreakdown,
+  resolveItemGroupName,
+} from "@/src/lib/customers/category-breakdown";
 import { groupRowsByOrder } from "@/src/lib/customers/group-orders";
 import { APP_TIME_ZONE, dayjs } from "@/src/lib/dayjs";
 import { formatVietnameseMoney } from "@/src/lib/format/money";
@@ -255,8 +258,8 @@ export default async function CustomerDetailPage({
 
   const payments = (paymentData ?? []) as CustomerPaymentRow[];
   const orderIds = orders.map((order) => order.id);
-  let items: CustomerHistoryItem[] = [];
-  let categoryItems: CategoryItemRow[] = [];
+  type RawItemRow = CustomerHistoryItem & CategoryItemRow;
+  let rawItemRows: RawItemRow[] = [];
 
   if (orderIds.length > 0) {
     const { data: itemData, error: itemsError } = await supabase
@@ -273,13 +276,13 @@ export default async function CustomerDetailPage({
       throw new Error("Không tải được lịch sử mua của khách.");
     }
 
-    const rows = (itemData ?? []) as (CustomerHistoryItem & CategoryItemRow)[];
-    items = rows as CustomerHistoryItem[];
-    categoryItems = rows.map((row) => ({
-      product_id: row.product_id,
-      line_total: row.line_total,
-    }));
+    rawItemRows = (itemData ?? []) as RawItemRow[];
   }
+
+  const categoryItems: CategoryItemRow[] = rawItemRows.map((row) => ({
+    product_id: row.product_id,
+    line_total: row.line_total,
+  }));
 
   // DC-5a: nhóm hàng cho cọc/mua (thuần ĐỌC). products lấy category_id (KHÔNG lọc
   // deleted_at — cần nhóm cả hàng đã xóa mềm); product_categories CHỈ danh mục còn
@@ -319,6 +322,23 @@ export default async function CustomerDetailPage({
   for (const row of (categoryData ?? []) as { id: string; name: string }[]) {
     categoryName.set(row.id, row.name);
   }
+
+  // DC-5b: gắn nhãn nhóm cho từng dòng mua bằng ĐÚNG hàm DC-5a (nguồn nhãn duy nhất)
+  // — Map đã dựng xong ở trên nên nhãn trùng khít khối "Đối chiếu theo nhóm".
+  const items: CustomerHistoryItem[] = rawItemRows.map((row) => ({
+    order_id: row.order_id,
+    product_name_snapshot: row.product_name_snapshot,
+    quantity: row.quantity,
+    unit_snapshot: row.unit_snapshot,
+    unit_price: row.unit_price,
+    line_total: row.line_total,
+    sort_order: row.sort_order,
+    category_name: resolveItemGroupName(
+      row.product_id,
+      productCategory,
+      categoryName,
+    ),
+  }));
 
   const historyRows = flattenCustomerPurchaseHistory(orders, items, sort);
   const groupedOrders = groupRowsByOrder(historyRows);

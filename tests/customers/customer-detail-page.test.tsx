@@ -507,3 +507,68 @@ describe("CustomerDetailPage — khối Đối chiếu theo nhóm (DC-5a)", () =
     expect(html).not.toContain("Σ Tạm tính các nhóm");
   });
 });
+
+describe("CustomerDetailPage — lọc + nhãn theo nhóm (DC-5b)", () => {
+  beforeEach(() => {
+    mocks.createClient.mockReset();
+    mocks.getAuthenticatedUser.mockReset();
+    mocks.getAuthenticatedUser.mockResolvedValue({ id: "owner-1" });
+  });
+
+  it("render hàng chip lọc theo nhóm + nhãn nhóm trên dòng mua", async () => {
+    const html = await renderCustomerDetailPageRaw({
+      items: [
+        {
+          order_id: "order-1",
+          product_id: "p-xm",
+          product_name_snapshot: "xi măng",
+          quantity: 20,
+          unit_snapshot: "bao",
+          unit_price: 80000,
+          line_total: 1600000,
+          sort_order: 0,
+        },
+        {
+          order_id: "order-2",
+          product_id: "p-thep",
+          product_name_snapshot: "thép",
+          quantity: 1,
+          unit_snapshot: "cây",
+          unit_price: 2800000,
+          line_total: 2800000,
+          sort_order: 0,
+        },
+      ],
+      products: [
+        { id: "p-xm", category_id: "cat-xm" },
+        { id: "p-thep", category_id: "cat-thep" },
+      ],
+      productCategories: [
+        { id: "cat-xm", name: "Xi măng" },
+        { id: "cat-thep", name: "Thép" },
+      ],
+    });
+
+    // Hàng chip lọc nhóm có nhãn "Nhóm:" và nút chip cho từng danh mục.
+    expect(html).toContain("Nhóm:");
+    expect(html).toContain('aria-pressed="false"');
+    expect(html).toContain("Xi măng");
+    expect(html).toContain("Thép");
+    // Nhãn dòng (CategoryTag) render cho hàng có nhóm — class đặc trưng.
+    expect(html).toContain("mt-0.5 block font-mono");
+  });
+
+  it("chip nhóm hiện 'Chưa phân loại' khi hàng chưa gắn nhóm; KHÔNG có nhãn dòng", async () => {
+    const html = await renderCustomerDetailPageRaw({
+      // items mặc định không có product_id → category_name = "Chưa phân loại".
+      products: [],
+      productCategories: [],
+    });
+
+    // Chip lọc vẫn render nhóm "Chưa phân loại" để lọc được dòng chưa phân loại.
+    expect(html).toContain("Nhóm:");
+    expect(html).toContain("Chưa phân loại");
+    // CategoryTag ẩn hoàn toàn cho "Chưa phân loại" → không có span nhãn dòng nào.
+    expect(html).not.toContain("mt-0.5 block font-mono");
+  });
+});

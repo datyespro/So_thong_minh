@@ -5,6 +5,7 @@ import { Printer, X } from "lucide-react";
 import { InvoiceActionPopover } from "@/src/components/invoice/printable-customer-section";
 import type { CustomerPurchaseHistoryRow, CustomerPurchaseHistorySortDirection } from "@/src/lib/customers/purchase-history";
 import type { CustomerDebtSummary } from "@/src/lib/customers/debt-summary";
+import { UNCLASSIFIED_LABEL } from "@/src/lib/customers/category-breakdown";
 import { reconciliationFinalLine } from "@/src/lib/customers/debt-standing";
 import { groupRowsByOrder, type GroupedOrder } from "@/src/lib/customers/group-orders";
 import { APP_TIME_ZONE, dayjs } from "@/src/lib/dayjs";
@@ -35,6 +36,19 @@ const MULTI_ORDER_BORDER_STYLE = {
 function formatMoneyValue(value: number | string | null | undefined) {
   const numeric = Number(value ?? 0);
   return formatVietnameseMoney(Number.isFinite(numeric) ? numeric : 0);
+}
+
+// DC-5b: nhãn nhóm mờ dưới tên mặt hàng. Ẩn khi chưa gắn nhóm để tránh nhiễu.
+function CategoryTag({ name }: Readonly<{ name: string | null | undefined }>) {
+  if (!name || name === UNCLASSIFIED_LABEL) {
+    return null;
+  }
+
+  return (
+    <span className="mt-0.5 block font-mono text-[11px] font-semibold uppercase tracking-[0.1em] text-stamp">
+      {name}
+    </span>
+  );
 }
 
 function formatBusinessDate(value: string | null) {
@@ -175,6 +189,7 @@ function MobileHistoryCard({
         <div>
           <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-stamp">{formatBusinessDate(row.business_date)}</p>
           <p className="mt-1 font-semibold text-inkDeep">{row.product_name_snapshot}</p>
+          <CategoryTag name={row.category_name} />
         </div>
         <div className="shrink-0">
           <InvoiceActionPopover orderId={row.order_id} itemCount={1} deletable={deletable} orderSummary={orderSummary} />
@@ -240,6 +255,7 @@ function MobileGroupedHistoryCard({
         {order.items.map((item, index) => (
           <li key={`${item.order_id}-${item.sort_order ?? "null"}-${index}`} className="rounded border border-ledgerBorder bg-paperWarm px-3 py-2">
             <p className="break-words font-semibold text-inkDeep">{item.product_name_snapshot}</p>
+            <CategoryTag name={item.category_name} />
             <p className="mt-1 break-words font-semibold text-textMute">
               {formatQuantity(item.quantity)} {formatUnitDisplay(item.unit_snapshot) || "đơn vị"} × {formatMoneyValue(item.unit_price)} ={" "}
               <span className="font-mono font-bold text-inkDeep">{formatMoneyValue(item.line_total)}</span>
@@ -264,7 +280,7 @@ export function PurchaseHistoryTable({
   sort: CustomerPurchaseHistorySortDirection;
   nextSort: CustomerPurchaseHistorySortDirection;
 }>) {
-  const { filter, setFilter, filteredRows: rows, filteredTotal: total, isFiltered, productNameOptions } = useHistoryFilter();
+  const { filter, setFilter, filteredRows: rows, filteredTotal: total, isFiltered, productNameOptions, categoryNameOptions } = useHistoryFilter();
 
   const toggleProductName = (name: string) => {
     const current = filter.productNames ?? [];
@@ -274,8 +290,16 @@ export function PurchaseHistoryTable({
     setFilter({ ...filter, productNames: next.length > 0 ? next : null });
   };
 
+  const toggleCategoryName = (name: string) => {
+    const current = filter.categoryNames ?? [];
+    const next = current.includes(name)
+      ? current.filter((n) => n !== name)
+      : [...current, name];
+    setFilter({ ...filter, categoryNames: next.length > 0 ? next : null });
+  };
+
   const handleClearFilter = () => {
-    setFilter({ ...filter, fromDate: null, toDate: null, productNames: null });
+    setFilter({ ...filter, fromDate: null, toDate: null, productNames: null, categoryNames: null });
   };
 
   const showDebtFooter = shouldShowDebtFooter(total, summary);
@@ -321,6 +345,32 @@ export function PurchaseHistoryTable({
           )}
         </div>
         
+        {categoryNameOptions.length > 0 && (
+          <div className="flex w-full flex-wrap items-center gap-2 pt-1">
+            <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-stamp">
+              Nhóm:
+            </span>
+            {categoryNameOptions.map((name) => {
+              const isSelected = filter.categoryNames?.includes(name) ?? false;
+              return (
+                <button
+                  key={name}
+                  type="button"
+                  aria-pressed={isSelected}
+                  onClick={() => toggleCategoryName(name)}
+                  className={`rounded border px-3 py-1 text-sm ${
+                    isSelected
+                      ? "border-stamp bg-paperWarm font-semibold text-inkDeep ring-1 ring-stamp"
+                      : "border-ledgerBorder bg-surface text-textMain hover:bg-paperWarm hover:text-ink"
+                  }`}
+                >
+                  {name}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {productNameOptions.length > 0 && (
           <div className="flex w-full flex-wrap gap-2 pt-1">
             {productNameOptions.map((name) => {
@@ -395,7 +445,10 @@ export function PurchaseHistoryTable({
                       <td className={`${tdClass} font-semibold text-textMute`} style={isMultiItemOrder ? MULTI_ORDER_BORDER_STYLE : undefined}>
                         {formatBusinessDate(row.business_date)}
                       </td>
-                      <td className={`${tdClass} font-semibold text-inkDeep`}>{row.product_name_snapshot}</td>
+                      <td className={`${tdClass} font-semibold text-inkDeep`}>
+                        <span className="block">{row.product_name_snapshot}</span>
+                        <CategoryTag name={row.category_name} />
+                      </td>
                       <td className={`${tdClass} font-semibold`}>{formatQuantity(row.quantity)}</td>
                       <td className={`${tdClass} font-semibold text-textMute`}>{formatUnitDisplay(row.unit_snapshot) || "—"}</td>
                       <td className={`${tdClass} font-semibold`}>{formatMoneyValue(row.unit_price)}</td>

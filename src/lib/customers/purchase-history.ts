@@ -11,6 +11,9 @@ export type CustomerHistoryItem = {
   unit_price: number | string;
   line_total: number | string | null | undefined;
   sort_order: number | null;
+  // DC-5b: nhãn nhóm đã resolve ở server (resolveItemGroupName). Optional để caller
+  // cũ/test có thể bỏ trống → flatten coalesce về null.
+  category_name?: string | null;
 };
 
 export type CustomerPurchaseHistoryRow = {
@@ -22,6 +25,7 @@ export type CustomerPurchaseHistoryRow = {
   unit_price: number | string;
   line_total: number | string | null | undefined;
   sort_order: number | null;
+  category_name: string | null; // DC-5b: luôn được flatten set (null nếu thiếu)
 };
 
 export type CustomerPurchaseHistorySortDirection = "date_asc" | "date_desc";
@@ -99,6 +103,7 @@ export function flattenCustomerPurchaseHistory(
           unit_price: item.unit_price,
           line_total: item.line_total,
           sort_order: item.sort_order,
+          category_name: item.category_name ?? null,
         },
       ];
     })
