@@ -145,16 +145,16 @@ jobs:
             debt_mismatch,
             stock_mismatch,
             negative_debt,
-            debt_mismatch + stock_mismatch + negative_debt as total_mismatch
+            debt_mismatch + stock_mismatch as total_mismatch
           from checks;
           SQL
           )
 
           echo "debt_mismatch=$debt_mismatch"
           echo "stock_mismatch=$stock_mismatch"
-          echo "negative_debt=$negative_debt"
+          echo "negative_debt (khách trả trước, hợp lệ)=$negative_debt"
 
           if [ "$total_mismatch" != "0" ]; then
-            echo "::error title=Reconcile mismatch::debt_mismatch=$debt_mismatch stock_mismatch=$stock_mismatch negative_debt=$negative_debt"
+            echo "::error title=Reconcile mismatch::debt_mismatch=$debt_mismatch stock_mismatch=$stock_mismatch"
             exit 1
           fi
