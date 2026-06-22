@@ -235,6 +235,7 @@ describe("recreateSaleOrder", () => {
             },
           ],
           source_id: "order-new",
+          scope_label: null,
         },
         source: "tip_18b",
       },

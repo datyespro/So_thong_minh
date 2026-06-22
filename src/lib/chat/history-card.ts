@@ -19,6 +19,9 @@ const HistoryCommitCardSchema = z.object({
   amount: z.number().nullable(),
   items: z.array(HistoryCommitCardItemSchema).nullable(),
   source_id: z.string().min(1).nullable(),
+  // DC-4d: tên nhóm (danh mục) đã gắn cho cọc. .default(null) để thẻ cũ (trước
+  // DC-4d, không có field) vẫn parse hợp lệ → tương thích ngược. Giữ v:1.
+  scope_label: z.string().nullable().default(null),
 });
 
 export const HistoryProductCardSchema = z.object({

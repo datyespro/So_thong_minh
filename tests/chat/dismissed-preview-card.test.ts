@@ -52,6 +52,7 @@ describe("buildDismissedPreviewCardFromState", () => {
         },
       ],
       source_id: null,
+      scope_label: null,
     });
   });
 
@@ -243,6 +244,7 @@ describe("incomplete dismissed history cards", () => {
       },
     ],
     source_id: null,
+    scope_label: null,
   };
 
   it("parses null item numbers but still rejects a missing item key", () => {
@@ -308,6 +310,44 @@ describe("incomplete dismissed history cards", () => {
     expect(html).toContain("300.000 đ");
     expect(html).toContain("100.000 đ");
     expect(html).toContain("3");
+  });
+});
+
+describe("history payment card scope label (DC-4d)", () => {
+  const paymentCard: HistoryCommitCardData = {
+    v: 1,
+    kind: "record_payment",
+    entity_name: "anh Tuấn",
+    business_date: null,
+    total_amount: null,
+    debt_amount: null,
+    amount: 200000,
+    items: null,
+    source_id: "payment-1",
+    scope_label: null,
+  };
+
+  it("renders the 'Nhóm' row when scope_label is present", () => {
+    const html = renderToStaticMarkup(
+      createElement(HistoryCommitCard, {
+        card: { ...paymentCard, scope_label: "Xi măng" },
+        confirmationText: "Đã ghi thu nợ cho anh Tuấn",
+      }),
+    );
+
+    expect(html).toContain("Nhóm");
+    expect(html).toContain("Xi măng");
+  });
+
+  it("omits the 'Nhóm' row for a 'Chung' payment (scope_label null)", () => {
+    const html = renderToStaticMarkup(
+      createElement(HistoryCommitCard, {
+        card: paymentCard,
+        confirmationText: "Đã ghi thu nợ cho anh Tuấn",
+      }),
+    );
+
+    expect(html).not.toContain("Nhóm");
   });
 });
 

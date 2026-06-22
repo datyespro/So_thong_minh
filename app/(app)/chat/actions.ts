@@ -410,6 +410,7 @@ type OrderItemHistoryRow = {
 type PaymentHistoryRow = {
   customer_id: string | null;
   amount: number | string | null;
+  scope_category_id: string | null;
 };
 
 type PurchaseHistoryRow = {
@@ -478,6 +479,33 @@ async function fetchHistoryEntityName(
   return typeof row?.name === "string" ? row.name : null;
 }
 
+// DC-4d: lấy tên nhóm (danh mục) cho snapshot thẻ cọc. Owner-scoped + còn sống;
+// orphan (đã xóa mềm / không thấy) → null (rơi về "Chung" theo DMC §4).
+async function fetchHistoryCategoryName(
+  supabase: HistoryCardSupabaseClient,
+  ownerId: string,
+  categoryId: string | null,
+) {
+  if (!categoryId) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from("product_categories")
+    .select("name")
+    .eq("owner_id", ownerId)
+    .eq("id", categoryId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  const row = data as EntityNameRow | null;
+  return typeof row?.name === "string" ? row.name : null;
+}
+
 async function buildOrderHistoryCommitCard(
   input: Extract<HistoryCardBuildInput, { kind: "create_order" | "edit_order" }>,
 ): Promise<HistoryCommitCard | null> {
@@ -535,6 +563,7 @@ async function buildOrderHistoryCommitCard(
       line_total: requiredHistoryNumber(item.line_total, "order_items.line_total"),
     })),
     source_id: input.sourceId,
+    scope_label: null,
   };
 }
 
@@ -543,7 +572,7 @@ async function buildPaymentHistoryCommitCard(
 ): Promise<HistoryCommitCard | null> {
   const { data, error } = await input.supabase
     .from("payments")
-    .select("customer_id,amount")
+    .select("customer_id,amount,scope_category_id")
     .eq("owner_id", input.ownerId)
     .eq("id", input.sourceId)
     .is("deleted_at", null)
@@ -566,6 +595,12 @@ async function buildPaymentHistoryCommitCard(
     payment.customer_id,
   );
 
+  const scopeLabel = await fetchHistoryCategoryName(
+    input.supabase,
+    input.ownerId,
+    payment.scope_category_id,
+  );
+
   return {
     v: 1,
     kind: input.kind,
@@ -576,6 +611,7 @@ async function buildPaymentHistoryCommitCard(
     amount: toFiniteNumber(payment.amount),
     items: null,
     source_id: input.sourceId,
+    scope_label: scopeLabel,
   };
 }
 
@@ -636,6 +672,7 @@ async function buildPurchaseHistoryCommitCard(
       line_total: requiredHistoryNumber(item.line_total, "purchase_items.line_total"),
     })),
     source_id: input.sourceId,
+    scope_label: null,
   };
 }
 

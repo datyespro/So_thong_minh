@@ -255,6 +255,7 @@ describe("commitOrder", () => {
             },
           ],
           source_id: "order-1",
+          scope_label: null,
         },
         source: "tip_18b",
       },

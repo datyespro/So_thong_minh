@@ -13,7 +13,7 @@ type HistoryCommitCardProps = Readonly<{
 
 const CARD_TITLE: Record<HistoryCommitCard["kind"], string> = {
   create_order: "Đơn bán hàng",
-  record_payment: "Thu / trả nợ",
+  record_payment: "Thu / trả nợ / đặt cọc",
   create_purchase: "Đơn nhập hàng",
   edit_order: "Đã sửa đơn",
 };
@@ -100,6 +100,12 @@ export function HistoryCommitCard({
                 {formatHistoryMoney(card.amount)}
               </p>
             </div>
+            {card.scope_label ? (
+              <div className="mt-2 grid gap-2 text-[16px] leading-7 sm:grid-cols-[140px_1fr]">
+                <p className="font-semibold text-textMute">Nhóm</p>
+                <p className="font-semibold text-inkDeep">{card.scope_label}</p>
+              </div>
+            ) : null}
           </div>
         ) : items.length > 0 ? (
           <div className="mt-4 overflow-hidden rounded border border-ledgerBorder">

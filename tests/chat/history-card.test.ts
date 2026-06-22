@@ -29,7 +29,31 @@ const validCard = {
 
 describe("parseHistoryCommitCard", () => {
   it("parses a valid v1 card from metadata", () => {
-    expect(parseHistoryCommitCard({ card: validCard })).toEqual(validCard);
+    // DC-4d: thẻ cũ (không có scope_label) vẫn parse, field default về null.
+    expect(parseHistoryCommitCard({ card: validCard })).toEqual({
+      ...validCard,
+      scope_label: null,
+    });
+  });
+
+  it("preserves a present scope_label (DC-4d)", () => {
+    expect(
+      parseHistoryCommitCard({
+        card: { ...validCard, kind: "record_payment", scope_label: "Xi măng" },
+      }),
+    ).toEqual({ ...validCard, kind: "record_payment", scope_label: "Xi măng" });
+  });
+
+  it("defaults a missing scope_label to null for backward compat (DC-4d)", () => {
+    const oldPaymentCard: Record<string, unknown> = {
+      ...validCard,
+      kind: "record_payment",
+    };
+    delete oldPaymentCard.scope_label;
+
+    const parsed = parseHistoryCommitCard({ card: oldPaymentCard });
+    expect(parsed).not.toBeNull();
+    expect(parsed?.scope_label).toBeNull();
   });
 
   it("returns null when a required field is missing", () => {
@@ -42,7 +66,7 @@ describe("parseHistoryCommitCard", () => {
   it("accepts a present null source_id for an uncommitted preview", () => {
     expect(
       parseHistoryCommitCard({ card: { ...validCard, source_id: null } }),
-    ).toEqual({ ...validCard, source_id: null });
+    ).toEqual({ ...validCard, source_id: null, scope_label: null });
   });
 
   it("rejects an undefined source_id", () => {

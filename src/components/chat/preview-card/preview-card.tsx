@@ -5492,6 +5492,20 @@ export function PreviewCard({
               <Check className="h-5 w-5 shrink-0" aria-hidden="true" />
               {committedInfo.message}
             </p>
+            {/* DC-4d: hiện nhãn nhóm vừa gắn (từ client state DC-4). Không tìm
+                thấy tên (list chưa nạp / id lạ) → im lặng, không lỗi. */}
+            {validated.intent === "record_payment" && selectedScopeCategoryId
+              ? (() => {
+                  const scopeName = scopeCategories.find(
+                    (category) => category.id === selectedScopeCategoryId,
+                  )?.name;
+                  return scopeName ? (
+                    <p className="mt-2 text-[15px] leading-6 text-textMute">
+                      Nhóm: {scopeName}
+                    </p>
+                  ) : null;
+                })()
+              : null}
             {/* Undo is only offered on the most recent turn; sending a new
                 message makes this card no longer live and locks it for good. */}
             {canShowResaveControls ? (

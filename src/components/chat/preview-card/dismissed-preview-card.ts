@@ -50,6 +50,7 @@ export function buildDismissedPreviewCardFromState(
       amount: finiteNumberOrNull(state.amount),
       items: null,
       source_id: null,
+      scope_label: null,
     };
   }
 
@@ -75,6 +76,7 @@ export function buildDismissedPreviewCardFromState(
     amount: null,
     items,
     source_id: null,
+    scope_label: null,
   };
 }
 

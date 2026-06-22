@@ -36,6 +36,7 @@ const validCard = {
   amount: 500000,
   items: null,
   source_id: null,
+  scope_label: null,
 };
 
 describe("persistDismissedPreviewMessage", () => {

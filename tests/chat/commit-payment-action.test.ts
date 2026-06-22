@@ -57,6 +57,7 @@ const validInput = {
 describe("commitPayment", () => {
   let historyPaymentBuilder: MaybeSingleBuilder;
   let historyCustomerBuilder: MaybeSingleBuilder;
+  let historyCategoryBuilder: MaybeSingleBuilder;
 
   beforeEach(() => {
     mocks.getUser.mockReset();
@@ -84,11 +85,16 @@ describe("commitPayment", () => {
       data: {
         customer_id: "cust-1",
         amount: "200000",
+        scope_category_id: null,
       },
       error: null,
     });
     historyCustomerBuilder = makeMaybeSingleBuilder({
       data: { name: "anh Tuấn" },
+      error: null,
+    });
+    historyCategoryBuilder = makeMaybeSingleBuilder({
+      data: { name: "Xi măng" },
       error: null,
     });
     mocks.insert.mockResolvedValue({ error: null });
@@ -99,6 +105,10 @@ describe("commitPayment", () => {
 
       if (table === "customers") {
         return historyCustomerBuilder;
+      }
+
+      if (table === "product_categories") {
+        return historyCategoryBuilder;
       }
 
       return { insert: mocks.insert };
@@ -131,7 +141,9 @@ describe("commitPayment", () => {
       event_type: "payment_created",
     });
     expect(mocks.from).toHaveBeenNthCalledWith(2, "payments");
-    expect(historyPaymentBuilder.select).toHaveBeenCalledWith("customer_id,amount");
+    expect(historyPaymentBuilder.select).toHaveBeenCalledWith(
+      "customer_id,amount,scope_category_id",
+    );
     expect(historyPaymentBuilder.eq).toHaveBeenNthCalledWith(1, "owner_id", "user-a");
     expect(historyPaymentBuilder.eq).toHaveBeenNthCalledWith(2, "id", "payment-1");
     expect(historyPaymentBuilder.is).toHaveBeenCalledWith("deleted_at", null);
@@ -157,6 +169,7 @@ describe("commitPayment", () => {
           amount: 200000,
           items: null,
           source_id: "payment-1",
+          scope_label: null,
         },
         source: "tip_18b",
       },
@@ -375,5 +388,58 @@ describe("commitPayment", () => {
       code: "validation_failed",
       message: "Nhóm không hợp lệ ạ.",
     });
+  });
+
+  // TIP-DC-4d — server resolve tên nhóm vào snapshot history card (scope_label).
+  // Card được persist qua mocks.insert lần 2 (chat_messages) → metadata.card.
+  function persistedHistoryCard() {
+    const chatInsert = mocks.insert.mock.calls[1]?.[0] as
+      | { metadata?: { card?: { scope_label?: string | null } } }
+      | undefined;
+    return chatInsert?.metadata?.card;
+  }
+
+  it("resolves scope_label from the payment's scope_category_id (DC-4d build snapshot)", async () => {
+    historyPaymentBuilder = makeMaybeSingleBuilder({
+      data: { customer_id: "cust-1", amount: "200000", scope_category_id: "cat-1" },
+      error: null,
+    });
+    historyCategoryBuilder = makeMaybeSingleBuilder({
+      data: { name: "Xi măng" },
+      error: null,
+    });
+
+    const result = await commitPayment(validInput);
+
+    expect(result.ok).toBe(true);
+    expect(mocks.from).toHaveBeenCalledWith("product_categories");
+    expect(historyCategoryBuilder.eq).toHaveBeenNthCalledWith(1, "owner_id", "user-a");
+    expect(historyCategoryBuilder.eq).toHaveBeenNthCalledWith(2, "id", "cat-1");
+    expect(historyCategoryBuilder.is).toHaveBeenCalledWith("deleted_at", null);
+    expect(persistedHistoryCard()?.scope_label).toBe("Xi măng");
+  });
+
+  it("leaves scope_label null when the payment has no scope_category_id (DC-4d)", async () => {
+    // historyPaymentBuilder mặc định trả scope_category_id: null.
+    const result = await commitPayment(validInput);
+
+    expect(result.ok).toBe(true);
+    expect(mocks.from).not.toHaveBeenCalledWith("product_categories");
+    expect(persistedHistoryCard()?.scope_label).toBeNull();
+  });
+
+  it("leaves scope_label null for an orphan category (đã xóa mềm) (DC-4d)", async () => {
+    historyPaymentBuilder = makeMaybeSingleBuilder({
+      data: { customer_id: "cust-1", amount: "200000", scope_category_id: "cat-gone" },
+      error: null,
+    });
+    // Danh mục đã deleted_at != null → query owner-scoped + is(deleted_at,null)
+    // không thấy row → null.
+    historyCategoryBuilder = makeMaybeSingleBuilder({ data: null, error: null });
+
+    const result = await commitPayment(validInput);
+
+    expect(result.ok).toBe(true);
+    expect(persistedHistoryCard()?.scope_label).toBeNull();
   });
 });
