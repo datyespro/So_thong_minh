@@ -7,6 +7,7 @@ import { dayjs } from "@/src/lib/dayjs";
 import { formatVietnameseMoney } from "@/src/lib/format/money";
 import { Button } from "@/src/components/ui/button";
 import { PaymentUndoModal } from "@/src/components/chat/payment-undo-modal";
+import { PaymentScopeModal } from "@/src/components/chat/payment-scope-modal";
 
 type HistoryCommitCardProps = Readonly<{
   card: HistoryCommitCard;
@@ -15,6 +16,7 @@ type HistoryCommitCardProps = Readonly<{
   messageId?: string;
   undone?: boolean;
   onUndone?: () => void;
+  onScopeChanged?: () => void;
 }>;
 
 const CARD_TITLE: Record<HistoryCommitCard["kind"], string> = {
@@ -60,21 +62,31 @@ export function HistoryCommitCard({
   card,
   confirmationText,
   confirmationTone = "committed",
+  messageId,
   undone = false,
   onUndone,
+  onScopeChanged,
 }: HistoryCommitCardProps) {
   const items = card.items ?? [];
   const [undoModalOpen, setUndoModalOpen] = React.useState(false);
+  const [scopeModalOpen, setScopeModalOpen] = React.useState(false);
+  // DC-4b: nhãn nhóm vừa đổi (hiện ngay trước reload). null hợp lệ (bỏ nhóm) nên
+  // dùng bọc {label} để phân biệt "chưa đổi" (null) vs "đã đổi về Chung" ({label:null}).
+  const [scopeOverride, setScopeOverride] = React.useState<{
+    label: string | null;
+  } | null>(null);
 
   // UNDO-HIST: khi đã hoàn tác, trạng thái "Đã hoàn tác" THẮNG cả confirmationText
   // (bỏ qua "Đã ghi thu nợ…" gốc) lẫn confirmationTone (xám, không tick, không nút).
   const effectiveTone = undone ? "dismissed" : confirmationTone;
   const effectiveText = undone ? "Đã hoàn tác" : confirmationText;
+  const effectiveScopeLabel = scopeOverride ? scopeOverride.label : card.scope_label;
   const canUndoPayment =
     card.kind === "record_payment" &&
     confirmationTone === "committed" &&
     Boolean(card.source_id) &&
     !undone;
+  const canEditScope = canUndoPayment;
 
   return (
     <div className="flex w-full justify-start">
@@ -119,10 +131,10 @@ export function HistoryCommitCard({
                 {formatHistoryMoney(card.amount)}
               </p>
             </div>
-            {card.scope_label ? (
+            {effectiveScopeLabel ? (
               <div className="mt-2 grid gap-2 text-[16px] leading-7 sm:grid-cols-[140px_1fr]">
                 <p className="font-semibold text-textMute">Nhóm</p>
-                <p className="font-semibold text-inkDeep">{card.scope_label}</p>
+                <p className="font-semibold text-inkDeep">{effectiveScopeLabel}</p>
               </div>
             ) : null}
           </div>
@@ -190,15 +202,29 @@ export function HistoryCommitCard({
               ) : null}
               {effectiveText}
             </p>
-            {canUndoPayment ? (
-              <Button
-                type="button"
-                variant="outline"
-                className="h-10 rounded border-ledgerBorder bg-surface px-4 text-[15px] font-semibold text-textMute hover:bg-paperWarm hover:text-ink"
-                onClick={() => setUndoModalOpen(true)}
-              >
-                Hoàn tác
-              </Button>
+            {canUndoPayment || canEditScope ? (
+              <div className="flex flex-wrap items-center gap-2">
+                {canEditScope ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-10 rounded border-ledgerBorder bg-surface px-4 text-[15px] font-semibold text-textMute hover:bg-paperWarm hover:text-ink"
+                    onClick={() => setScopeModalOpen(true)}
+                  >
+                    Đổi nhóm
+                  </Button>
+                ) : null}
+                {canUndoPayment ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-10 rounded border-ledgerBorder bg-surface px-4 text-[15px] font-semibold text-textMute hover:bg-paperWarm hover:text-ink"
+                    onClick={() => setUndoModalOpen(true)}
+                  >
+                    Hoàn tác
+                  </Button>
+                ) : null}
+              </div>
             ) : null}
           </div>
         </div>
@@ -214,6 +240,21 @@ export function HistoryCommitCard({
             onUndone={() => {
               setUndoModalOpen(false);
               onUndone?.();
+            }}
+          />
+        ) : null}
+
+        {canEditScope && card.source_id ? (
+          <PaymentScopeModal
+            open={scopeModalOpen}
+            paymentId={card.source_id}
+            messageId={messageId}
+            currentScopeLabel={effectiveScopeLabel}
+            onClose={() => setScopeModalOpen(false)}
+            onScopeChanged={(newLabel) => {
+              setScopeModalOpen(false);
+              setScopeOverride({ label: newLabel });
+              onScopeChanged?.();
             }}
           />
         ) : null}

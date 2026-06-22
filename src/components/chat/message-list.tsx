@@ -158,6 +158,11 @@ export function MessageList({
                     await markChatMessageUndone(message.id);
                     window.location.reload();
                   }}
+                  onScopeChanged={() => {
+                    // DC-4b: nhãn + metadata đã được updatePaymentScope ghi; reload để
+                    // làm tươi thẻ lịch sử + khối "Đối chiếu theo nhóm" trang khách.
+                    window.location.reload();
+                  }}
                 />
               ) : historyProductCard ? (
                 <HistoryProductCard

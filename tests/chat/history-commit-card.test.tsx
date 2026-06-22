@@ -92,3 +92,73 @@ describe("HistoryCommitCard undo (UNDO-HIST)", () => {
     expect(html).not.toContain("Hoàn tác");
   });
 });
+
+describe("HistoryCommitCard đổi nhóm (DC-4b)", () => {
+  it("hiện nút 'Đổi nhóm' khi record_payment committed + source_id + chưa undone", () => {
+    const html = render({
+      card: paymentCard,
+      confirmationText: "Đã ghi thu nợ cho anh Tuấn",
+      confirmationTone: "committed",
+      messageId: "msg-1",
+    });
+
+    expect(html).toContain("Đổi nhóm");
+    // Cạnh nút Hoàn tác.
+    expect(html).toContain("Hoàn tác");
+  });
+
+  it("hiện dòng 'Nhóm' khi scope_label có giá trị", () => {
+    const html = render({
+      card: { ...paymentCard, scope_label: "Xi măng" },
+      confirmationText: "Đã ghi thu nợ cho anh Tuấn",
+      confirmationTone: "committed",
+    });
+
+    expect(html).toContain("Nhóm");
+    expect(html).toContain("Xi măng");
+  });
+
+  it("KHÔNG nút 'Đổi nhóm' khi undone", () => {
+    const html = render({
+      card: paymentCard,
+      confirmationText: "Đã ghi thu nợ cho anh Tuấn",
+      confirmationTone: "committed",
+      undone: true,
+    });
+
+    expect(html).not.toContain("Đổi nhóm");
+  });
+
+  it("KHÔNG nút 'Đổi nhóm' khi dismissed / thiếu source_id / create_order", () => {
+    expect(
+      render({
+        card: paymentCard,
+        confirmationText: "Đã bỏ",
+        confirmationTone: "dismissed",
+      }),
+    ).not.toContain("Đổi nhóm");
+
+    expect(
+      render({
+        card: { ...paymentCard, source_id: null },
+        confirmationText: "Đã ghi",
+        confirmationTone: "committed",
+      }),
+    ).not.toContain("Đổi nhóm");
+
+    expect(
+      render({
+        card: {
+          ...paymentCard,
+          kind: "create_order",
+          amount: null,
+          total_amount: 300000,
+          debt_amount: 300000,
+          source_id: "order-1",
+        },
+        confirmationText: "Đã ghi đơn",
+        confirmationTone: "committed",
+      }),
+    ).not.toContain("Đổi nhóm");
+  });
+});

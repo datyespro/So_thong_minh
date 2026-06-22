@@ -1974,6 +1974,175 @@ export async function updateCustomerPhone(
   };
 }
 
+type PaymentScopeRow = {
+  id: string;
+  scope_category_id: string | null;
+  scope_product_id: string | null;
+};
+
+// DC-4b: đổi/bỏ NHÃN nhóm cho cọc CŨ. Mirror updateCustomerPhone (SELECT before
+// owner-scoped → UPDATE owner-scoped → audit). CHỈ UPDATE cột scope_category_id —
+// KHÔNG đụng amount/debt_total/RPC/ledger/sync. audit + metadata là best-effort.
+export async function updatePaymentScope(
+  paymentId: string,
+  scopeCategoryId: string | null, // null = bỏ nhóm (về "Cọc chung")
+  messageId?: string, // để best-effort cập nhật metadata.card.scope_label
+): Promise<ActionResult<{ scope_label: string | null }>> {
+  if (typeof paymentId !== "string" || paymentId.trim().length === 0) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Không tìm thấy khoản thu để đổi nhóm.",
+    };
+  }
+
+  const user = await getAuthenticatedUser();
+  const supabase = await createClient();
+  const trimmedId = paymentId.trim();
+
+  const { data: beforeData, error: beforeError } = await supabase
+    .from("payments")
+    .select("id,scope_category_id,scope_product_id")
+    .eq("owner_id", user.id)
+    .eq("id", trimmedId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (beforeError) {
+    return {
+      ok: false,
+      code: "db_error",
+      message: "Chưa đọc được khoản thu, bác thử lại ạ.",
+    };
+  }
+
+  if (!beforeData) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Không tìm thấy khoản thu để đổi nhóm.",
+    };
+  }
+
+  const before = beforeData as PaymentScopeRow;
+
+  // Guard product-scope: giữ CHECK loại trừ ≤1 (product-scope ngoài phạm vi UI v1).
+  if (before.scope_product_id != null && scopeCategoryId != null) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Khoản này đang gắn theo sản phẩm, chưa đổi nhóm được ạ.",
+    };
+  }
+
+  // Validate nhóm mới (chỉ khi set) — owner-scoped + còn sống; lấy name → scope_label.
+  let scopeLabel: string | null = null;
+
+  if (scopeCategoryId != null) {
+    const { data: catData, error: catError } = await supabase
+      .from("product_categories")
+      .select("id,name")
+      .eq("owner_id", user.id)
+      .eq("id", scopeCategoryId)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (catError) {
+      return {
+        ok: false,
+        code: "db_error",
+        message: "Chưa đọc được danh mục, bác thử lại ạ.",
+      };
+    }
+
+    if (!catData) {
+      return {
+        ok: false,
+        code: "validation_failed",
+        message: "Nhóm không hợp lệ ạ.",
+      };
+    }
+
+    scopeLabel = (catData as { id: string; name: string }).name;
+  }
+
+  // UPDATE owner-scoped — CHỈ cột scope_category_id. KHÔNG đụng amount/debt_total.
+  const { data, error } = await supabase
+    .from("payments")
+    .update({ scope_category_id: scopeCategoryId })
+    .eq("owner_id", user.id)
+    .eq("id", trimmedId)
+    .is("deleted_at", null)
+    .select("id,scope_category_id")
+    .maybeSingle();
+
+  if (error) {
+    return { ok: false, code: "db_error", message: "Lỗi đổi nhóm." };
+  }
+
+  if (!data) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Không tìm thấy khoản thu để đổi nhóm.",
+    };
+  }
+
+  // audit_log — best-effort (đổi NHÃN, không phải tiền/nợ → lỗi audit KHÔNG fail action).
+  const { error: auditError } = await supabase.from("audit_log").insert({
+    owner_id: user.id,
+    actor_id: user.id,
+    entity_type: "payment",
+    entity_id: trimmedId,
+    action: "payment/scope_update",
+    before_data: { scope_category_id: before.scope_category_id },
+    after_data: { scope_category_id: scopeCategoryId },
+    metadata: { fields: ["scope_category_id"] },
+  });
+
+  if (auditError) {
+    console.error("audit_log insert failed for updatePaymentScope", auditError);
+  }
+
+  // Best-effort cập nhật metadata.card.scope_label để reload giữ nhãn mới (mirror
+  // markChatMessageUndone). Lỗi → bỏ qua êm, KHÔNG fail việc đổi nhãn.
+  if (messageId && typeof messageId === "string" && messageId.length > 0) {
+    try {
+      const { data: msg } = await supabase
+        .from("chat_messages")
+        .select("metadata")
+        .eq("id", messageId)
+        .eq("owner_id", user.id)
+        .maybeSingle();
+
+      if (msg?.metadata && typeof msg.metadata === "object") {
+        const meta = msg.metadata as Record<string, unknown>;
+        const card =
+          meta.card && typeof meta.card === "object"
+            ? (meta.card as Record<string, unknown>)
+            : null;
+
+        if (card) {
+          await supabase
+            .from("chat_messages")
+            .update({
+              metadata: { ...meta, card: { ...card, scope_label: scopeLabel } },
+            })
+            .eq("id", messageId)
+            .eq("owner_id", user.id);
+        }
+      }
+    } catch (e) {
+      console.warn(
+        "updatePaymentScope metadata update failed (best-effort)",
+        e,
+      );
+    }
+  }
+
+  return { ok: true, data: { scope_label: scopeLabel } };
+}
+
 export async function searchCustomersByName(
   name: string,
 ): Promise<ActionResult<ResolvedEntity>> {
