@@ -37,6 +37,7 @@ type PaymentRow = {
 
 type ItemRow = {
   order_id: string;
+  product_id?: string | null;
   product_name_snapshot: string;
   quantity: number;
   unit_snapshot: string;
@@ -45,11 +46,23 @@ type ItemRow = {
   sort_order: number;
 };
 
+type ProductRow = {
+  id: string;
+  category_id: string | null;
+};
+
+type ProductCategoryRow = {
+  id: string;
+  name: string;
+};
+
 type PageData = {
   customer?: CustomerRow;
   orders?: OrderRow[];
   payments?: PaymentRow[];
   items?: ItemRow[];
+  products?: ProductRow[];
+  productCategories?: ProductCategoryRow[];
   shopSettings?: {
     shop_name: string;
     phone: string;
@@ -62,6 +75,8 @@ function createQueryResult<T>(data: T) {
 }
 
 function createQueryBuilder<T>(result: T) {
+  // Thenable: query kết thúc bằng .in()/.is() (products, product_categories) cũng
+  // await được trực tiếp, không cần .order()/.maybeSingle() ở cuối.
   const query = {
     select: vi.fn(() => query),
     eq: vi.fn(() => query),
@@ -69,6 +84,8 @@ function createQueryBuilder<T>(result: T) {
     in: vi.fn(() => query),
     order: vi.fn(async () => createQueryResult(result)),
     maybeSingle: vi.fn(async () => createQueryResult(result)),
+    then: (resolve: (value: { data: T; error: null }) => unknown) =>
+      resolve(createQueryResult(result)),
   };
 
   return query;
@@ -127,6 +144,8 @@ function setupSupabaseMock({
       sort_order: 0,
     },
   ],
+  products = [],
+  productCategories = [],
 }: PageData = {}) {
   const supabase = {
     from: vi.fn((table: string) => {
@@ -146,6 +165,14 @@ function setupSupabaseMock({
         return createQueryBuilder(items);
       }
 
+      if (table === "products") {
+        return createQueryBuilder(products);
+      }
+
+      if (table === "product_categories") {
+        return createQueryBuilder(productCategories);
+      }
+
       if (table === "shop_settings") {
         return createQueryBuilder(shopSettings);
       }
@@ -159,7 +186,7 @@ function setupSupabaseMock({
   return supabase;
 }
 
-async function renderCustomerDetailPage(data: PageData = {}) {
+async function renderCustomerDetailPageRaw(data: PageData = {}) {
   setupSupabaseMock(data);
 
   const page = await CustomerDetailPage({
@@ -167,7 +194,32 @@ async function renderCustomerDetailPage(data: PageData = {}) {
     searchParams: Promise.resolve({}),
   });
 
-  return renderToStaticMarkup(page).split('<div class="print-area print-only">')[0];
+  return renderToStaticMarkup(page).split(
+    '<div class="print-area print-only">',
+  )[0];
+}
+
+// DC-5a thêm section "Đối chiếu theo nhóm" trước phần "Lịch sử trả nợ". Các test
+// footer/đối chiếu nợ cũ chỉ quan tâm phần dưới → cắt section nhóm ra để giữ nguyên
+// ngữ nghĩa assertion (section nhóm có test riêng bên dưới).
+function stripCategoryBreakdown(html: string) {
+  const marker = html.indexOf(
+    'aria-labelledby="category-breakdown-heading"',
+  );
+  if (marker === -1) return html;
+
+  const sectionStart = html.lastIndexOf("<section", marker);
+  const payMarker = html.indexOf(
+    'aria-labelledby="payment-history-heading"',
+    marker,
+  );
+  const paySectionStart = html.lastIndexOf("<section", payMarker);
+
+  return html.slice(0, sectionStart) + html.slice(paySectionStart);
+}
+
+async function renderCustomerDetailPage(data: PageData = {}) {
+  return stripCategoryBreakdown(await renderCustomerDetailPageRaw(data));
 }
 
 function countText(html: string, text: string) {
@@ -340,5 +392,118 @@ describe("CustomerDetailPage purchase history footer", () => {
     expect(html).toContain("4.300.000 đ");
     expect(html).not.toContain("− Trả ");
     expect(html).not.toContain("= Còn nợ");
+  });
+});
+
+describe("CustomerDetailPage — khối Đối chiếu theo nhóm (DC-5a)", () => {
+  beforeEach(() => {
+    mocks.createClient.mockReset();
+    mocks.getAuthenticatedUser.mockReset();
+    mocks.getAuthenticatedUser.mockResolvedValue({ id: "owner-1" });
+  });
+
+  it("render khối theo nhóm khi cộng khớp debt_total (gom theo product_id + scope)", async () => {
+    const html = await renderCustomerDetailPageRaw({
+      customer: {
+        id: "customer-1",
+        name: "anh Hùng",
+        debt_total: 4_100_000,
+        phone: null,
+      },
+      orders: [
+        {
+          id: "order-1",
+          business_date: "2026-06-01",
+          total_amount: 1_600_000,
+          paid_amount: 0,
+        },
+        {
+          id: "order-2",
+          business_date: "2026-06-11",
+          total_amount: 2_800_000,
+          paid_amount: 0,
+        },
+      ],
+      // Cọc 300k gắn nhóm Xi măng + 0 cọc chung khác → debt 4.1M.
+      payments: [
+        {
+          id: "payment-1",
+          amount: 300000,
+          paid_at: "2026-06-02T03:00:00.000Z",
+          scope_category_id: "cat-xm",
+        } as PaymentRow & { scope_category_id: string },
+      ],
+      items: [
+        {
+          order_id: "order-1",
+          product_id: "p-xm",
+          product_name_snapshot: "xi măng",
+          quantity: 20,
+          unit_snapshot: "bao",
+          unit_price: 80000,
+          line_total: 1_600_000,
+          sort_order: 0,
+        },
+        {
+          order_id: "order-2",
+          product_id: "p-thep",
+          product_name_snapshot: "thép",
+          quantity: 1,
+          unit_snapshot: "cây",
+          unit_price: 2_800_000,
+          line_total: 2_800_000,
+          sort_order: 0,
+        },
+      ],
+      products: [
+        { id: "p-xm", category_id: "cat-xm" },
+        { id: "p-thep", category_id: "cat-thep" },
+      ],
+      productCategories: [
+        { id: "cat-xm", name: "Xi măng" },
+        { id: "cat-thep", name: "Thép" },
+      ],
+    });
+
+    expect(html).toContain("Đối chiếu theo nhóm");
+    expect(html).toContain("Σ Tạm tính các nhóm");
+    // Cọc 300k gắn Xi măng → vào cột Đã cọc của nhóm, KHÔNG phải Cọc chung.
+    expect(html).not.toContain("− Cọc chung");
+    // 4.4M(mua dòng) − 0(cọc chung) − 0(trả ngay) = 4.4M? KHÔNG: cọc nhóm trừ trong
+    // tentative → Σtentative = 4.1M = debt → khớp.
+    expect(html).toContain("= Còn nợ");
+    expect(html).toContain("Xi măng");
+    expect(html).toContain("Thép");
+  });
+
+  it("KHÔNG render khối khi số liệu lệch (reconciles=false)", async () => {
+    const html = await renderCustomerDetailPageRaw({
+      customer: {
+        id: "customer-1",
+        name: "anh Hùng",
+        debt_total: 4_000_000, // != 4.2M tính ra
+        phone: null,
+      },
+    });
+
+    expect(html).not.toContain("Đối chiếu theo nhóm");
+    expect(html).not.toContain("Σ Tạm tính các nhóm");
+  });
+
+  it("KHÔNG render khối khi khách chưa mua gì (groups rỗng)", async () => {
+    const html = await renderCustomerDetailPageRaw({
+      customer: {
+        id: "customer-1",
+        name: "anh Hùng",
+        debt_total: 0,
+        phone: null,
+      },
+      orders: [],
+      payments: [],
+      items: [],
+    });
+
+    expect(html).not.toContain("Đối chiếu theo nhóm");
+    expect(html).not.toContain("Σ Tạm tính các nhóm");
   });
 });

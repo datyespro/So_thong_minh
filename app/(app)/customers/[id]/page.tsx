@@ -21,7 +21,9 @@ import {
   type CustomerDebtSummary,
 } from "@/src/lib/customers/debt-summary";
 import { DebtHeadline } from "@/src/components/customers/debt-display";
+import { CategoryBreakdownPanel } from "@/src/components/customers/category-breakdown-panel";
 import { reconciliationFinalLine } from "@/src/lib/customers/debt-standing";
+import { buildCategoryBreakdown } from "@/src/lib/customers/category-breakdown";
 import { groupRowsByOrder } from "@/src/lib/customers/group-orders";
 import { APP_TIME_ZONE, dayjs } from "@/src/lib/dayjs";
 import { formatVietnameseMoney } from "@/src/lib/format/money";
@@ -50,6 +52,14 @@ type CustomerPaymentRow = {
   id: string;
   amount: number | string | null;
   paid_at: string | null;
+  scope_category_id: string | null;
+};
+
+// DC-5a: dòng order_item kèm product_id để gom theo nhóm (KHÔNG mở rộng
+// CustomerHistoryItem — type đó dùng cho bảng lịch sử).
+type CategoryItemRow = {
+  product_id: string | null;
+  line_total: number | string | null;
 };
 
 
@@ -233,7 +243,7 @@ export default async function CustomerDetailPage({
   const orders = (orderData ?? []) as CustomerOrderRow[];
   const { data: paymentData, error: paymentsError } = await supabase
     .from("payments")
-    .select("id,amount,paid_at")
+    .select("id,amount,paid_at,scope_category_id")
     .eq("owner_id", user.id)
     .eq("customer_id", customerId)
     .is("deleted_at", null)
@@ -246,12 +256,13 @@ export default async function CustomerDetailPage({
   const payments = (paymentData ?? []) as CustomerPaymentRow[];
   const orderIds = orders.map((order) => order.id);
   let items: CustomerHistoryItem[] = [];
+  let categoryItems: CategoryItemRow[] = [];
 
   if (orderIds.length > 0) {
     const { data: itemData, error: itemsError } = await supabase
       .from("order_items")
       .select(
-        "order_id,product_name_snapshot,quantity,unit_snapshot,unit_price,line_total,sort_order",
+        "order_id,product_id,product_name_snapshot,quantity,unit_snapshot,unit_price,line_total,sort_order",
       )
       .eq("owner_id", user.id)
       .in("order_id", orderIds)
@@ -262,7 +273,51 @@ export default async function CustomerDetailPage({
       throw new Error("Không tải được lịch sử mua của khách.");
     }
 
-    items = (itemData ?? []) as CustomerHistoryItem[];
+    const rows = (itemData ?? []) as (CustomerHistoryItem & CategoryItemRow)[];
+    items = rows as CustomerHistoryItem[];
+    categoryItems = rows.map((row) => ({
+      product_id: row.product_id,
+      line_total: row.line_total,
+    }));
+  }
+
+  // DC-5a: nhóm hàng cho cọc/mua (thuần ĐỌC). products lấy category_id (KHÔNG lọc
+  // deleted_at — cần nhóm cả hàng đã xóa mềm); product_categories CHỈ danh mục còn
+  // sống (xóa mềm → "Chưa phân loại"/"Cọc chung"). Fetch phụ lỗi → degrade map rỗng,
+  // KHÔNG làm vỡ trang (pure-fn vẫn dựng, breakdown.reconciles quyết định hiển thị).
+  const productCategory = new Map<string, string | null>();
+  const distinctProductIds = Array.from(
+    new Set(
+      categoryItems
+        .map((item) => item.product_id)
+        .filter((id): id is string => id != null),
+    ),
+  );
+
+  if (distinctProductIds.length > 0) {
+    const { data: productData } = await supabase
+      .from("products")
+      .select("id,category_id")
+      .eq("owner_id", user.id)
+      .in("id", distinctProductIds);
+
+    for (const row of (productData ?? []) as {
+      id: string;
+      category_id: string | null;
+    }[]) {
+      productCategory.set(row.id, row.category_id);
+    }
+  }
+
+  const categoryName = new Map<string, string>();
+  const { data: categoryData } = await supabase
+    .from("product_categories")
+    .select("id,name")
+    .eq("owner_id", user.id)
+    .is("deleted_at", null);
+
+  for (const row of (categoryData ?? []) as { id: string; name: string }[]) {
+    categoryName.set(row.id, row.name);
   }
 
   const historyRows = flattenCustomerPurchaseHistory(orders, items, sort);
@@ -273,6 +328,16 @@ export default async function CustomerDetailPage({
     payments,
     debtTotal: customer.debt_total,
   });
+  const categoryBreakdown = buildCategoryBreakdown({
+    items: categoryItems,
+    payments,
+    productCategory,
+    categoryName,
+    paidImmediate: debtSummary.paidImmediate,
+    debtTotal: customer.debt_total,
+  });
+  const showCategoryBreakdown =
+    categoryBreakdown.reconciles && categoryBreakdown.groups.length > 0;
   const phoneHref = customer.phone ? normalizedPhoneHref(customer.phone) : null;
   const pdfDate = dayjs().tz(APP_TIME_ZONE).format("DD-MM-YYYY");
 
@@ -337,6 +402,23 @@ export default async function CustomerDetailPage({
             ) : null}
           </div>
         </div>
+
+        {showCategoryBreakdown ? (
+          <section className="mb-6" aria-labelledby="category-breakdown-heading">
+            <div className="mb-3 border-b border-ledgerBorder pb-3">
+              <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-stamp">
+                Cọc theo nhóm hàng
+              </p>
+              <h2
+                id="category-breakdown-heading"
+                className="mt-1 font-display text-2xl font-semibold text-inkDeep"
+              >
+                Đối chiếu theo nhóm
+              </h2>
+            </div>
+            <CategoryBreakdownPanel breakdown={categoryBreakdown} />
+          </section>
+        ) : null}
 
         <section className="mb-6" aria-labelledby="payment-history-heading">
           <div className="mb-3 flex items-end justify-between gap-3 border-b border-ledgerBorder pb-3">
