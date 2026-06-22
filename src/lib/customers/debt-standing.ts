@@ -21,3 +21,17 @@ export function debtStandingSentence(name: string, debtTotal: number): string {
     return `${name} đã trả trước ${formatVietnameseMoney(s.amount)} (mình đang nợ lại khách) ạ.`;
   return `${name} không còn nợ ạ.`;
 }
+
+// Dòng cuối khối đối chiếu khách (#24/#31): ">=0" → "Còn nợ X" (debt);
+// "<0" → "Khách trả trước |X|" (credit). settled → "Còn nợ 0" (giữ hành vi cũ).
+export function reconciliationFinalLine(debtTotal: number): {
+  label: string;
+  amount: number;
+  tone: "debt" | "credit";
+} {
+  const s = debtStanding(debtTotal);
+  if (s.kind === "credit") {
+    return { label: "Khách trả trước", amount: s.amount, tone: "credit" };
+  }
+  return { label: "Còn nợ", amount: s.kind === "debt" ? s.amount : 0, tone: "debt" };
+}

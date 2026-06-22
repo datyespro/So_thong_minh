@@ -193,6 +193,33 @@ describe("CustomerDetailPage purchase history footer", () => {
     expect(html).not.toContain("− Trả 31/05/2026 10");
   });
 
+  it("shows a negative balance as 'Khách trả trước', not a negative 'Còn nợ' (VĐ3)", async () => {
+    // Khách trả vượt nợ: tổng mua 4.400.000, trả 81.816.000 → debt_total âm.
+    const html = await renderCustomerDetailPage({
+      customer: {
+        id: "customer-1",
+        name: "anh Hùng",
+        debt_total: -77416000,
+        phone: null,
+      },
+      payments: [
+        {
+          id: "payment-overpaid",
+          amount: 81816000,
+          paid_at: "2026-05-31T03:00:00.000Z",
+        },
+      ],
+    });
+
+    expect(html).toContain("Khách trả trước");
+    expect(html).toContain("77.416.000 đ");
+    expect(html).toContain("Tổng mua");
+    expect(html).toContain("Đã trả");
+    expect(html).not.toContain("Còn nợ");
+    expect(html).not.toContain("-77");
+    expect(html).not.toContain("−77");
+  });
+
   it("shows multiple payment rows in ascending payment-date order", async () => {
     const html = await renderCustomerDetailPage({
       payments: [

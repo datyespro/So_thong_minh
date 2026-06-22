@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   debtStanding,
   debtStandingSentence,
+  reconciliationFinalLine,
 } from "@/src/lib/customers/debt-standing";
 
 describe("debtStanding (VĐ3 — nguồn quyết định dấu duy nhất)", () => {
@@ -36,5 +37,31 @@ describe("debtStandingSentence", () => {
 
   it("phrases a settled balance", () => {
     expect(debtStandingSentence("chị Lan", 0)).toBe("chị Lan không còn nợ ạ.");
+  });
+});
+
+describe("reconciliationFinalLine (dòng cuối khối đối chiếu khách)", () => {
+  it("keeps an outstanding debt as 'Còn nợ'", () => {
+    expect(reconciliationFinalLine(600_000)).toEqual({
+      label: "Còn nợ",
+      amount: 600_000,
+      tone: "debt",
+    });
+  });
+
+  it("keeps a settled balance as 'Còn nợ 0'", () => {
+    expect(reconciliationFinalLine(0)).toEqual({
+      label: "Còn nợ",
+      amount: 0,
+      tone: "debt",
+    });
+  });
+
+  it("flips a negative balance to 'Khách trả trước' with a positive amount", () => {
+    expect(reconciliationFinalLine(-77_416_000)).toEqual({
+      label: "Khách trả trước",
+      amount: 77_416_000,
+      tone: "credit",
+    });
   });
 });

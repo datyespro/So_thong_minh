@@ -21,6 +21,7 @@ import {
   type CustomerDebtSummary,
 } from "@/src/lib/customers/debt-summary";
 import { DebtHeadline } from "@/src/components/customers/debt-display";
+import { reconciliationFinalLine } from "@/src/lib/customers/debt-standing";
 import { groupRowsByOrder } from "@/src/lib/customers/group-orders";
 import { APP_TIME_ZONE, dayjs } from "@/src/lib/dayjs";
 import { formatVietnameseMoney } from "@/src/lib/format/money";
@@ -108,6 +109,8 @@ function DebtReconciliationLine({
     );
   }
 
+  const finalLine = reconciliationFinalLine(summary.debtTotal);
+
   return (
     <div className="mt-4 border-t border-dashed border-ledgerBorder pt-3">
       <p className="text-[16px] font-semibold leading-7 text-textMain">
@@ -119,8 +122,8 @@ function DebtReconciliationLine({
           Đã trả {formatMoneyValue(summary.paidTotal)}
         </span>
         <span className="px-1 text-textMute">=</span>
-        <span className="text-debt">
-          Còn nợ {formatMoneyValue(summary.debtTotal)}
+        <span className={finalLine.tone === "credit" ? "text-paid" : "text-debt"}>
+          {finalLine.label} {formatMoneyValue(finalLine.amount)}
         </span>
       </p>
       {summary.paidImmediate > 0 ? (

@@ -5,6 +5,7 @@ import { Printer, X } from "lucide-react";
 import { InvoiceActionPopover } from "@/src/components/invoice/printable-customer-section";
 import type { CustomerPurchaseHistoryRow, CustomerPurchaseHistorySortDirection } from "@/src/lib/customers/purchase-history";
 import type { CustomerDebtSummary } from "@/src/lib/customers/debt-summary";
+import { reconciliationFinalLine } from "@/src/lib/customers/debt-standing";
 import { groupRowsByOrder, type GroupedOrder } from "@/src/lib/customers/group-orders";
 import { APP_TIME_ZONE, dayjs } from "@/src/lib/dayjs";
 import { formatVietnameseMoney } from "@/src/lib/format/money";
@@ -79,7 +80,7 @@ function PurchaseHistoryEmptyState() {
   );
 }
 
-function SettlementSummaryPanel({
+export function SettlementSummaryPanel({
   total,
   summary,
   payments,
@@ -91,6 +92,7 @@ function SettlementSummaryPanel({
   className?: string;
 }>) {
   const orderedPayments = sortedPaymentsByPaidAt(payments);
+  const finalLine = reconciliationFinalLine(summary.debtTotal);
   const panelClassName = ["rounded border border-ledgerBorder bg-paperWarm px-4 py-3", className].filter(Boolean).join(" ");
 
   return (
@@ -114,8 +116,8 @@ function SettlementSummaryPanel({
         ) : null}
       </div>
       <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-4 border-t border-dashed border-ledgerBorder pt-3">
-        <p className="font-display text-[19px] font-semibold text-debt">= Còn nợ</p>
-        <p className="break-words text-right font-mono text-[22px] font-bold leading-tight text-debt">{formatMoneyValue(summary.debtTotal)}</p>
+        <p className={`font-display text-[19px] font-semibold ${finalLine.tone === "credit" ? "text-paid" : "text-debt"}`}>= {finalLine.label}</p>
+        <p className={`break-words text-right font-mono text-[22px] font-bold leading-tight ${finalLine.tone === "credit" ? "text-paid" : "text-debt"}`}>{formatMoneyValue(finalLine.amount)}</p>
       </div>
     </div>
   );
