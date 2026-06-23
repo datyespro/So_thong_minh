@@ -99,6 +99,7 @@ function nonePipeline(
       paid_amount: null,
       payment_status: "unknown",
       payment_method: null,
+      payment_scope_raw: null,
       order_reference: null,
       business_date: null,
       time_range: {

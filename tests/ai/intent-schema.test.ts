@@ -36,6 +36,7 @@ function baseIntent(
       paid_amount: null,
       payment_status: "debt",
       payment_method: null,
+      payment_scope_raw: null,
       order_reference: null,
       business_date: null,
       time_range: {
