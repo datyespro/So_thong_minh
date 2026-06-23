@@ -54,15 +54,6 @@ export default async function ProductsPage() {
   return (
     <section className="h-full overflow-y-auto bg-paper px-4 py-5 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-5xl">
-        <div className="mb-5 border-b border-ledgerBorder pb-4">
-          <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-stamp">
-            Master data
-          </p>
-          <h1 className="mt-2 font-display text-3xl font-semibold tracking-normal text-inkDeep">
-            Sản phẩm
-          </h1>
-        </div>
-
         <ProductsTable initialProducts={products} initialCategories={categories} />
       </div>
     </section>

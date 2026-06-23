@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Save, X } from "lucide-react";
+import { Save, X } from "lucide-react";
 import { createProduct } from "@/app/(app)/chat/actions";
 import { Button } from "@/src/components/ui/button";
 import { upsertProductSorted } from "./product-list-utils";
@@ -12,11 +12,14 @@ const PRODUCT_UNIT_SUGGESTIONS = ["viên", "bao", "cây", "cái", "m³"];
 export function ProductCreateForm({
   products,
   onCreated,
+  isOpen,
+  onClose,
 }: {
   products: ProductsTableRow[];
   onCreated: (newList: ProductsTableRow[]) => void;
+  isOpen: boolean;
+  onClose: () => void;
 }) {
-  const [isOpen, setIsOpen] = React.useState(false);
   const [name, setName] = React.useState("");
   const [unit, setUnit] = React.useState("");
   const [sellPrice, setSellPrice] = React.useState("");
@@ -24,17 +27,7 @@ export function ProductCreateForm({
   const [error, setError] = React.useState<string | null>(null);
 
   if (!isOpen) {
-    return (
-      <Button
-        type="button"
-        variant="outline"
-        onClick={() => setIsOpen(true)}
-        className="mb-4 h-10 border-ledgerBorder bg-surface text-inkDeep hover:bg-paperWarm"
-      >
-        <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
-        Thêm sản phẩm
-      </Button>
-    );
+    return null;
   }
 
   async function handleSave(e: React.FormEvent) {
@@ -65,7 +58,7 @@ export function ProductCreateForm({
       }
 
       onCreated(newList);
-      setIsOpen(false);
+      onClose();
       setName("");
       setUnit("");
       setSellPrice("");
@@ -157,7 +150,7 @@ export function ProductCreateForm({
             type="button"
             variant="outline"
             disabled={isSaving}
-            onClick={() => setIsOpen(false)}
+            onClick={onClose}
             className="h-10 border-ledgerBorder bg-surface text-textMute hover:bg-paperWarm hover:text-ink"
           >
             <X className="mr-2 h-4 w-4" aria-hidden="true" />
