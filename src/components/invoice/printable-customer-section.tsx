@@ -34,6 +34,7 @@ type CustomerPaymentRow = {
   id: string;
   amount: number | string | null;
   paid_at: string | null;
+  scope_label?: string | null;
 };
 
 type PrintableCustomerSectionProps = Readonly<{

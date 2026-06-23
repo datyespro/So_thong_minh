@@ -8,11 +8,13 @@ import { vietnameseAmountInWords } from "@/src/lib/format/number-to-words-vi";
 import { formatUnitDisplay } from "@/src/lib/format/unit";
 import type { ShopSettings } from "@/src/lib/shop/get-shop-settings";
 import { earliestBusinessDate } from "@/src/lib/customers/reconciliation-period";
+import { paymentScopeSuffix } from "@/src/lib/customers/payment-scope-label";
 
 type CustomerPaymentRow = {
   id: string;
   amount: number | string | null;
   paid_at: string | null;
+  scope_label?: string | null;
 };
 
 type InvoiceSummaryViewProps = Readonly<{
@@ -275,7 +277,7 @@ export function InvoiceSummaryView({
           {orderedPayments.map((payment) => (
             <SummaryLine
               key={payment.id}
-              label={`− Trả ${formatPaymentDay(payment.paid_at)}`}
+              label={`− Trả ${formatPaymentDay(payment.paid_at)}${paymentScopeSuffix(payment.scope_label)}`}
               value={money(payment.amount)}
             />
           ))}

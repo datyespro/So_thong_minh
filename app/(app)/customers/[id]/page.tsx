@@ -362,6 +362,15 @@ export default async function CustomerDetailPage({
     ),
   }));
 
+  // DC-5d: gắn nhãn nhóm cho mỗi cọc bằng map categoryName (DC-5a, còn sống) — orphan/
+  // null → scope_label null (hiện "Chung", không ngoặc). Truyền xuống panel màn + bản in.
+  const paymentsWithScope = payments.map((payment) => ({
+    ...payment,
+    scope_label: payment.scope_category_id
+      ? (categoryName.get(payment.scope_category_id) ?? null)
+      : null,
+  }));
+
   const historyRows = flattenCustomerPurchaseHistory(orders, items, sort);
   const groupedOrders = groupRowsByOrder(historyRows);
   const historyTotal = sumCustomerPurchaseHistoryTotal(historyRows);
@@ -393,7 +402,7 @@ export default async function CustomerDetailPage({
           rows={historyRows}
           historyTotal={historyTotal}
           debtSummary={debtSummary}
-          payments={payments}
+          payments={paymentsWithScope}
           groupedOrders={groupedOrders}
         >
           <div className="customer-detail-screen mx-auto max-w-6xl">
@@ -524,7 +533,7 @@ export default async function CustomerDetailPage({
 
           <PurchaseHistoryTable
             summary={debtSummary}
-            payments={payments}
+            payments={paymentsWithScope}
             customerId={customer.id}
             sort={sort}
             nextSort={nextSort}

@@ -12,6 +12,7 @@ import { APP_TIME_ZONE, dayjs } from "@/src/lib/dayjs";
 import { formatVietnameseMoney } from "@/src/lib/format/money";
 import { formatUnitDisplay } from "@/src/lib/format/unit";
 import { isProductInSelectedGroups, resolveProductChipToggle } from "@/src/lib/customers/filter-history";
+import { paymentScopeSuffix } from "@/src/lib/customers/payment-scope-label";
 import { useHistoryFilter } from "./history-filter-provider";
 import { Button } from "@/src/components/ui/button";
 
@@ -19,6 +20,7 @@ export type CustomerPaymentRow = {
   id: string;
   amount: number | string | null;
   paid_at: string | null;
+  scope_label?: string | null;
 };
 
 const HISTORY_COLUMNS = [
@@ -119,7 +121,7 @@ export function SettlementSummaryPanel({
       <div className="mt-2 space-y-2">
         {orderedPayments.map((payment) => (
           <div key={payment.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-4">
-            <p className="font-display text-[17px] font-semibold text-paid">− Trả {formatPaymentDay(payment.paid_at)}</p>
+            <p className="font-display text-[17px] font-semibold text-paid">− Trả {formatPaymentDay(payment.paid_at)}{paymentScopeSuffix(payment.scope_label)}</p>
             <p className="break-words text-right font-mono text-[18px] font-bold leading-tight text-paid">{formatMoneyValue(payment.amount)}</p>
           </div>
         ))}
