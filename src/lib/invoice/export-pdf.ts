@@ -1,20 +1,33 @@
 "use client";
 
-// FIX-2: tìm mép cắt an toàn cho phân trang PDF — dò NGƯỢC từ idealCutY về minCutY,
-// lấy scanline trắng (khe giữa 2 dòng) đầu tiên gặp để KHÔNG xén ngang một dòng.
-// Không thấy scanline trắng nào trong cửa sổ (dòng cao hơn cửa sổ dò) → trả idealCutY
-// (cắt cứng, fallback). Thuần: nhận predicate, không đụng canvas → test bằng mock.
-export function findSafeCutY(
-  isRowBlank: (y: number) => boolean,
-  idealCutY: number,
-  minCutY: number,
-): number {
-  for (let y = idealCutY; y >= minCutY; y--) {
-    if (isRowBlank(y)) {
-      return y;
+// FIX-3: chọn các mép cắt trang sao cho KHÔNG cắt giữa một dòng.
+// boundaries: các Y (canvas px) là ĐÁY của từng dòng/khối "nguyên khối" (đã sort tăng,
+// nằm trong (0, totalHeight)). Trả mảng Y cắt (KHÔNG gồm 0 và totalHeight); mỗi trang
+// ≤ pageSlicePx. Mỗi trang lấy boundary LỚN NHẤT trong (startY, startY+pageSlicePx];
+// không có (dòng cao hơn 1 trang) → cắt cứng tại startY+pageSlicePx (fallback, hiếm)
+// để đảm bảo tiến trình. Thuần (chỉ số học) → test bằng mảng, không cần DOM/canvas.
+export function pickPageCuts(
+  boundaries: number[],
+  totalHeight: number,
+  pageSlicePx: number,
+): number[] {
+  const cuts: number[] = [];
+  let startY = 0;
+  while (totalHeight - startY > pageSlicePx) {
+    const ideal = startY + pageSlicePx;
+    let cut = -1;
+    for (const b of boundaries) {
+      if (b > startY && b <= ideal && b > cut) {
+        cut = b;
+      }
     }
+    if (cut <= startY) {
+      cut = ideal; // fallback: dòng cao hơn 1 trang → cắt cứng
+    }
+    cuts.push(cut);
+    startY = cut;
   }
-  return idealCutY;
+  return cuts;
 }
 
 export async function exportElementToPdf(
@@ -25,6 +38,17 @@ export async function exportElementToPdf(
     import("html2canvas"),
     import("jspdf"),
   ]);
+
+  // FIX-3: đo mép DÒNG từ DOM TRƯỚC html2canvas — element đã layout đúng khổ in
+  // (210mm) nhờ caller. Ứng viên mép cắt = ĐÁY mỗi <tr> + đáy các khối nguyên khối
+  // (header/section/table/footer…), tính theo Y tương đối element (CSS px).
+  const elementRect = element.getBoundingClientRect();
+  const boundaryEls = element.querySelectorAll(
+    "tr, thead, tbody, section, header, footer, table",
+  );
+  const domBoundaries = Array.from(boundaryEls)
+    .map((el) => el.getBoundingClientRect().bottom - elementRect.top)
+    .filter((y) => y > 0 && y < elementRect.height);
 
   const canvas = await html2canvas(element, {
     backgroundColor: "#ffffff",
@@ -47,45 +71,30 @@ export async function exportElementToPdf(
   const pdf = new jsPDF("portrait", "mm", "a4");
   const imgData = canvas.toDataURL("image/png");
 
-  // FIX-2: cắt canvas thành từng trang tại scanline trắng (khe dòng) thay vì vẽ lại
-  // nguyên ảnh dịch offset cố định — tránh xén ngang một dòng ở mép giữa 2 trang.
+  // FIX-3: cắt canvas theo mép DÒNG (đo từ DOM) thay vì dò scanline trắng — bảng viền
+  // lưới đầy đủ không có scanline ngang nào trắng nên FIX-2 cắt cứng giữa dòng.
   const pxPerMm = canvas.width / imgWidth;
   const pageSlicePx = Math.max(1, Math.floor(usableHeight * pxPerMm));
-  const ctx = canvas.getContext("2d");
 
-  if (canvas.height <= pageSlicePx || !ctx) {
-    // 1 trang (hoặc không lấy được 2d context → fallback vẽ nguyên ảnh như cũ).
+  if (canvas.height <= pageSlicePx) {
+    // 1 trang như cũ.
     pdf.addImage(imgData, "PNG", margin, margin, imgWidth, imgHeight);
   } else {
-    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-    const STEP = 4; // lấy mẫu mỗi 4 px ngang cho nhanh
-    const NEAR_WHITE = 250; // r,g,b ≥ 250 coi như trắng
-    const isRowBlank = (y: number) => {
-      const rowStart = y * canvas.width * 4;
-      for (let x = 0; x < canvas.width; x += STEP) {
-        const i = rowStart + x * 4;
-        if (
-          pixels[i] < NEAR_WHITE ||
-          pixels[i + 1] < NEAR_WHITE ||
-          pixels[i + 2] < NEAR_WHITE
-        ) {
-          return false;
-        }
-      }
-      return true;
-    };
+    // CSS px → canvas px. Map mép DÒNG sang toạ độ canvas, khử trùng + sort.
+    const ratio = canvas.height / elementRect.height;
+    const boundaries = Array.from(
+      new Set(domBoundaries.map((y) => Math.round(y * ratio))),
+    )
+      .filter((y) => y > 0 && y < canvas.height)
+      .sort((a, b) => a - b);
 
-    let startY = 0;
-    let firstPage = true;
-    while (startY < canvas.height) {
-      const idealCut = Math.min(startY + pageSlicePx, canvas.height);
-      // dò ngược tới tối thiểu 60% trang để không tạo trang quá ngắn / kẹt vòng lặp.
-      const minCut = Math.min(idealCut, startY + Math.floor(pageSlicePx * 0.6));
-      const cutY =
-        idealCut < canvas.height
-          ? findSafeCutY(isRowBlank, idealCut, minCut)
-          : idealCut;
-      const sliceH = cutY - startY;
+    const cuts = pickPageCuts(boundaries, canvas.height, pageSlicePx);
+    const pages = [0, ...cuts, canvas.height];
+
+    for (let i = 0; i < pages.length - 1; i++) {
+      const sliceStart = pages[i];
+      const sliceH = pages[i + 1] - sliceStart;
+      if (sliceH <= 0) continue;
 
       const pageCanvas = document.createElement("canvas");
       pageCanvas.width = canvas.width;
@@ -95,7 +104,7 @@ export async function exportElementToPdf(
         pageCtx.drawImage(
           canvas,
           0,
-          startY,
+          sliceStart,
           canvas.width,
           sliceH,
           0,
@@ -105,7 +114,7 @@ export async function exportElementToPdf(
         );
       }
 
-      if (!firstPage) {
+      if (i > 0) {
         pdf.addPage();
       }
       pdf.addImage(
@@ -116,8 +125,6 @@ export async function exportElementToPdf(
         imgWidth,
         sliceH / pxPerMm,
       );
-      firstPage = false;
-      startY = cutY;
     }
   }
 

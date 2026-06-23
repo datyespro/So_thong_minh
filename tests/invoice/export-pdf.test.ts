@@ -1,39 +1,37 @@
 import { describe, expect, it } from "vitest";
-import { findSafeCutY } from "@/src/lib/invoice/export-pdf";
+import { pickPageCuts } from "@/src/lib/invoice/export-pdf";
 
-describe("findSafeCutY — mép cắt an toàn cho phân trang PDF (FIX-2)", () => {
-  it("lùi về scanline trắng đầu tiên gặp khi dò ngược", () => {
-    // trắng tại y=180; còn lại trong [150..200] đều có mực.
-    const isRowBlank = (y: number) => y === 180;
-    expect(findSafeCutY(isRowBlank, 200, 150)).toBe(180);
+describe("pickPageCuts — cắt trang theo mép DÒNG (FIX-3)", () => {
+  it("chọn mép dòng lớn nhất ≤ trang (không cắt giữa dòng)", () => {
+    // boundaries là đáy các dòng; cắt phải rơi đúng đáy dòng, không phải 300/550 giữa dòng.
+    expect(pickPageCuts([100, 250, 400, 550], 600, 300)).toEqual([250, 550]);
   });
 
-  it("không có scanline trắng → cắt cứng tại idealCut (fallback)", () => {
-    const isRowBlank = () => false;
-    expect(findSafeCutY(isRowBlank, 200, 150)).toBe(200);
+  it("fallback cắt cứng mỗi pageSlicePx khi không có mép trong tầm", () => {
+    expect(pickPageCuts([], 700, 300)).toEqual([300, 600]);
   });
 
-  it("kết quả luôn nằm trong [minCut..idealCut]", () => {
-    // mọi dòng đều trắng → trả ngay idealCut (không vượt biên trên).
-    const allBlank = () => true;
-    expect(findSafeCutY(allBlank, 200, 160)).toBe(200);
-
-    // chỉ trắng ở đúng biên dưới minCut.
-    const blankAtMin = (y: number) => y === 160;
-    const result = findSafeCutY(blankAtMin, 200, 160);
-    expect(result).toBe(160);
-    expect(result).toBeGreaterThanOrEqual(160);
-    expect(result).toBeLessThanOrEqual(200);
+  it("tài liệu ≤ 1 trang → không cắt", () => {
+    expect(pickPageCuts([100], 250, 300)).toEqual([]);
   });
 
-  it("idealCut == minCut → chỉ xét đúng 1 dòng", () => {
-    expect(findSafeCutY(() => true, 200, 200)).toBe(200); // dòng đó trắng
-    expect(findSafeCutY(() => false, 200, 200)).toBe(200); // không trắng → fallback
+  it("biên: totalHeight == pageSlicePx → không cắt", () => {
+    expect(pickPageCuts([150], 300, 300)).toEqual([]);
   });
 
-  it("ưu tiên scanline trắng GẦN idealCut nhất (cắt sát mép trang)", () => {
-    // trắng tại 170 và 190 — phải lấy 190 (gần idealCut 200 hơn).
-    const isRowBlank = (y: number) => y === 170 || y === 190;
-    expect(findSafeCutY(isRowBlank, 200, 150)).toBe(190);
+  it("tiến trình khi 1 dòng cao hơn trang (boundary 500 > slice 300)", () => {
+    const cuts = pickPageCuts([500], 900, 300);
+    // trang đầu không có mép trong (0,300] → cắt cứng 300; rồi 500 (mép), rồi cứng 800.
+    expect(cuts).toEqual([300, 500, 800]);
+    // mỗi cut tăng dần (không kẹt vòng lặp).
+    for (let i = 1; i < cuts.length; i++) {
+      expect(cuts[i]).toBeGreaterThan(cuts[i - 1]);
+    }
+  });
+
+  it("bỏ qua boundary ngoài (startY, ideal]; ưu tiên mép gần đáy trang nhất", () => {
+    // boundaries gồm cả mép quá nhỏ (50) và mép quá lớn (chỉ xét ≤ ideal).
+    // trang1 (0,400]: max trong tầm = 380; trang2 (380,780]: max = 760.
+    expect(pickPageCuts([50, 380, 760, 900], 1000, 400)).toEqual([380, 760]);
   });
 });
