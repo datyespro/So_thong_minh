@@ -162,6 +162,7 @@ export function PaymentScopeModal({
     }
 
     let cancelled = false;
+    setSubmitting(false); // FIX-1: reset trạng thái gửi cũ khi mở lại (router.refresh không remount)
     setLoading(true);
     setErrorText(null);
 
