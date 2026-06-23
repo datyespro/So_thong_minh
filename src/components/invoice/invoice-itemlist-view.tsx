@@ -101,6 +101,11 @@ export function InvoiceItemListView({
             <strong>Kỳ:</strong> từ {formatDate(filter.fromDate)} đến {formatDate(filter.toDate)}
           </p>
         )}
+        {filter.categoryNames && filter.categoryNames.length > 0 && (
+          <p style={{ margin: "0 0 3px" }}>
+            <strong>Nhóm:</strong> {filter.categoryNames.join(", ")}
+          </p>
+        )}
         {filter.productNames && filter.productNames.length > 0 && (
           <p style={{ margin: "0 0 3px" }}>
             <strong>Mặt hàng:</strong> {filter.productNames.join(", ")}
