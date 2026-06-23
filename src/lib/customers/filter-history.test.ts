@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filterHistoryRows, isHistoryFiltered, distinctProductNames, distinctCategoryNames } from "./filter-history";
+import { filterHistoryRows, isHistoryFiltered, distinctProductNames, distinctCategoryNames, buildProductCategoryIndex, isProductInSelectedGroups, resolveProductChipToggle, type HistoryFilter } from "./filter-history";
 import { UNCLASSIFIED_LABEL } from "./category-breakdown";
 import type { CustomerPurchaseHistoryRow } from "./purchase-history";
 
@@ -153,5 +153,59 @@ describe("DC-5b — lọc theo nhóm (categoryNames)", () => {
   it("isHistoryFiltered nhận categoryNames", () => {
     expect(isHistoryFiltered({ fromDate: null, toDate: null, productNames: null, categoryNames: ["Xi măng"] })).toBe(true);
     expect(isHistoryFiltered({ fromDate: null, toDate: null, productNames: null, categoryNames: [] })).toBe(false);
+  });
+});
+
+describe("DC-5c — sáng mặt hàng theo nhóm + bỏ nhóm khi bấm SP ngoài", () => {
+  const rows: CustomerPurchaseHistoryRow[] = [
+    createRow("2026-06-15", "Thép D6", 100, "Thép"),
+    createRow("2026-06-16", "cát đen", 200, null), // chưa phân loại
+  ];
+
+  it("buildProductCategoryIndex: map đúng + coalesce null", () => {
+    const index = buildProductCategoryIndex(rows);
+    expect(index.get("Thép D6")?.has("Thép")).toBe(true);
+    expect(index.get("cát đen")?.has(UNCLASSIFIED_LABEL)).toBe(true);
+  });
+
+  it("buildProductCategoryIndex: 1 SP thuộc >1 nhóm (lịch sử đổi danh mục)", () => {
+    const dupRows: CustomerPurchaseHistoryRow[] = [
+      createRow("2026-06-15", "D6", 100, "Thép"),
+      createRow("2026-06-16", "D6", 100, "Sắt thép"),
+    ];
+    const index = buildProductCategoryIndex(dupRows);
+    expect(index.get("D6")).toEqual(new Set(["Thép", "Sắt thép"]));
+  });
+
+  it("isProductInSelectedGroups: 4 ca", () => {
+    const index = buildProductCategoryIndex(rows);
+    expect(isProductInSelectedGroups(index, "Thép D6", null)).toBe(true); // không lọc nhóm → tất cả thuộc
+    expect(isProductInSelectedGroups(index, "Thép D6", ["Thép"])).toBe(true);
+    expect(isProductInSelectedGroups(index, "cát đen", ["Thép"])).toBe(false);
+    expect(isProductInSelectedGroups(index, "Thép D6", ["Gạch", "Thép"])).toBe(true);
+  });
+
+  it("resolveProductChipToggle: SP TRONG nhóm → giữ nhóm", () => {
+    const index = buildProductCategoryIndex(rows);
+    const filter: HistoryFilter = { fromDate: null, toDate: null, productNames: null, categoryNames: ["Thép"] };
+    const result = resolveProductChipToggle(filter, "Thép D6", index);
+    expect(result.categoryNames).toEqual(["Thép"]);
+    expect(result.productNames).toEqual(["Thép D6"]);
+  });
+
+  it("resolveProductChipToggle: SP NGOÀI nhóm → bỏ nhóm về Chung", () => {
+    const index = buildProductCategoryIndex(rows);
+    const filter: HistoryFilter = { fromDate: null, toDate: null, productNames: null, categoryNames: ["Thép"] };
+    const result = resolveProductChipToggle(filter, "cát đen", index);
+    expect(result.categoryNames).toBeNull();
+    expect(result.productNames).toEqual(["cát đen"]);
+  });
+
+  it("resolveProductChipToggle: không chọn nhóm → toggle bình thường (bỏ chọn)", () => {
+    const index = buildProductCategoryIndex(rows);
+    const filter: HistoryFilter = { fromDate: null, toDate: null, productNames: ["cát đen"], categoryNames: null };
+    const result = resolveProductChipToggle(filter, "cát đen", index);
+    expect(result.productNames).toBeNull();
+    expect(result.categoryNames).toBeNull();
   });
 });

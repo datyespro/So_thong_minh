@@ -11,6 +11,7 @@ import { groupRowsByOrder, type GroupedOrder } from "@/src/lib/customers/group-o
 import { APP_TIME_ZONE, dayjs } from "@/src/lib/dayjs";
 import { formatVietnameseMoney } from "@/src/lib/format/money";
 import { formatUnitDisplay } from "@/src/lib/format/unit";
+import { isProductInSelectedGroups, resolveProductChipToggle } from "@/src/lib/customers/filter-history";
 import { useHistoryFilter } from "./history-filter-provider";
 import { Button } from "@/src/components/ui/button";
 
@@ -280,14 +281,11 @@ export function PurchaseHistoryTable({
   sort: CustomerPurchaseHistorySortDirection;
   nextSort: CustomerPurchaseHistorySortDirection;
 }>) {
-  const { filter, setFilter, filteredRows: rows, filteredTotal: total, isFiltered, productNameOptions, categoryNameOptions } = useHistoryFilter();
+  const { filter, setFilter, filteredRows: rows, filteredTotal: total, isFiltered, productNameOptions, categoryNameOptions, productCategoryIndex } = useHistoryFilter();
 
+  // DC-5c: bấm SP ngoài nhóm đang chọn → tự bỏ nhóm về Chung rồi lọc theo SP đó.
   const toggleProductName = (name: string) => {
-    const current = filter.productNames ?? [];
-    const next = current.includes(name)
-      ? current.filter((n) => n !== name)
-      : [...current, name];
-    setFilter({ ...filter, productNames: next.length > 0 ? next : null });
+    setFilter(resolveProductChipToggle(filter, name, productCategoryIndex));
   };
 
   const toggleCategoryName = (name: string) => {
@@ -375,16 +373,23 @@ export function PurchaseHistoryTable({
           <div className="flex w-full flex-wrap gap-2 pt-1">
             {productNameOptions.map((name) => {
               const isSelected = filter.productNames?.includes(name) ?? false;
+              const groupActive = (filter.categoryNames?.length ?? 0) > 0;
+              const inGroup = isProductInSelectedGroups(productCategoryIndex, name, filter.categoryNames);
+              // ưu tiên: selected > mờ > thường. Chip mờ vẫn bấm được (không disabled).
+              const dimmed = groupActive && !inGroup && !isSelected;
               return (
                 <button
                   key={name}
                   type="button"
                   aria-pressed={isSelected}
                   onClick={() => toggleProductName(name)}
+                  title={dimmed ? "Bấm để lọc theo mặt hàng này (sẽ bỏ lọc nhóm)" : undefined}
                   className={`rounded border px-3 py-1 text-sm ${
                     isSelected
                       ? "border-stamp bg-paperWarm font-semibold text-inkDeep ring-1 ring-stamp"
-                      : "border-ledgerBorder bg-surface text-textMain hover:bg-paperWarm hover:text-ink"
+                      : dimmed
+                        ? "border-ledgerBorder bg-surface text-textMute opacity-45 hover:opacity-100 hover:bg-paperWarm hover:text-ink"
+                        : "border-ledgerBorder bg-surface text-textMain hover:bg-paperWarm hover:text-ink"
                   }`}
                 >
                   {name}
