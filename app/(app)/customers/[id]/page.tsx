@@ -1,7 +1,7 @@
 import "@/src/styles/print.css";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CircleDollarSign, Phone } from "lucide-react";
+import { ArrowLeft, CircleDollarSign, Info, Phone } from "lucide-react";
 import {
   PrintableCustomerSection,
   SummaryInvoicePopover,
@@ -23,7 +23,10 @@ import {
 } from "@/src/lib/customers/debt-summary";
 import { DebtHeadline } from "@/src/components/customers/debt-display";
 import { CategoryBreakdownPanel } from "@/src/components/customers/category-breakdown-panel";
-import { reconciliationFinalLine } from "@/src/lib/customers/debt-standing";
+import {
+  debtStanding,
+  reconciliationFinalLine,
+} from "@/src/lib/customers/debt-standing";
 import {
   buildCategoryBreakdown,
   resolveItemGroupName,
@@ -390,6 +393,10 @@ export default async function CustomerDetailPage({
   const showCategoryBreakdown =
     categoryBreakdown.reconciles && categoryBreakdown.groups.length > 0;
   const phoneHref = customer.phone ? normalizedPhoneHref(customer.phone) : null;
+  const debtNumeric = Number(customer.debt_total ?? 0);
+  const isCreditStanding =
+    debtStanding(Number.isFinite(debtNumeric) ? debtNumeric : 0).kind ===
+    "credit";
   const pdfDate = dayjs().tz(APP_TIME_ZONE).format("DD-MM-YYYY");
 
   return (
@@ -414,43 +421,71 @@ export default async function CustomerDetailPage({
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             Quay lại
           </Link>
-          <h1 className="mt-3 font-display text-3xl font-semibold tracking-normal text-inkDeep">
-            {customer.name}
-          </h1>
+          <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h1 className="font-display text-3xl font-semibold tracking-normal text-inkDeep">
+                {customer.name}
+              </h1>
+              {phoneHref ? (
+                <a
+                  href={phoneHref}
+                  className="mt-2 inline-flex items-center gap-1.5 text-[15px] text-textMute hover:text-ink"
+                >
+                  <Phone className="h-[15px] w-[15px]" aria-hidden="true" />
+                  {customer.phone}
+                </a>
+              ) : null}
+            </div>
+          </div>
         </div>
 
-        <div className="mb-6 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
-          <div className="rounded border border-ledgerBorder bg-surface px-4 py-4">
+        {/* TIER 1 · Thẻ nợ nổi bật — nền chuyển sắc + viền trái màu nợ/credit */}
+        <div className="mb-6 grid gap-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-stretch">
+          <div
+            className="rounded-[8px] border border-borderStrong p-5 shadow-[var(--shadow-card)] sm:p-6"
+            style={{
+              background: "linear-gradient(180deg, #fffdf4, #fdf6df)",
+              borderLeftWidth: "5px",
+              borderLeftColor: isCreditStanding ? "#15803d" : "#b91c1c",
+            }}
+          >
             <DebtHeadline debtTotal={customer.debt_total} />
             <DebtReconciliationLine summary={debtSummary} />
           </div>
 
-          <div className="flex flex-wrap gap-2 md:justify-end">
-            <SummaryInvoicePopover
-              pdfFilename={`cong-no-${customer.name}-${pdfDate}.pdf`}
-              imageFilename={`cong-no-${customer.name}-${pdfDate}.png`}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              disabled
-              title="Sẽ làm sau"
-              className="h-11 rounded border-ledgerBorder bg-surface px-4 text-[16px] font-semibold text-textMute"
-            >
-              <CircleDollarSign className="h-4 w-4" aria-hidden="true" />
-              Ghi trả
-            </Button>
+          <div className="flex flex-col gap-2.5 md:min-w-[210px] [&_button]:w-full">
             {phoneHref ? (
               <Button
                 asChild
-                className="h-11 rounded bg-ink px-4 text-[16px] font-semibold text-paper hover:bg-inkDeep"
+                className="h-11 w-full rounded bg-ink px-4 text-[16px] font-semibold text-paper hover:bg-inkDeep"
               >
                 <a href={phoneHref}>
                   <Phone className="h-4 w-4" aria-hidden="true" />
-                  Gọi
+                  Gọi khách
                 </a>
               </Button>
             ) : null}
+            <div className="[&>div]:w-full">
+              <SummaryInvoicePopover
+                pdfFilename={`cong-no-${customer.name}-${pdfDate}.pdf`}
+                imageFilename={`cong-no-${customer.name}-${pdfDate}.png`}
+              />
+            </div>
+            <div>
+              <Button
+                type="button"
+                variant="outline"
+                disabled
+                className="h-11 w-full rounded border-ledgerBorder bg-surface px-4 text-[16px] font-semibold text-textMute"
+              >
+                <CircleDollarSign className="h-4 w-4" aria-hidden="true" />
+                Ghi trả
+              </Button>
+              <p className="mt-1.5 flex items-center gap-1.5 text-[12.5px] leading-snug text-textFaint">
+                <Info className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                Tính năng ghi trả đang phát triển
+              </p>
+            </div>
           </div>
         </div>
 

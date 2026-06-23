@@ -51,7 +51,7 @@ export function DebtHeadline({
         <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-stamp">
           Khách trả trước
         </p>
-        <p className="mt-2 font-mono text-[34px] font-bold leading-none text-paid sm:text-[40px]">
+        <p className="mt-2 font-mono text-[38px] font-bold leading-none text-paid sm:text-[44px]">
           {formatVietnameseMoney(standing.amount)}
         </p>
       </>
@@ -63,7 +63,7 @@ export function DebtHeadline({
       <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-stamp">
         Số nợ hiện tại
       </p>
-      <p className="mt-2 font-mono text-[34px] font-bold leading-none text-debt sm:text-[40px]">
+      <p className="mt-2 font-mono text-[38px] font-bold leading-none text-debt sm:text-[44px]">
         {formatVietnameseMoney(numeric)}
       </p>
     </>

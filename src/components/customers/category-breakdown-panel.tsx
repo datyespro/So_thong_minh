@@ -56,7 +56,15 @@ export function CategoryBreakdownPanel({
                 Đã cọc
               </th>
               <th scope="col" className="px-3 py-2 text-right">
-                Tạm tính
+                <span className="inline-flex items-center justify-end gap-1.5">
+                  Tạm tính còn nợ
+                  <span
+                    className="inline-flex h-3.5 w-3.5 cursor-help items-center justify-center rounded-full bg-stamp/15 text-[9px] font-bold text-stamp"
+                    title="Đã mua − Đã cọc của riêng nhóm. Số tham khảo, chưa trừ cọc chung."
+                  >
+                    ?
+                  </span>
+                </span>
               </th>
             </tr>
           </thead>
@@ -110,7 +118,7 @@ export function CategoryBreakdownPanel({
               </div>
               <div className="grid grid-cols-[92px_minmax(0,1fr)] items-baseline gap-2">
                 <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-stamp">
-                  Tạm tính
+                  Tạm tính còn nợ
                 </p>
                 <p className="text-right">
                   <TentativeCell tentative={group.tentative} />
