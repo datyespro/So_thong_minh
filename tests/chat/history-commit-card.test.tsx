@@ -70,7 +70,7 @@ describe("HistoryCommitCard undo (UNDO-HIST)", () => {
     expect(html).not.toContain("Hoàn tác");
   });
 
-  it("KHÔNG nút cho create_order (v1 chỉ record_payment)", () => {
+  it("CÓ nút 'Hoàn tác' cho create_order committed + source_id (UNDO-HIST2)", () => {
     const orderCard: HistoryCommitCardData = {
       ...paymentCard,
       kind: "create_order",
@@ -86,6 +86,72 @@ describe("HistoryCommitCard undo (UNDO-HIST)", () => {
     const html = render({
       card: orderCard,
       confirmationText: "Đã ghi đơn cho anh Tuấn",
+      confirmationTone: "committed",
+    });
+
+    expect(html).toContain("Hoàn tác");
+    // create_order KHÔNG có nút "Đổi nhóm" (chỉ payment).
+    expect(html).not.toContain("Đổi nhóm");
+  });
+
+  it("CÓ nút 'Hoàn tác' cho create_purchase committed + source_id (UNDO-HIST2)", () => {
+    const purchaseCard: HistoryCommitCardData = {
+      ...paymentCard,
+      kind: "create_purchase",
+      entity_name: "NCC Minh Phát",
+      amount: null,
+      total_amount: 500000,
+      debt_amount: null,
+      items: [
+        { name: "cát", quantity: 5, unit: "khối", unit_price: 100000, line_total: 500000 },
+      ],
+      source_id: "purchase-1",
+    };
+
+    const html = render({
+      card: purchaseCard,
+      confirmationText: "Đã ghi đơn nhập từ NCC Minh Phát",
+      confirmationTone: "committed",
+    });
+
+    expect(html).toContain("Hoàn tác");
+    expect(html).not.toContain("Đổi nhóm");
+  });
+
+  it("KHÔNG nút khi create_order undone → 'Đã hoàn tác'", () => {
+    const orderCard: HistoryCommitCardData = {
+      ...paymentCard,
+      kind: "create_order",
+      amount: null,
+      total_amount: 300000,
+      debt_amount: 300000,
+      source_id: "order-1",
+    };
+
+    const html = render({
+      card: orderCard,
+      confirmationText: "Đã ghi đơn cho anh Tuấn",
+      confirmationTone: "committed",
+      undone: true,
+    });
+
+    expect(html).toContain("Đã hoàn tác");
+    expect(html).not.toContain("Hoàn tác");
+  });
+
+  it("KHÔNG nút cho edit_order (ngoài phạm vi UNDO-HIST2)", () => {
+    const editCard: HistoryCommitCardData = {
+      ...paymentCard,
+      kind: "edit_order",
+      amount: null,
+      total_amount: 300000,
+      debt_amount: 300000,
+      source_id: "order-1",
+    };
+
+    const html = render({
+      card: editCard,
+      confirmationText: "Đã sửa đơn cho anh Tuấn",
       confirmationTone: "committed",
     });
 

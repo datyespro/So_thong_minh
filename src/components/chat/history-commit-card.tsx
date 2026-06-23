@@ -7,6 +7,7 @@ import { dayjs } from "@/src/lib/dayjs";
 import { formatVietnameseMoney } from "@/src/lib/format/money";
 import { Button } from "@/src/components/ui/button";
 import { PaymentUndoModal } from "@/src/components/chat/payment-undo-modal";
+import { OrderUndoModal } from "@/src/components/chat/order-undo-modal";
 import { PaymentScopeModal } from "@/src/components/chat/payment-scope-modal";
 
 type HistoryCommitCardProps = Readonly<{
@@ -86,6 +87,17 @@ export function HistoryCommitCard({
     confirmationTone === "committed" &&
     Boolean(card.source_id) &&
     !undone;
+  const canUndoOrder =
+    card.kind === "create_order" &&
+    confirmationTone === "committed" &&
+    Boolean(card.source_id) &&
+    !undone;
+  const canUndoPurchase =
+    card.kind === "create_purchase" &&
+    confirmationTone === "committed" &&
+    Boolean(card.source_id) &&
+    !undone;
+  const canUndo = canUndoPayment || canUndoOrder || canUndoPurchase;
   const canEditScope = canUndoPayment;
 
   return (
@@ -202,7 +214,7 @@ export function HistoryCommitCard({
               ) : null}
               {effectiveText}
             </p>
-            {canUndoPayment || canEditScope ? (
+            {canUndo || canEditScope ? (
               <div className="flex flex-wrap items-center gap-2">
                 {canEditScope ? (
                   <Button
@@ -214,7 +226,7 @@ export function HistoryCommitCard({
                     Đổi nhóm
                   </Button>
                 ) : null}
-                {canUndoPayment ? (
+                {canUndo ? (
                   <Button
                     type="button"
                     variant="outline"
@@ -235,6 +247,22 @@ export function HistoryCommitCard({
             paymentId={card.source_id}
             amount={card.amount}
             entityName={card.entity_name}
+            businessDate={card.business_date}
+            onClose={() => setUndoModalOpen(false)}
+            onUndone={() => {
+              setUndoModalOpen(false);
+              onUndone?.();
+            }}
+          />
+        ) : null}
+
+        {(canUndoOrder || canUndoPurchase) && card.source_id ? (
+          <OrderUndoModal
+            open={undoModalOpen}
+            target={card.kind === "create_purchase" ? "purchase" : "order"}
+            commitId={card.source_id}
+            entityName={card.entity_name}
+            totalAmount={card.total_amount}
             businessDate={card.business_date}
             onClose={() => setUndoModalOpen(false)}
             onUndone={() => {

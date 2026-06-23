@@ -231,7 +231,8 @@ describe("MessageList", () => {
     expect(html).toContain(
       'class="flex items-center gap-2 text-[16px] font-semibold leading-6 text-paid"',
     );
-    expect(html).not.toContain("Hoàn tác");
+    // UNDO-HIST2: thẻ đơn bán committed + source_id giờ có nút "Hoàn tác".
+    expect(html).toContain("Hoàn tác");
     expect(html).not.toContain("Sửa Đơn");
     expect(html).not.toContain("Cần kiểm tra");
   });
