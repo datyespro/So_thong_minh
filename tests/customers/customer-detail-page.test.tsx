@@ -15,6 +15,14 @@ vi.mock("@/src/components/shared/AuthGuard", () => ({
   getAuthenticatedUser: mocks.getAuthenticatedUser,
 }));
 
+// DC-4c: trang nhúng PaymentScopeEditButton (client) gọi useRouter().refresh().
+// renderToStaticMarkup không có App Router context → mock để render được; page.tsx
+// cũng import notFound từ đây nên giữ luôn.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+  notFound: vi.fn(),
+}));
+
 type CustomerRow = {
   id: string;
   name: string;
@@ -570,5 +578,66 @@ describe("CustomerDetailPage — lọc + nhãn theo nhóm (DC-5b)", () => {
     expect(html).toContain("Chưa phân loại");
     // CategoryTag ẩn hoàn toàn cho "Chưa phân loại" → không có span nhãn dòng nào.
     expect(html).not.toContain("mt-0.5 block font-mono");
+  });
+});
+
+describe("CustomerDetailPage — nút Đổi nhóm cho cọc (DC-4c)", () => {
+  beforeEach(() => {
+    mocks.createClient.mockReset();
+    mocks.getAuthenticatedUser.mockReset();
+    mocks.getAuthenticatedUser.mockResolvedValue({ id: "owner-1" });
+  });
+
+  it("cọc có nhãn nhóm còn sống → hiện 'Nhóm: <tên>' + nút 'Đổi nhóm'", async () => {
+    const html = await renderCustomerDetailPageRaw({
+      payments: [
+        {
+          id: "payment-1",
+          amount: 200000,
+          paid_at: "2026-05-31T03:00:00.000Z",
+          scope_category_id: "cat-xm",
+        } as PaymentRow & { scope_category_id: string },
+      ],
+      productCategories: [{ id: "cat-xm", name: "Xi măng" }],
+    });
+
+    // Dòng nhãn nhóm của cọc trong "Lịch sử trả nợ".
+    expect(html).toContain("Nhóm: <span");
+    expect(html).toContain("Xi măng");
+    // Nút Đổi nhóm render cho dòng cọc.
+    expect(html).toContain("Đổi nhóm");
+  });
+
+  it("cọc Chung (scope_category_id=null) → KHÔNG dòng 'Nhóm', vẫn có nút", async () => {
+    const html = await renderCustomerDetailPageRaw({
+      payments: [
+        {
+          id: "payment-1",
+          amount: 200000,
+          paid_at: "2026-05-31T03:00:00.000Z",
+        },
+      ],
+    });
+
+    expect(html).not.toContain("Nhóm: <span");
+    expect(html).toContain("Đổi nhóm");
+  });
+
+  it("cọc orphan (nhóm đã xóa mềm, không có trong map) → coi như Chung, KHÔNG dòng 'Nhóm'", async () => {
+    const html = await renderCustomerDetailPageRaw({
+      payments: [
+        {
+          id: "payment-1",
+          amount: 200000,
+          paid_at: "2026-05-31T03:00:00.000Z",
+          scope_category_id: "cat-deleted",
+        } as PaymentRow & { scope_category_id: string },
+      ],
+      // map categoryName không chứa cat-deleted → scopeLabel null.
+      productCategories: [{ id: "cat-xm", name: "Xi măng" }],
+    });
+
+    expect(html).not.toContain("Nhóm: <span");
+    expect(html).toContain("Đổi nhóm");
   });
 });

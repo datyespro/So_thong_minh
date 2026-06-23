@@ -8,6 +8,7 @@ import {
 } from "@/src/components/invoice/printable-customer-section";
 import { HistoryFilterProvider } from "@/src/components/customers/history-filter-provider";
 import { PurchaseHistoryTable } from "@/src/components/customers/purchase-history-table";
+import { PaymentScopeEditButton } from "@/src/components/customers/payment-scope-edit-button";
 import { Button } from "@/src/components/ui/button";
 import {
   flattenCustomerPurchaseHistory,
@@ -154,9 +155,11 @@ function DebtReconciliationLine({
 function PaymentHistoryList({
   payments,
   total,
+  categoryName,
 }: Readonly<{
   payments: CustomerPaymentRow[];
   total: number;
+  categoryName: Map<string, string>;
 }>) {
   if (payments.length === 0) {
     return <PaymentHistoryEmptyState />;
@@ -165,24 +168,43 @@ function PaymentHistoryList({
   return (
     <div className="overflow-hidden rounded border border-ledgerBorder bg-surface shadow-[var(--shadow-card)]">
       <ul className="divide-y divide-ledgerBorder">
-        {payments.map((payment) => (
-          <li
-            key={payment.id}
-            className="grid gap-2 px-4 py-3 text-[16px] leading-7 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
-          >
-            <div>
-              <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-stamp">
-                Ngày trả
-              </p>
-              <p className="mt-1 font-semibold text-inkDeep">
-                {formatPaymentDate(payment.paid_at)}
-              </p>
-            </div>
-            <p className="font-display text-xl font-semibold tracking-normal text-paid sm:text-right">
-              {formatMoneyValue(payment.amount)}
-            </p>
-          </li>
-        ))}
+        {payments.map((payment) => {
+          // DC-4c: nhãn nhóm cọc — null khi không scope HOẶC scope vào danh mục đã
+          // xóa mềm (orphan, không có trong map) → hiện "Chung" (không render dòng "Nhóm").
+          const scopeLabel = payment.scope_category_id
+            ? (categoryName.get(payment.scope_category_id) ?? null)
+            : null;
+
+          return (
+            <li
+              key={payment.id}
+              className="grid gap-2 px-4 py-3 text-[16px] leading-7 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+            >
+              <div>
+                <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-stamp">
+                  Ngày trả
+                </p>
+                <p className="mt-1 font-semibold text-inkDeep">
+                  {formatPaymentDate(payment.paid_at)}
+                </p>
+                {scopeLabel ? (
+                  <p className="mt-1 text-[15px] leading-6 text-textMute">
+                    Nhóm: <span className="font-semibold text-inkDeep">{scopeLabel}</span>
+                  </p>
+                ) : null}
+              </div>
+              <div className="flex items-center justify-between gap-3 sm:flex-col sm:items-end">
+                <p className="font-display text-xl font-semibold tracking-normal text-paid sm:text-right">
+                  {formatMoneyValue(payment.amount)}
+                </p>
+                <PaymentScopeEditButton
+                  paymentId={payment.id}
+                  currentScopeLabel={scopeLabel}
+                />
+              </div>
+            </li>
+          );
+        })}
       </ul>
       <div className="grid gap-2 border-t-2 border-ledgerBorder bg-paperWarm px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
         <p className="font-display text-[18px] font-semibold text-inkDeep">
@@ -463,6 +485,7 @@ export default async function CustomerDetailPage({
           <PaymentHistoryList
             payments={payments}
             total={debtSummary.paidLater}
+            categoryName={categoryName}
           />
         </section>
 
