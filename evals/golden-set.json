@@ -816,6 +816,76 @@
     "mode": "assert"
   },
   {
+    "id": "D10",
+    "group": "D",
+    "text": "công trình nhà tiến tâm trả 500k tiền gạch",
+    "expect": {
+      "intent": "record_payment",
+      "fields": [
+        { "path": "entities.customer_name", "match": "name", "value": "tiến tâm" },
+        { "path": "entities.amount", "match": "number", "value": 500000 },
+        { "path": "entities.payment_scope_raw", "match": "name", "value": "gạch" }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "D11",
+    "group": "D",
+    "text": "anh Tâm cọc 500k tiền Thép",
+    "expect": {
+      "intent": "record_payment",
+      "fields": [
+        { "path": "entities.customer_name", "match": "name", "value": "Tâm" },
+        { "path": "entities.amount", "match": "number", "value": 500000 },
+        { "path": "entities.payment_scope_raw", "match": "name", "value": "Thép" }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "D12",
+    "group": "D",
+    "text": "chú Tư trả 300k tiền nợ",
+    "expect": {
+      "intent": "record_payment",
+      "fields": [
+        { "path": "entities.customer_name", "match": "name", "value": "Tư" },
+        { "path": "entities.amount", "match": "number", "value": 300000 },
+        { "path": "entities.payment_scope_raw", "match": "exact", "value": null }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "D13",
+    "group": "D",
+    "text": "anh Sáu cọc 2tr",
+    "expect": {
+      "intent": "record_payment",
+      "fields": [
+        { "path": "entities.customer_name", "match": "name", "value": "Sáu" },
+        { "path": "entities.amount", "match": "number", "value": 2000000 },
+        { "path": "entities.payment_scope_raw", "match": "exact", "value": null }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
+    "id": "D14",
+    "group": "D",
+    "text": "nhà Bình trả 1tr tiền vữa",
+    "expect": {
+      "intent": "record_payment",
+      "fields": [
+        { "path": "entities.customer_name", "match": "name", "value": "Bình" },
+        { "path": "entities.amount", "match": "number", "value": 1000000 },
+        { "path": "entities.payment_scope_raw", "match": "name", "value": "vữa" }
+      ]
+    },
+    "mode": "assert"
+  },
+  {
     "id": "E1",
     "group": "E",
     "text": "anh Hùng nợ bao nhiêu",

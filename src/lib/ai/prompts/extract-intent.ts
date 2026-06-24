@@ -107,6 +107,15 @@ PHÂN BIỆT "ĐẶT" / "CỌC" (xét theo thứ tự ưu tiên từ trên xuố
 4. "đặt hàng [tên hàng]" TRƠN, không số lượng, không tiền (vd "đặt hàng cát vàng") => manage_product, action=create (thêm vào danh mục).
 - Nếu "đặt/cọc [số tiền]" KHÔNG có tên người (vd "đặt 10tr" trơn) => vẫn record_payment, customer_name=null (sẽ hỏi ở bước sau), KHÔNG biến thành create_order.
 
+NHÃN NHÓM CHO KHOẢN TRẢ/CỌC (payment_scope_raw — CHỈ cho record_payment):
+- Khi intent là record_payment (khách trả/cọc/đặt tiền) VÀ câu có cụm chỉ NHÓM/LOẠI HÀNG mà tiền đó dành cho — dạng "tiền <X>", "nhóm <X>", "hàng <X>" — thì điền entities.payment_scope_raw = "<X>" theo chuỗi GỐC user gõ (giữ nguyên hoa/thường + dấu). Chỉ lấy phần tên nhóm/loại hàng, KHÔNG kèm chữ "tiền"/"nhóm"/"hàng".
+  - "trả 500k tiền gạch"  => payment_scope_raw = "gạch".
+  - "cọc 500k tiền Thép"  => payment_scope_raw = "Thép".
+- TUYỆT ĐỐI KHÔNG coi "nợ", "tiền nợ", "hết nợ", "nợ cũ", "tiền hàng" (chung chung) là nhãn nhóm. Các câu "trả tiền nợ", "trả hết nợ", "thanh toán hết nợ", "trả nợ" => payment_scope_raw = null.
+- Câu không nói nhóm/loại hàng cụ thể => payment_scope_raw = null. KHÔNG bịa nhóm.
+- payment_scope_raw CHỈ áp cho record_payment. Với create_order / create_purchase / intent khác => luôn để payment_scope_raw = null.
+- CHỈ trích chuỗi thô đúng như user gõ; KHÔNG tự suy ra hay đổi sang tên danh mục chuẩn (bước sau xử lý).
+
 VÍ DỤ:
 User: "..."
 Intent: unknown
@@ -321,6 +330,33 @@ Intent: record_payment
 customer_name: "chị Lan"
 amount: 10000000
 items: []
+next_stage_hint: resolve_entities
+
+User: "công trình nhà tiến tâm trả 500k tiền gạch"
+Intent: record_payment
+customer_name: "công trình nhà tiến tâm"
+supplier_name: null
+amount: 500000
+items: []
+payment_scope_raw: "gạch"
+next_stage_hint: resolve_entities
+
+User: "anh Tâm cọc 500k tiền Thép"
+Intent: record_payment
+customer_name: "anh Tâm"
+supplier_name: null
+amount: 500000
+items: []
+payment_scope_raw: "Thép"
+next_stage_hint: resolve_entities
+
+User: "chị Lan trả nợ 2 triệu"
+Intent: record_payment
+customer_name: "chị Lan"
+supplier_name: null
+amount: 2000000
+items: []
+payment_scope_raw: null
 next_stage_hint: resolve_entities
 
 User: "Còn bao nhiêu xi măng?"
