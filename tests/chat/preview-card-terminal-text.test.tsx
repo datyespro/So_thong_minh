@@ -57,7 +57,7 @@ describe("PreviewCard terminalText (tip 25b)", () => {
       "Dạ em chào bác ạ.",
     );
 
-    expect(html).toContain("Dạ, em là Sổ Thông Minh");
+    expect(html).toContain("Dạ em là Sổ Thông Minh");
     expect(html).toContain('data-testid="capability-chip-row"');
     expect(html).not.toContain("Dạ em chào bác ạ.");
   });

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { capabilityReply } from "@/src/lib/ai/capability-help";
 import type { ChatPipelineResult } from "@/src/lib/ai/chat-pipeline";
 import type { ExtractedIntent } from "@/src/lib/ai/intent-schema";
 
@@ -463,19 +464,11 @@ describe("processMessage", () => {
     expect(mocks.insert.mock.calls[1][0]).toMatchObject({
       owner_id: "user-a",
       role: "assistant",
-      content:
-        "Dạ, em là Sổ Thông Minh — em thay cuốn sổ giấy của cửa hàng mình ạ. Bác cứ nhắn như nói chuyện: nhắn một câu là em ghi đơn bán, ghi thu nợ, ghi nhập hàng; hỏi một câu là em tra được khách nợ bao nhiêu, hôm nay bán được bao nhiêu, hàng còn bao nhiêu. Ghi nhầm thì bấm Hoàn tác ngay dưới thẻ. Bác bấm thử một ví dụ bên dưới ạ:",
+      content: capabilityReply("general").content,
       intent: "small_talk",
       metadata: {
         source: "tip_25a_capability",
-        chips: [
-          "Bán cho anh Hùng 5 bao xi măng 90k",
-          "Anh Hùng trả 200k",
-          "Nhập 20 bao xi măng của đại lý Thành giá 70k",
-          "Anh Hùng nợ bao nhiêu?",
-          "Hôm nay bán được bao nhiêu?",
-          "Còn bao nhiêu xi măng?",
-        ],
+        chips: capabilityReply("general").chips,
       },
     });
   });

@@ -17,6 +17,32 @@ describe("capability help", () => {
     expect(detectCapabilityQuestion("nhập hàng thế nào")).toBe("how_purchase");
   });
 
+  it("routes yes/no capability questions by topic", () => {
+    expect(detectCapabilityQuestion("Bạn có thể ghi đơn không?")).toBe(
+      "how_order",
+    );
+    expect(detectCapabilityQuestion("Em thu nợ được không?")).toBe(
+      "how_payment",
+    );
+    expect(detectCapabilityQuestion("Bạn có nhập hàng được không?")).toBe(
+      "how_purchase",
+    );
+    expect(detectCapabilityQuestion("Bạn có thể xóa khách không?")).toBe(
+      "general",
+    );
+  });
+
+  it("does not swallow plain small talk", () => {
+    expect(detectCapabilityQuestion("chào em")).toBeNull();
+    expect(detectCapabilityQuestion("cảm ơn em nhé")).toBeNull();
+  });
+
+  it("lists concrete capabilities in the general reply", () => {
+    const reply = capabilityReply("general");
+    expect(reply.content).toContain("nhập hàng");
+    expect(reply.chips).toHaveLength(6);
+  });
+
   it("returns approved content and chip counts", () => {
     expect(capabilityReply("general").chips).toHaveLength(6);
     expect(capabilityReply("how_order").chips).toEqual([

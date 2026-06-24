@@ -16,7 +16,7 @@ export const CAPABILITY_CHIPS = {
 } as const;
 
 const GENERAL_REPLY =
-  "Dạ, em là Sổ Thông Minh — em thay cuốn sổ giấy của cửa hàng mình ạ. Bác cứ nhắn như nói chuyện: nhắn một câu là em ghi đơn bán, ghi thu nợ, ghi nhập hàng; hỏi một câu là em tra được khách nợ bao nhiêu, hôm nay bán được bao nhiêu, hàng còn bao nhiêu. Ghi nhầm thì bấm Hoàn tác ngay dưới thẻ. Bác bấm thử một ví dụ bên dưới ạ:";
+  "Dạ em là Sổ Thông Minh, thay cuốn sổ giấy của mình ạ. Bác cứ nhắn như nói chuyện thường: em ghi đơn bán, ghi khách trả nợ, ghi nhập hàng; hỏi thì em tra khách nào còn nợ bao nhiêu, hôm nay bán được bao nhiêu, hàng còn bao nhiêu; em cũng thêm/sửa/xóa khách và mặt hàng, ghi nhầm thì bấm Hoàn tác dưới thẻ là xong. Bác bấm thử một ví dụ bên dưới ạ:";
 const ORDER_REPLY =
   "Dạ bác nhắn kiểu: Bán cho [tên khách] [số lượng] [tên hàng] [giá]. Em hiện thẻ xem trước, bác xem đúng rồi bấm Ghi là vào sổ ạ.";
 const PAYMENT_REPLY =
@@ -53,6 +53,28 @@ export function detectCapabilityQuestion(
   if (hasAny(text, ["nhap hang the nao", "nhap hang kieu gi"])) {
     return "how_purchase";
   }
+
+  // Khung câu hỏi khả năng dạng yes/no ("có thể … không", "… được không",
+  // "có biết …", "giúp … được không"). Đặt SAU các mẫu "thế nào" cụ thể để
+  // mẫu cụ thể vẫn ưu tiên. Yêu cầu có khung nghi vấn (không chỉ trùng từ
+  // khóa trần) để không nuốt câu small_talk vu vơ.
+  const hasCapabilityFrame =
+    hasAny(text, ["co the", "duoc khong", "co biet"]) ||
+    (text.includes("biet") && text.includes("khong")) ||
+    (text.includes("giup") && text.includes("khong"));
+  if (hasCapabilityFrame) {
+    if (hasAny(text, ["ghi don", "ban hang", "ban cho", "ghi so"])) {
+      return "how_order";
+    }
+    if (hasAny(text, ["thu no", "tra no", "ghi no", "don no"])) {
+      return "how_payment";
+    }
+    if (hasAny(text, ["nhap hang", "nhap kho"])) {
+      return "how_purchase";
+    }
+    return "general";
+  }
+
   if (
     hasAny(text, [
       "lam duoc gi",
