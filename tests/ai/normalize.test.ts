@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   diceSimilarity,
+  foldCaseVi,
   normalizeVi,
   trigramSet,
 } from "@/src/lib/ai/normalize";
@@ -16,6 +17,16 @@ describe("normalizeVi", () => {
     expect(normalizeVi("Xi\tm\u0103ng\nH\u00e0   Ti\u00ean")).toBe(
       "xi mang ha tien",
     );
+  });
+});
+
+describe("foldCaseVi", () => {
+  it("lowercases, NFC-normalizes, collapses spaces, and trims — but KEEPS marks", () => {
+    expect(foldCaseVi("Ngọc  ÁNH")).toBe("ngọc ánh");
+  });
+
+  it("distinguishes names that differ only by diacritics", () => {
+    expect(foldCaseVi("Ngọc Anh")).not.toBe(foldCaseVi("Ngọc Ánh"));
   });
 });
 

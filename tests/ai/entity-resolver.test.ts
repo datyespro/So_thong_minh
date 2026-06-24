@@ -488,6 +488,101 @@ describe("resolveOne — TIP-FIX-RESOLVE-2 distinctive-token guard", () => {
   });
 });
 
+describe("resolveOne — TIP-FIX1 diacritics conflict guard", () => {
+  // bỏ-dấu thì trùng, giữ dấu thì khác: "Ngọc Anh" vs "Ngọc Ánh".
+  const ngocAnhRows: EntityRow[] = [
+    { id: "c-ngoc-anh", name: "Ngọc Anh", aliases: [] },
+  ];
+  const ngocAnhDauRows: EntityRow[] = [
+    { id: "c-ngoc-anh-dau", name: "Ngọc Ánh", aliases: [] },
+  ];
+
+  it("query CÓ dấu, lệch dấu với khách đã có → HỎI LẠI, không tự gán", () => {
+    const resolved = resolveOne("Ngọc Ánh", "customer", ngocAnhRows);
+
+    expect(resolved.status).toBe("needs_confirmation");
+    expect(resolved.resolved_id).toBeNull();
+    expect(resolved.candidates.map((c) => c.name)).toContain("Ngọc Anh");
+  });
+
+  it("gõ THIẾU dấu + đúng 1 ứng viên → TỰ GÁN (giữ UX)", () => {
+    const resolved = resolveOne("ngoc anh", "customer", ngocAnhDauRows);
+
+    expect(resolved.status).toBe("resolved");
+    expect(resolved.resolved_name).toBe("Ngọc Ánh");
+  });
+
+  it("gõ THIẾU dấu + ≥2 hàng bỏ-dấu-trùng → HỎI LẠI (ambiguous)", () => {
+    const resolved = resolveOne("ngoc anh", "customer", [
+      ...ngocAnhRows,
+      ...ngocAnhDauRows,
+    ]);
+
+    expect(resolved.status).toBe("ambiguous");
+    expect(resolved.resolved_id).toBeNull();
+    expect(resolved.candidates.map((c) => c.name)).toEqual(
+      expect.arrayContaining(["Ngọc Anh", "Ngọc Ánh"]),
+    );
+  });
+
+  it("trùng cả dấu → tự gán", () => {
+    const resolved = resolveOne("Ngọc Ánh", "customer", ngocAnhDauRows);
+
+    expect(resolved.status).toBe("resolved");
+    expect(resolved.resolved_name).toBe("Ngọc Ánh");
+    expect(resolved.candidates[0].matched_on).toBe("name_exact");
+  });
+
+  it("có cả hai, gõ trúng một → tự gán đúng cái trùng dấu", () => {
+    const resolved = resolveOne("Ngọc Ánh", "customer", [
+      ...ngocAnhRows,
+      ...ngocAnhDauRows,
+    ]);
+
+    expect(resolved.status).toBe("resolved");
+    expect(resolved.resolved_id).toBe("c-ngoc-anh-dau");
+    expect(resolved.resolved_name).toBe("Ngọc Ánh");
+  });
+
+  it("trùng-cả-dấu nhiều bản → ambiguous (hành vi cũ, hiếm)", () => {
+    const resolved = resolveOne("Ngọc Ánh", "customer", [
+      { id: "c-1", name: "Ngọc Ánh", aliases: [] },
+      { id: "c-2", name: "Ngọc Ánh", aliases: [] },
+    ]);
+
+    expect(resolved.status).toBe("ambiguous");
+    expect(resolved.resolved_id).toBeNull();
+    expect(resolved.candidates).toHaveLength(2);
+  });
+
+  it("regression — không khác-dấu thì hành vi cũ giữ nguyên (auto-resolve)", () => {
+    const resolved = resolveOne("anh hùng", "customer", [
+      { id: "c-anh-hung", name: "Anh Hùng", aliases: [] },
+    ]);
+
+    expect(resolved.status).toBe("resolved");
+    expect(resolved.resolved_id).toBe("c-anh-hung");
+  });
+
+  it("regression — gõ thiếu dấu hàng hóa vẫn tự gán (xi mang → Xi măng)", () => {
+    const resolved = resolveOne("xi mang", "product", [
+      { id: "p-xm", name: "Xi măng", aliases: [] },
+    ]);
+
+    expect(resolved.status).toBe("resolved");
+    expect(resolved.resolved_name).toBe("Xi măng");
+  });
+
+  it("regression — number-guard gõ thiếu dấu vẫn tự gán (thep phi 10)", () => {
+    const resolved = resolveOne("thep phi 10", "product", [
+      { id: "p-thep10", name: "Thép phi 10", aliases: [] },
+    ]);
+
+    expect(resolved.status).toBe("resolved");
+    expect(resolved.resolved_name).toBe("Thép phi 10");
+  });
+});
+
 describe("resolveEntities", () => {
   it("passes manage_product through Stage 2 without special write handling", async () => {
     const resolved = await resolveEntities({

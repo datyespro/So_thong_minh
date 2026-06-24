@@ -1,4 +1,4 @@
-import { diceSimilarity, normalizeVi } from "@/src/lib/ai/normalize";
+import { diceSimilarity, foldCaseVi, normalizeVi } from "@/src/lib/ai/normalize";
 import type {
   EntityCandidate,
   EntityType,
@@ -298,22 +298,50 @@ export function resolveOne(
     return emptyResolution(null, entityType);
   }
 
-  const exactNameCandidates = sortCandidates(
-    rows
-      .filter((row) => normalizeVi(row.name) === normalizedRaw)
-      .map((row) => candidateFor(row, 1, "name_exact", row.name)),
+  const strippedMatches = rows.filter(
+    (row) => normalizeVi(row.name) === normalizedRaw,
   );
 
-  if (exactNameCandidates.length === 1) {
-    return resolvedEntity(raw, entityType, exactNameCandidates[0]);
-  }
+  if (strippedMatches.length > 0) {
+    const foldedRaw = foldCaseVi(raw);
+    const exactDiacritic = strippedMatches.filter(
+      (row) => foldCaseVi(row.name) === foldedRaw,
+    );
+    const strippedCandidates = sortCandidates(
+      strippedMatches.map((row) =>
+        candidateFor(row, 1, "name_exact", row.name),
+      ),
+    );
 
-  if (exactNameCandidates.length > 1) {
+    if (exactDiacritic.length === 1) {
+      return resolvedEntity(
+        raw,
+        entityType,
+        candidateFor(exactDiacritic[0], 1, "name_exact", exactDiacritic[0].name),
+      );
+    }
+
+    if (exactDiacritic.length > 1) {
+      return unresolvedEntity(raw, entityType, "ambiguous", strippedCandidates);
+    }
+
+    // exactDiacritic === 0
+    const rawIsToneless = normalizedRaw === foldedRaw;
+
+    if (rawIsToneless && strippedMatches.length === 1) {
+      // gõ thiếu dấu + đúng 1 ứng viên → giữ UX, tự gán
+      return resolvedEntity(raw, entityType, strippedCandidates[0]);
+    }
+    if (rawIsToneless) {
+      // gõ thiếu dấu nhưng ≥2 hàng bỏ-dấu-trùng → HỎI LẠI
+      return unresolvedEntity(raw, entityType, "ambiguous", strippedCandidates);
+    }
+    // query CÓ dấu mà không hàng nào trùng-cả-dấu → HỎI LẠI (bug Ngọc Ánh vs Ngọc Anh)
     return unresolvedEntity(
       raw,
       entityType,
-      "ambiguous",
-      exactNameCandidates,
+      "needs_confirmation",
+      strippedCandidates,
     );
   }
 

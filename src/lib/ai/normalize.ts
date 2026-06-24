@@ -8,6 +8,15 @@ export function normalizeVi(input: string): string {
     .trim();
 }
 
+// So kh\u1edbp ph\u00e2n bi\u1ec7t D\u1ea4U: h\u1ea1 th\u01b0\u1eddng + NFC + gom space + trim, GI\u1eee d\u1ea5u ti\u1ebfng Vi\u1ec7t.
+export function foldCaseVi(input: string): string {
+  return input
+    .toLowerCase()
+    .normalize("NFC")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function trigramSet(input: string): Set<string> {
   const normalized = normalizeVi(input);
 
