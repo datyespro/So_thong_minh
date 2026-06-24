@@ -59,6 +59,7 @@ import {
 } from "@/src/lib/products/update";
 import {
   validateCategoryName,
+  normalizeCategoryName,
   type CategoryView,
 } from "@/src/lib/products/category";
 import { createClient } from "@/src/lib/supabase/server";
@@ -822,10 +823,6 @@ function findProductByName(rows: ProductRow[] | null, name: string) {
   return (rows ?? []).find(
     (row) => normalizeProductName(row.name) === normalized,
   ) ?? null;
-}
-
-function normalizeCategoryName(name: string) {
-  return name.trim().toLocaleLowerCase("vi-VN");
 }
 
 function findCategoryByName(rows: ProductCategoryRow[] | null, name: string) {

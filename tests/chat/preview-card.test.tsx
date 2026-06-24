@@ -1374,6 +1374,51 @@ describe("formatOverpaymentInfo", () => {
 });
 
 // TIP-DC-4 — pure helper gắn nhãn nhóm vào input commitPayment.
+// DC-6c: nhãn nhóm theo payment_scope_raw. Logic khớp + 3 kết cục (matched/
+// not_found/ambiguous) test trọn ở tests/products/category.test.ts (pure-fn).
+// Hành vi preselect/HỎI-LẠI do useEffect lái → KHÔNG quan sát được qua SSR
+// (renderToStaticMarkup không chạy effect); harness này không có jsdom/RTL.
+// Các test dưới phủ AC quan sát được qua SSR: card record_payment live render
+// selector "Gắn nhóm"; raw null KHÔNG đổi hành vi DC-4; truyền prop không vỡ.
+function renderPaymentCard(paymentScopeRaw: string | null) {
+  return renderToStaticMarkup(
+    createElement(PreviewCard, {
+      validated: baseValidated({
+        intent: "record_payment",
+        items: [],
+        effective_amount: 500000,
+        payment_status: "unknown",
+        paid_amount: null,
+      }),
+      paymentScopeRaw,
+      patched: createEmptyPreviewCardPatch(),
+      isLive: true,
+      onPatchChange: () => undefined,
+    }),
+  );
+}
+
+describe("PreviewCard record_payment scope (DC-6c)", () => {
+  it("renders the 'Gắn nhóm' selector on a live payment card", () => {
+    const html = renderPaymentCard(null);
+    expect(html).toContain("Gắn nhóm (tùy chọn)");
+    expect(html).toContain('data-testid="scope-category-select"');
+    expect(html).toContain("Ghi thu nợ");
+  });
+
+  it("raw null keeps DC-4 behaviour: no HỎI LẠI prompt, no scope block", () => {
+    const html = renderPaymentCard(null);
+    expect(html).not.toContain('data-testid="scope-ask-prompt"');
+  });
+
+  it("accepts a payment_scope_raw prop without breaking SSR (block is effect-driven)", () => {
+    const html = renderPaymentCard("vữa");
+    expect(html).toContain('data-testid="scope-category-select"');
+    // Pre-effect (SSR) HỎI LẠI chưa bật — chặn Ghi do effect lái, QA tay xác nhận.
+    expect(html).not.toContain('data-testid="scope-ask-prompt"');
+  });
+});
+
 describe("scopeCommitInput", () => {
   it("returns scope_category_id when a category is chosen", () => {
     expect(scopeCommitInput("cat-1")).toEqual({ scope_category_id: "cat-1" });

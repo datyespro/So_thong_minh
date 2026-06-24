@@ -190,6 +190,7 @@ export type PipelineTurnView = {
   id: string;
   userMessageId: string;
   validated: ValidatedIntent;
+  paymentScopeRaw?: string | null;
   answer?: QueryAnswer | null;
   productManagementPreview?: ProductManagementPreview | null;
   customerManagementPreview?: CustomerManagementPreview | null;

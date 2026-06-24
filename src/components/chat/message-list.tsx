@@ -193,6 +193,7 @@ export function MessageList({
               !historyCustomerCard ? (
                 <PreviewCard
                   validated={turn.validated}
+                  paymentScopeRaw={turn.paymentScopeRaw ?? null}
                   answer={turn.answer ?? null}
                   customerManagementPreview={
                     turn.customerManagementPreview ?? null

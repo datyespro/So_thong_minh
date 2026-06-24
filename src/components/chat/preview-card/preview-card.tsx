@@ -103,7 +103,10 @@ import {
 } from "@/src/lib/ai/validate-schema";
 import { businessDateVN, dayjs } from "@/src/lib/dayjs";
 import { parseProductSellPriceInput } from "@/src/lib/products/update";
-import type { CategoryView } from "@/src/lib/products/category";
+import {
+  resolvePaymentScopeCategory,
+  type CategoryView,
+} from "@/src/lib/products/category";
 import { formatUnitDisplay } from "@/src/lib/format/unit";
 import {
   clearDraft,
@@ -117,6 +120,7 @@ type PreviewCardMode = "live" | "restored";
 
 type PreviewCardProps = Readonly<{
   validated: ValidatedIntent;
+  paymentScopeRaw?: string | null;
   answer?: QueryAnswer | null;
   customerManagementPreview?: CustomerManagementPreview | null;
   productManagementPreview?: ProductManagementPreview | null;
@@ -2917,6 +2921,7 @@ function DeleteOrderConfirmModal({
 
 export function PreviewCard({
   validated: initialValidated,
+  paymentScopeRaw = null,
   answer = null,
   customerManagementPreview = null,
   productManagementPreview = null,
@@ -3025,6 +3030,11 @@ export function PreviewCard({
   // 1 state phủ cả live + restored (cùng component). KHÔNG persist qua reload (v1).
   const [selectedScopeCategoryId, setSelectedScopeCategoryId] = React.useState("");
   const [scopeCategories, setScopeCategories] = React.useState<CategoryView[]>([]);
+  // DC-6c: cờ HỎI LẠI (chặn Ghi) khi raw không khớp/khớp nhiều. scopeLoaded để
+  // không chặn nhầm lúc danh mục đang nạp. scopeTouchedRef: mẹ đã tự đổi selector.
+  const [scopeAsk, setScopeAsk] = React.useState(false);
+  const [scopeLoaded, setScopeLoaded] = React.useState(false);
+  const scopeTouchedRef = React.useRef(false);
   const [drafts, setDrafts] = React.useState<DraftInputs>({
     prices: {},
     quantities: {},
@@ -3173,13 +3183,37 @@ export function PreviewCard({
         if (!cancelled && result.ok) {
           setScopeCategories(result.data);
         }
+        if (!cancelled) setScopeLoaded(true);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) setScopeLoaded(true);
+      });
 
     return () => {
       cancelled = true;
     };
   }, [validated.intent]);
+
+  // DC-6c: sau khi danh mục nạp xong, khớp payment_scope_raw:
+  //  matched   → tự chọn sẵn (chỉ khi mẹ chưa tự đổi).
+  //  not_found/ambiguous → bật HỎI LẠI (chặn Ghi) cho tới khi mẹ chọn.
+  //  none (raw null) → y như DC-4 (không nhắc, không chặn).
+  React.useEffect(() => {
+    if (validated.intent !== "record_payment" || !scopeLoaded) return;
+    if (scopeTouchedRef.current) return;
+    const resolution = resolvePaymentScopeCategory(
+      paymentScopeRaw ?? null,
+      scopeCategories,
+    );
+    if (resolution.status === "matched") {
+      setSelectedScopeCategoryId(resolution.categoryId);
+      setScopeAsk(false);
+    } else {
+      setScopeAsk(
+        resolution.status === "not_found" || resolution.status === "ambiguous",
+      );
+    }
+  }, [validated.intent, scopeLoaded, paymentScopeRaw, scopeCategories]);
 
   function handleSelectCustomerManagementCandidate(
     candidate: CustomerManagementCandidate,
@@ -3634,7 +3668,7 @@ export function PreviewCard({
       // vanish the moment an overpayment is corrected mid-typing.
       patched.amount !== null
     );
-  const commitDisabled = !state.canConfirm || isCommitting;
+  const commitDisabled = !state.canConfirm || isCommitting || scopeAsk;
   const restoredCommitDisabled =
     !state.canConfirm || isCommitting || committedInfo !== null;
   const dismissDisabled = isCommitting || isDismissingPreview || committedInfo !== null;
@@ -4194,6 +4228,10 @@ export function PreviewCard({
     }
 
     if (!state.canConfirm || isCommitting || committedInfo) {
+      return;
+    }
+
+    if (scopeAsk) {
       return;
     }
 
@@ -5105,9 +5143,11 @@ export function PreviewCard({
                   data-testid="scope-category-select"
                   value={selectedScopeCategoryId}
                   disabled={isCommitting}
-                  onChange={(event) =>
-                    setSelectedScopeCategoryId(event.target.value)
-                  }
+                  onChange={(event) => {
+                    scopeTouchedRef.current = true;
+                    setScopeAsk(false);
+                    setSelectedScopeCategoryId(event.target.value);
+                  }}
                   className="h-11 w-full rounded border border-ledgerBorder bg-paper px-3 text-[16px] text-inkDeep"
                 >
                   <option value="">— Chung (không gắn) —</option>
@@ -5120,6 +5160,16 @@ export function PreviewCard({
                 <p className="mt-1 text-[13px] leading-5 text-textMute">
                   Gắn khoản này cho một nhóm hàng để theo dõi (không bắt buộc).
                 </p>
+                {scopeAsk ? (
+                  <p
+                    className="mt-2 text-[15px] leading-6 text-debt"
+                    role="alert"
+                    data-testid="scope-ask-prompt"
+                  >
+                    Em chưa chắc nhóm &quot;{paymentScopeRaw}&quot;, bác chọn giúp
+                    nhóm nhé (hoặc chọn &quot;Chung&quot;).
+                  </p>
+                ) : null}
               </div>
             ) : null}
           </div>
