@@ -4,8 +4,8 @@ import type { CustomerDebtSummary } from "@/src/lib/customers/debt-summary";
 import type { CustomerPurchaseHistoryRow } from "@/src/lib/customers/purchase-history";
 import { APP_TIME_ZONE, dayjs } from "@/src/lib/dayjs";
 import { formatVietnameseMoney } from "@/src/lib/format/money";
-import { vietnameseAmountInWords } from "@/src/lib/format/number-to-words-vi";
 import { formatUnitDisplay } from "@/src/lib/format/unit";
+import { reconciliationPrintFinalLine } from "@/src/lib/customers/debt-standing";
 import type { ShopSettings } from "@/src/lib/shop/get-shop-settings";
 import { earliestBusinessDate } from "@/src/lib/customers/reconciliation-period";
 import { paymentScopeSuffix } from "@/src/lib/customers/payment-scope-label";
@@ -113,6 +113,7 @@ export function InvoiceSummaryView({
   const address = shopSettings.address.trim();
   const orderedPayments = sortedPaymentsByPaidAt(payments);
   const fromDate = earliestBusinessDate(rows);
+  const finalLine = reconciliationPrintFinalLine(debtSummary.debtTotal);
 
   return (
     <article className="invoice-summary-view" style={pageStyle}>
@@ -290,13 +291,18 @@ export function InvoiceSummaryView({
           <div style={{ borderTop: "1px solid #111111", marginTop: "6px", paddingTop: "6px" }}>
             <SummaryLine
               bold
-              label="= Còn nợ cuối kỳ"
-              value={money(debtSummary.debtTotal)}
+              label={finalLine.label}
+              value={money(finalLine.amount)}
             />
           </div>
           <div style={{ marginTop: "6px", fontStyle: "italic", textAlign: "right" }}>
-            Bằng chữ: {vietnameseAmountInWords(debtSummary.debtTotal)}
+            Bằng chữ: {finalLine.words}
           </div>
+          {finalLine.note ? (
+            <div style={{ marginTop: "4px", fontStyle: "italic", textAlign: "right" }}>
+              {finalLine.note}
+            </div>
+          ) : null}
         </div>
       </section>
 

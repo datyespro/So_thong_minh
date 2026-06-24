@@ -1,4 +1,5 @@
 import { formatVietnameseMoney } from "@/src/lib/format/money";
+import { vietnameseAmountInWords } from "@/src/lib/format/number-to-words-vi";
 
 // VĐ3: debt_total có thể xuống ÂM (khách trả/đặt trước → mình nợ lại khách).
 // Đây là NGUỒN QUYẾT ĐỊNH DẤU DUY NHẤT cho mọi surface hiển thị "standing".
@@ -34,4 +35,30 @@ export function reconciliationFinalLine(debtTotal: number): {
     return { label: "Khách trả trước", amount: s.amount, tone: "credit" };
   }
   return { label: "Còn nợ", amount: s.kind === "debt" ? s.amount : 0, tone: "debt" };
+}
+
+// Dòng tổng cuối của BẢN IN đối chiếu (#TIP-INV-CREDIT-1). Tái dùng debtStanding
+// làm nguồn dấu duy nhất → "amount"/"words" LUÔN dương, không bao giờ ra chữ "Âm".
+// credit (<0) → đổi nhãn "Khách trả trước" + câu diễn giải; debt/settled giữ y cũ.
+export function reconciliationPrintFinalLine(debtTotal: number): {
+  label: string;
+  amount: number;
+  words: string;
+  note?: string;
+} {
+  const s = debtStanding(debtTotal);
+  if (s.kind === "credit") {
+    return {
+      label: "= Khách trả trước",
+      amount: s.amount,
+      words: vietnameseAmountInWords(s.amount),
+      note: `Cửa hàng đang giữ trước của khách ${formatVietnameseMoney(s.amount)}, sẽ trừ vào đơn sau.`,
+    };
+  }
+  const amount = s.kind === "debt" ? s.amount : 0;
+  return {
+    label: "= Còn nợ cuối kỳ",
+    amount,
+    words: vietnameseAmountInWords(amount),
+  };
 }

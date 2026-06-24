@@ -3,6 +3,7 @@ import {
   debtStanding,
   debtStandingSentence,
   reconciliationFinalLine,
+  reconciliationPrintFinalLine,
 } from "@/src/lib/customers/debt-standing";
 
 describe("debtStanding (VĐ3 — nguồn quyết định dấu duy nhất)", () => {
@@ -63,5 +64,37 @@ describe("reconciliationFinalLine (dòng cuối khối đối chiếu khách)", 
       amount: 77_416_000,
       tone: "credit",
     });
+  });
+});
+
+describe("reconciliationPrintFinalLine (dòng tổng cuối của BẢN IN đối chiếu)", () => {
+  it("keeps an outstanding debt as '= Còn nợ cuối kỳ' with no credit note", () => {
+    const line = reconciliationPrintFinalLine(5_000_000);
+    expect(line.label).toBe("= Còn nợ cuối kỳ");
+    expect(line.amount).toBe(5_000_000);
+    expect(line.note).toBeUndefined();
+    expect(line.words).not.toContain("Âm");
+    expect(line.words.toLowerCase()).not.toContain("âm");
+  });
+
+  it("keeps a settled balance as '= Còn nợ cuối kỳ' / 0 đồng, no note", () => {
+    const line = reconciliationPrintFinalLine(0);
+    expect(line.label).toBe("= Còn nợ cuối kỳ");
+    expect(line.amount).toBe(0);
+    expect(line.words).toBe("Không đồng.");
+    expect(line.note).toBeUndefined();
+  });
+
+  it("flips a negative balance to '= Khách trả trước' with a positive amount, words and note (no 'Âm')", () => {
+    const line = reconciliationPrintFinalLine(-86_090_000);
+    expect(line.label).toBe("= Khách trả trước");
+    expect(line.amount).toBe(86_090_000);
+    expect(line.words).toBe(
+      "Tám mươi sáu triệu không trăm chín mươi nghìn đồng chẵn.",
+    );
+    expect(line.words.toLowerCase()).not.toContain("âm");
+    expect(line.note).toBe(
+      "Cửa hàng đang giữ trước của khách 86.090.000 đ, sẽ trừ vào đơn sau.",
+    );
   });
 });
