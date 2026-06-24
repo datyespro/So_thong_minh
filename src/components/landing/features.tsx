@@ -72,7 +72,7 @@ export function Features() {
               <div
                 key={feature.title}
                 data-anim="fade-up"
-                className="rounded-xl border border-ledgerBorder bg-surface p-6 shadow-sm transition-shadow hover:shadow-[var(--shadow-card)]"
+                className="rounded-xl border border-ledgerBorder bg-surface p-6 shadow-sm transition-all duration-200 md:hover:-translate-y-1 md:hover:border-borderStrong md:hover:shadow-[var(--shadow-card)]"
               >
                 <div className="flex size-12 items-center justify-center rounded-lg bg-paperWarm">
                   <Icon className="size-6 text-ink" aria-hidden="true" />

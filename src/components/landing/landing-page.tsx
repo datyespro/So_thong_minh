@@ -155,14 +155,14 @@ export function LandingPage() {
         gsap.set(stamp, { autoAlpha: 0, scale: 2.2, rotate: -28 });
         ScrollTrigger.create({
           trigger: stamp,
-          start: "top 80%",
+          start: "top 72%",
           once: true,
           onEnter: () =>
             gsap.to(stamp, {
               autoAlpha: 1,
               scale: 1,
               rotate: -8,
-              duration: 0.5,
+              duration: 0.65,
               ease: "back.out(2)",
             }),
         });
@@ -184,6 +184,9 @@ export function LandingPage() {
               pin: true,
               scrub: 0.8,
               anticipatePin: 1,
+              // Phần ghim này thêm khoảng cuộn → phải tính TRƯỚC để các mục
+              // bên dưới (tính năng, đáng tin, con dấu) cộng đúng vị trí.
+              refreshPriority: 1,
             },
           });
           if (line) {
@@ -218,6 +221,12 @@ export function LandingPage() {
               }),
           });
         });
+      }
+
+      // next/font tải xong làm dịch chuyển layout → refresh để ScrollTrigger
+      // tính lại đúng vị trí (tránh hiện/đóng dấu sớm khi chưa cuộn tới).
+      if (document.fonts) {
+        document.fonts.ready.then(() => ScrollTrigger.refresh());
       }
 
       return () => {
