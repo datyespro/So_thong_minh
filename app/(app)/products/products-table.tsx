@@ -46,7 +46,7 @@ export type ProductsTableRow = {
 };
 
 const PRODUCT_GRID_COLUMNS =
-  "sm:grid-cols-[minmax(0,1.5fr)_0.7fr_0.8fr_0.7fr_0.9fr_auto]";
+  "sm:grid-cols-[minmax(0,1.5fr)_0.7fr_0.8fr_0.7fr_0.9fr_minmax(192px,0.9fr)]";
 
 const UNCATEGORIZED_LABEL = "Chưa phân loại";
 const NEGATIVE_STOCK_HINT =
