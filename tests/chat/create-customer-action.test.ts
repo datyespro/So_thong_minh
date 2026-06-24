@@ -52,6 +52,7 @@ const {
   createProduct,
   createProductFromChat,
   deleteProduct,
+  deleteCustomer,
   searchCustomersByName,
   searchSuppliersByName,
   searchProductsByName,
@@ -115,6 +116,35 @@ describe("createCustomer", () => {
       name: "anh Phát",
     });
     expect(mocks.insertSelect).toHaveBeenCalledWith("id,name");
+  });
+
+  it("inserts a customer with a trimmed phone when provided", async () => {
+    const result = await createCustomer("  anh Tư  ", "  0901234567  ");
+
+    expect(result.ok).toBe(true);
+    expect(mocks.insert).toHaveBeenCalledWith({
+      owner_id: "user-a",
+      name: "anh Tư",
+      phone: "0901234567",
+    });
+    expect(mocks.insertSelect).toHaveBeenCalledWith("id,name");
+  });
+
+  it("omits the phone key entirely when no phone is provided", async () => {
+    const result = await createCustomer("anh Tư");
+
+    expect(result.ok).toBe(true);
+    expect(mocks.insert).toHaveBeenCalledWith({
+      owner_id: "user-a",
+      name: "anh Tư",
+    });
+    expect(mocks.insert.mock.calls[0][0]).not.toHaveProperty("phone");
+  });
+
+  it("treats a blank phone string as no phone", async () => {
+    await createCustomer("anh Tư", "   ");
+
+    expect(mocks.insert.mock.calls[0][0]).not.toHaveProperty("phone");
   });
 
   it("rejects blank names without inserting", async () => {
@@ -1248,6 +1278,103 @@ describe("deleteProduct", () => {
     });
     expect(mocks.readEq).toHaveBeenCalledWith("owner_id", "user-a");
     expect(mocks.readEq).toHaveBeenCalledWith("id", "other-owner-product");
+    expect(mocks.readEq).toHaveBeenCalledWith("is_active", true);
+    expect(mocks.readIs).toHaveBeenCalledWith("deleted_at", null);
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.insert).not.toHaveBeenCalled();
+  });
+});
+
+describe("deleteCustomer", () => {
+  beforeEach(() => {
+    mocks.getUser.mockReset();
+    mocks.from.mockReset();
+    mocks.readSelect.mockReset();
+    mocks.readEq.mockReset();
+    mocks.readIs.mockReset();
+    mocks.readMaybeSingle.mockReset();
+    mocks.update.mockReset();
+    mocks.updateEq.mockReset();
+    mocks.updateIs.mockReset();
+    mocks.updateSelect.mockReset();
+    mocks.updateMaybeSingle.mockReset();
+    mocks.insert.mockReset();
+
+    mocks.getUser.mockResolvedValue({
+      data: { user: { id: "user-a" } },
+      error: null,
+    });
+    mocks.readSelect.mockReturnValue(readChain);
+    mocks.readEq.mockReturnValue(readChain);
+    mocks.readIs.mockReturnValue(readChain);
+    mocks.readMaybeSingle.mockResolvedValue({
+      data: { id: "customer-lan", name: "chị Lan" },
+      error: null,
+    });
+    mocks.update.mockReturnValue(updateChain);
+    mocks.updateEq.mockReturnValue(updateChain);
+    mocks.updateIs.mockReturnValue(updateChain);
+    mocks.updateSelect.mockReturnValue(updateChain);
+    mocks.updateMaybeSingle.mockResolvedValue({
+      data: { id: "customer-lan", name: "chị Lan" },
+      error: null,
+    });
+    mocks.insert.mockResolvedValue({ error: null });
+    mocks.from
+      .mockReturnValueOnce(readChain)
+      .mockReturnValueOnce(updateChain)
+      .mockReturnValueOnce(insertChain);
+  });
+
+  it("soft-deletes both flags for the authenticated owner and writes a snapshot audit", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-24T09:30:00.000Z"));
+
+    const result = await deleteCustomer("customer-lan");
+
+    expect(result).toEqual({
+      ok: true,
+      data: { deleted: true },
+    });
+    expect(mocks.from).toHaveBeenNthCalledWith(1, "customers");
+    expect(mocks.from).toHaveBeenNthCalledWith(2, "customers");
+    expect(mocks.from).toHaveBeenNthCalledWith(3, "audit_log");
+    expect(mocks.update).toHaveBeenCalledWith({
+      deleted_at: "2026-06-24T09:30:00.000Z",
+      is_active: false,
+    });
+    expect(mocks.updateEq).toHaveBeenCalledWith("owner_id", "user-a");
+    expect(mocks.updateEq).toHaveBeenCalledWith("id", "customer-lan");
+    expect(mocks.updateEq).toHaveBeenCalledWith("is_active", true);
+    expect(mocks.updateIs).toHaveBeenCalledWith("deleted_at", null);
+    expect(mocks.insert).toHaveBeenCalledWith({
+      owner_id: "user-a",
+      actor_id: "user-a",
+      entity_type: "customer",
+      entity_id: "customer-lan",
+      action: "delete",
+      before_data: { name: "chị Lan" },
+      after_data: { deleted: true },
+      metadata: {
+        deleted_at: "2026-06-24T09:30:00.000Z",
+      },
+    });
+
+    vi.useRealTimers();
+  });
+
+  it("returns not_found for a wrong-owner or already-deleted customer", async () => {
+    mocks.readMaybeSingle.mockResolvedValue({ data: null, error: null });
+
+    const result = await deleteCustomer("other-owner-customer");
+
+    expect(result).toEqual({
+      ok: false,
+      code: "validation_failed",
+      message: "Không tìm thấy khách để xóa.",
+    });
+    expect(mocks.readEq).toHaveBeenCalledWith("owner_id", "user-a");
+    expect(mocks.readEq).toHaveBeenCalledWith("id", "other-owner-customer");
     expect(mocks.readEq).toHaveBeenCalledWith("is_active", true);
     expect(mocks.readIs).toHaveBeenCalledWith("deleted_at", null);
     expect(mocks.update).not.toHaveBeenCalled();

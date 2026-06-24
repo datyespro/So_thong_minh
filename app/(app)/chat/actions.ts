@@ -1582,6 +1582,7 @@ export async function sendMessage(
 
 export async function createCustomer(
   name: string,
+  phone?: string,
 ): Promise<ActionResult<CreatedCustomerView>> {
   const supabase = await createClient();
   const {
@@ -1615,6 +1616,8 @@ export async function createCustomer(
     };
   }
 
+  const trimmedPhone = typeof phone === "string" ? phone.trim() : "";
+
   const existingRead = await supabase
     .from("customers")
     .select("id,name")
@@ -1647,6 +1650,7 @@ export async function createCustomer(
     .insert({
       owner_id: user.id,
       name: trimmed,
+      ...(trimmedPhone.length > 0 ? { phone: trimmedPhone } : {}),
     })
     .select("id,name")
     .single();
@@ -1968,6 +1972,108 @@ export async function updateCustomerPhone(
       name: updated.name,
       phone: updated.phone ?? trimmedPhone,
     },
+  };
+}
+
+export async function deleteCustomer(
+  customerId: string,
+): Promise<ActionResult<{ deleted: true }>> {
+  if (typeof customerId !== "string" || customerId.trim().length === 0) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Không tìm thấy khách để xóa.",
+    };
+  }
+
+  const user = await getAuthenticatedUser();
+  const supabase = await createClient();
+  const trimmedCustomerId = customerId.trim();
+
+  const { data: beforeData, error: beforeError } = await supabase
+    .from("customers")
+    .select("id,name")
+    .eq("owner_id", user.id)
+    .eq("id", trimmedCustomerId)
+    .eq("is_active", true)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (beforeError) {
+    return {
+      ok: false,
+      code: "db_error",
+      message: "Chưa đọc được khách, bác thử lại ạ.",
+    };
+  }
+
+  if (!beforeData) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Không tìm thấy khách để xóa.",
+    };
+  }
+
+  const before = beforeData as CustomerRow;
+  const deletedAt = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("customers")
+    .update({
+      deleted_at: deletedAt,
+      is_active: false,
+    })
+    .eq("owner_id", user.id)
+    .eq("id", trimmedCustomerId)
+    .eq("is_active", true)
+    .is("deleted_at", null)
+    .select("id,name")
+    .maybeSingle();
+
+  if (error) {
+    return {
+      ok: false,
+      code: "db_error",
+      message: "Chưa xóa được khách, bác thử lại ạ.",
+    };
+  }
+
+  if (!data) {
+    return {
+      ok: false,
+      code: "validation_failed",
+      message: "Không tìm thấy khách để xóa.",
+    };
+  }
+
+  const deleted = data as CustomerRow;
+  const { error: auditError } = await supabase.from("audit_log").insert({
+    owner_id: user.id,
+    actor_id: user.id,
+    entity_type: "customer",
+    entity_id: deleted.id,
+    action: "delete",
+    before_data: { name: before.name },
+    after_data: { deleted: true },
+    metadata: {
+      deleted_at: deletedAt,
+    },
+  });
+
+  if (auditError) {
+    console.error("audit_log insert failed for deleteCustomer", auditError);
+
+    return {
+      ok: false,
+      code: "db_error",
+      message:
+        "Đã xóa khách nhưng chưa ghi được nhật ký, bác tải lại kiểm tra giúp em ạ.",
+    };
+  }
+
+  return {
+    ok: true,
+    data: { deleted: true },
   };
 }
 
