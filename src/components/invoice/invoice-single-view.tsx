@@ -77,7 +77,7 @@ export function InvoiceSingleView({
   const address = shopSettings.address.trim();
 
   return (
-    <article className="invoice-single-view" style={pageStyle}>
+    <article className="invoice-document invoice-single-view" style={pageStyle}>
       <header
         style={{
           borderBottom: "2px solid #2a5a8c",
@@ -119,7 +119,7 @@ export function InvoiceSingleView({
         </p>
       </header>
 
-      <section
+      <section className="invoice-metadata"
         style={{
           borderBottom: "1px solid #444444",
           marginBottom: "12px",
@@ -217,7 +217,7 @@ export function InvoiceSingleView({
         </tbody>
       </table>
 
-      <section
+      <section className="invoice-summary"
         style={{
           borderBottom: "1px solid #444444",
           borderTop: "2px solid #2a5a8c",

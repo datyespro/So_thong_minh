@@ -125,7 +125,7 @@ export function InvoiceSummaryView({
   const finalLine = reconciliationPrintFinalLine(debtSummary.debtTotal);
 
   return (
-    <article className="invoice-summary-view" style={pageStyle}>
+    <article className="invoice-document invoice-summary-view" style={pageStyle}>
       <header
         style={{
           borderBottom: "2px solid #2a5a8c",
@@ -167,7 +167,7 @@ export function InvoiceSummaryView({
         </p>
       </header>
 
-      <section
+      <section className="invoice-metadata"
         style={{
           borderBottom: "1px solid #444444",
           marginBottom: "12px",
@@ -274,7 +274,7 @@ export function InvoiceSummaryView({
         </tbody>
       </table>
 
-      <section
+      <section className="invoice-summary"
         style={{
           borderBottom: "1px solid #444444",
           borderTop: "2px solid #2a5a8c",

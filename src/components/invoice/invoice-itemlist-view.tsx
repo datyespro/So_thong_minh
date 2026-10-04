@@ -75,7 +75,7 @@ export function InvoiceItemListView({
   const address = shopSettings.address.trim();
 
   return (
-    <article className="invoice-itemlist-view" style={pageStyle}>
+    <article className="invoice-document invoice-itemlist-view" style={pageStyle}>
       <header style={{ borderBottom: "2px solid #2a5a8c", marginBottom: "14px", paddingBottom: "10px" }}>
         {shopName ? (
           <h1 style={{ fontSize: "28px", fontWeight: 800, letterSpacing: "0.03em", margin: "0 0 6px", textTransform: "uppercase" }}>
@@ -96,7 +96,7 @@ export function InvoiceItemListView({
         </p>
       </header>
 
-      <section style={{ marginBottom: "12px", paddingBottom: "10px", textAlign: "center", fontSize: "18px" }}>
+      <section className="invoice-metadata" style={{ marginBottom: "12px", paddingBottom: "10px", textAlign: "center", fontSize: "18px" }}>
         <h2 style={{ fontSize: "24px", fontWeight: 800, margin: "0 0 8px", textTransform: "uppercase" }}>
           BẢNG KÊ HÀNG HÓA
         </h2>
@@ -167,7 +167,7 @@ export function InvoiceItemListView({
         </tbody>
       </table>
 
-      <section style={{ marginTop: "12px", paddingBottom: "12px", paddingTop: "12px" }}>
+      <section className="invoice-summary" style={{ marginTop: "12px", paddingBottom: "12px", paddingTop: "12px" }}>
         <div style={{ marginLeft: "auto", maxWidth: "82mm" }}>
           <div style={{ display: "grid", fontWeight: 800, gap: "10px", gridTemplateColumns: "1fr auto", marginTop: "4px" }}>
             <span>Tổng cộng</span>
