@@ -62,8 +62,7 @@ type CustomerPaymentRow = {
   scope_category_id: string | null;
 };
 
-// DC-5a: dòng order_item kèm product_id để gom theo nhóm (KHÔNG mở rộng
-// CustomerHistoryItem — type đó dùng cho bảng lịch sử).
+// DC-5a: dữ liệu order_item dùng để gom theo nhóm; lịch sử cũng carry product_id.
 type CategoryItemRow = {
   product_id: string | null;
   line_total: number | string | null;
@@ -352,6 +351,7 @@ export default async function CustomerDetailPage({
   // — Map đã dựng xong ở trên nên nhãn trùng khít khối "Đối chiếu theo nhóm".
   const items: CustomerHistoryItem[] = rawItemRows.map((row) => ({
     order_id: row.order_id,
+    product_id: row.product_id,
     product_name_snapshot: row.product_name_snapshot,
     quantity: row.quantity,
     unit_snapshot: row.unit_snapshot,

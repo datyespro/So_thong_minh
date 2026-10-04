@@ -5,6 +5,7 @@ export type CustomerHistoryOrder = {
 
 export type CustomerHistoryItem = {
   order_id: string;
+  product_id?: string | null;
   product_name_snapshot: string;
   quantity: number | string;
   unit_snapshot: string | null;
@@ -18,6 +19,7 @@ export type CustomerHistoryItem = {
 
 export type CustomerPurchaseHistoryRow = {
   order_id: string;
+  product_id: string | null;
   business_date: string | null;
   product_name_snapshot: string;
   quantity: number | string;
@@ -96,6 +98,7 @@ export function flattenCustomerPurchaseHistory(
       return [
         {
           order_id: item.order_id,
+          product_id: item.product_id ?? null,
           business_date: order.business_date,
           product_name_snapshot: item.product_name_snapshot,
           quantity: item.quantity,

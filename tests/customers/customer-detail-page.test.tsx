@@ -241,6 +241,56 @@ describe("CustomerDetailPage purchase history footer", () => {
     mocks.getAuthenticatedUser.mockResolvedValue({ id: "owner-1" });
   });
 
+  it("carries server product IDs into history rows while preserving query guards", async () => {
+    const baseItem: ItemRow = {
+      order_id: "order-1",
+      product_name_snapshot: "Cát vàng",
+      quantity: 1.5,
+      unit_snapshot: "m³",
+      unit_price: 800000,
+      line_total: 1200000,
+      sort_order: 0,
+    };
+    const supabase = setupSupabaseMock({
+      items: [
+        { ...baseItem, product_id: "product-1" },
+        { ...baseItem, product_name_snapshot: "Cát vàng mới", product_id: "product-1", sort_order: 1 },
+        { ...baseItem, product_id: null, sort_order: 2 },
+        { ...baseItem, sort_order: 3 },
+        { ...baseItem, product_id: "", sort_order: 4 },
+      ],
+      // Empty product lookup still retains the history ID (e.g. unavailable product).
+      products: [],
+    });
+    const page = await CustomerDetailPage({
+      params: Promise.resolve({ id: "customer-1" }),
+      searchParams: Promise.resolve({}),
+    });
+    const rows = page.props.children.props.rows;
+
+    expect(rows.map((row: { product_id: string | null }) => row.product_id)).toEqual([
+      "product-1", "product-1", null, null, "",
+    ]);
+    expect(rows[0]).toMatchObject({
+      order_id: "order-1", business_date: "2026-06-01",
+      product_name_snapshot: "Cát vàng", quantity: 1.5, unit_snapshot: "m³",
+      unit_price: 800000, line_total: 1200000, sort_order: 0, category_name: "Chưa phân loại",
+    });
+    const itemQueryIndex = supabase.from.mock.calls.findIndex(([table]) => table === "order_items");
+    const itemQuery = supabase.from.mock.results[itemQueryIndex].value;
+    expect(itemQuery.select).toHaveBeenCalledWith(
+      "order_id,product_id,product_name_snapshot,quantity,unit_snapshot,unit_price,line_total,sort_order",
+    );
+    expect(itemQuery.eq).toHaveBeenCalledWith("owner_id", "owner-1");
+    expect(itemQuery.in).toHaveBeenCalledWith("order_id", ["order-1", "order-2"]);
+    expect(itemQuery.is).toHaveBeenCalledWith("deleted_at", null);
+    const productQueryIndex = supabase.from.mock.calls.findIndex(([table]) => table === "products");
+    const productQuery = supabase.from.mock.results[productQueryIndex].value;
+    expect(productQuery.eq).toHaveBeenCalledWith("owner_id", "owner-1");
+    expect(productQuery.eq).not.toHaveBeenCalledWith("is_active", true);
+    expect(productQuery.is).not.toHaveBeenCalledWith("deleted_at", null);
+  });
+
   it("shows the settlement block with each payment date when summary reconciles and totals match", async () => {
     const html = await renderCustomerDetailPage();
 
