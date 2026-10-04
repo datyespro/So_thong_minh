@@ -33,7 +33,7 @@ const pageStyle = {
   background: "#ffffff",
   color: "#111111",
   fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-  fontSize: "24px",
+  fontSize: "20px",
   lineHeight: 1.45,
   margin: "0 auto",
   maxWidth: "190mm",
@@ -47,10 +47,18 @@ const tableCellStyle = {
   verticalAlign: "top",
 } satisfies CSSProperties;
 
+const quantityCellStyle = {
+  ...tableCellStyle,
+  textAlign: "right",
+  whiteSpace: "nowrap",
+  overflowWrap: "normal",
+} satisfies CSSProperties;
+
 const numericCellStyle = {
   ...tableCellStyle,
   textAlign: "right",
-  whiteSpace: "normal",
+  whiteSpace: "nowrap",
+  overflowWrap: "normal",
 } satisfies CSSProperties;
 
 export function InvoiceItemListView({
@@ -70,7 +78,7 @@ export function InvoiceItemListView({
     <article className="invoice-itemlist-view" style={pageStyle}>
       <header style={{ borderBottom: "2px solid #2a5a8c", marginBottom: "14px", paddingBottom: "10px" }}>
         {shopName ? (
-          <h1 style={{ fontSize: "44px", fontWeight: 800, letterSpacing: "0.03em", margin: "0 0 6px", textTransform: "uppercase" }}>
+          <h1 style={{ fontSize: "28px", fontWeight: 800, letterSpacing: "0.03em", margin: "0 0 6px", textTransform: "uppercase" }}>
             {shopName}
           </h1>
         ) : (
@@ -81,22 +89,22 @@ export function InvoiceItemListView({
             </Link>
           </p>
         )}
-        <p style={{ margin: 0 }}>
+        <p style={{ margin: 0, fontSize: "16px" }}>
           {phone ? `SĐT: ${phone}` : "SĐT: —"}
           {" · "}
           {address ? `Địa chỉ: ${address}` : "Địa chỉ: —"}
         </p>
       </header>
 
-      <section style={{ marginBottom: "12px", paddingBottom: "10px", textAlign: "center" }}>
-        <h2 style={{ fontSize: "36px", fontWeight: 800, margin: "0 0 8px", textTransform: "uppercase" }}>
+      <section style={{ marginBottom: "12px", paddingBottom: "10px", textAlign: "center", fontSize: "18px" }}>
+        <h2 style={{ fontSize: "24px", fontWeight: 800, margin: "0 0 8px", textTransform: "uppercase" }}>
           BẢNG KÊ HÀNG HÓA
         </h2>
         <p style={{ margin: "0 0 3px" }}>
           <strong>Khách hàng:</strong> {customerName}
           {customerPhone ? ` · SĐT: ${customerPhone}` : ""}
         </p>
-        
+
         {(filter.fromDate || filter.toDate) && (
           <p style={{ margin: "0 0 3px" }}>
             <strong>Kỳ:</strong> từ {formatDate(filter.fromDate)} đến {formatDate(filter.toDate)}
@@ -112,21 +120,22 @@ export function InvoiceItemListView({
             <strong>Mặt hàng:</strong> {filter.productNames.join(", ")}
           </p>
         )}
-        
+
         <p style={{ margin: 0 }}>
           <strong>Ngày in:</strong> {printDate}
         </p>
       </section>
 
-      <table style={{ borderCollapse: "collapse", tableLayout: "fixed", width: "100%" }}>
+      <table style={{ borderCollapse: "collapse",
+          fontSize: "18px", tableLayout: "fixed", width: "100%" }}>
         <thead style={{ backgroundColor: "#eef1f4", color: "#111111", fontWeight: 700, printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }}>
           <tr>
             <th scope="col" style={{ ...tableCellStyle, width: "20%" }}>Ngày</th>
-            <th scope="col" style={tableCellStyle}>Tên hàng hóa</th>
-            <th scope="col" style={{ ...numericCellStyle, width: "7%" }}>SL</th>
+            <th scope="col" style={{ ...tableCellStyle, width: "13%" }}>Tên hàng hóa</th>
+            <th scope="col" style={{ ...quantityCellStyle, width: "12%" }}>SL</th>
             <th scope="col" style={{ ...tableCellStyle, width: "9%" }}>ĐVT</th>
-            <th scope="col" style={{ ...numericCellStyle, width: "24%" }}>Đơn giá</th>
-            <th scope="col" style={{ ...numericCellStyle, width: "24%" }}>Thành tiền</th>
+            <th scope="col" style={{ ...numericCellStyle, width: "23%" }}>Đơn giá</th>
+            <th scope="col" style={{ ...numericCellStyle, width: "23%" }}>Thành tiền</th>
           </tr>
         </thead>
         <tbody>
@@ -141,7 +150,7 @@ export function InvoiceItemListView({
                 <tr key={`${row.order_id}-${row.sort_order ?? "null"}-${index}`} style={rowStyle}>
                   <td style={tableCellStyle}>{formatDate(row.business_date)}</td>
                   <td style={tableCellStyle}>{row.product_name_snapshot}</td>
-                  <td style={numericCellStyle}>{String(row.quantity)}</td>
+                  <td style={quantityCellStyle}>{String(row.quantity)}</td>
                   <td style={tableCellStyle}>{formatUnitDisplay(row.unit_snapshot) || "—"}</td>
                   <td style={numericCellStyle}>{money(row.unit_price)}</td>
                   <td style={numericCellStyle}>{money(row.line_total)}</td>
@@ -164,13 +173,13 @@ export function InvoiceItemListView({
             <span>Tổng cộng</span>
             <span style={{ textAlign: "right", whiteSpace: "nowrap" }}>{money(total)}</span>
           </div>
-          <div style={{ marginTop: "6px", fontStyle: "italic", textAlign: "right" }}>
-            Bằng chữ: {vietnameseAmountInWords(total)}
-          </div>
+        </div>
+        <div style={{ marginTop: "6px", fontStyle: "italic", textAlign: "left", fontSize: "18px", width: "100%", overflowWrap: "normal" }}>
+          Bằng chữ: {vietnameseAmountInWords(total)}
         </div>
       </section>
 
-      <footer style={{ display: "grid", gap: "24mm", gridTemplateColumns: "1fr 1fr", marginTop: "18mm", paddingBottom: "25mm", textAlign: "center" }}>
+      <footer style={{ display: "grid", gap: "24mm", gridTemplateColumns: "1fr 1fr", marginTop: "10mm", paddingBottom: "20mm", textAlign: "center", fontSize: "18px" }}>
         <SignatureBlock label="XÁC NHẬN CỦA KHÁCH HÀNG" />
         <SignatureBlock label="ĐẠI DIỆN CỬA HÀNG" />
       </footer>

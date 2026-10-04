@@ -37,7 +37,7 @@ const pageStyle = {
   background: "#ffffff",
   color: "#111111",
   fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-  fontSize: "24px",
+  fontSize: "20px",
   lineHeight: 1.45,
   margin: "0 auto",
   maxWidth: "190mm",
@@ -51,10 +51,18 @@ const tableCellStyle = {
   verticalAlign: "top",
 } satisfies CSSProperties;
 
+const quantityCellStyle = {
+  ...tableCellStyle,
+  textAlign: "right",
+  whiteSpace: "nowrap",
+  overflowWrap: "normal",
+} satisfies CSSProperties;
+
 const numericCellStyle = {
   ...tableCellStyle,
   textAlign: "right",
-  whiteSpace: "normal",
+  whiteSpace: "nowrap",
+  overflowWrap: "normal",
 } satisfies CSSProperties;
 
 export function InvoiceSingleView({
@@ -80,7 +88,7 @@ export function InvoiceSingleView({
         {shopName ? (
           <h1
             style={{
-              fontSize: "44px",
+              fontSize: "28px",
               fontWeight: 800,
               letterSpacing: "0.03em",
               margin: "0 0 6px",
@@ -104,7 +112,7 @@ export function InvoiceSingleView({
             </Link>
           </p>
         )}
-        <p style={{ margin: 0 }}>
+        <p style={{ margin: 0, fontSize: "16px" }}>
           {phone ? `SĐT: ${phone}` : "SĐT: —"}
           {" · "}
           {address ? `Địa chỉ: ${address}` : "Địa chỉ: —"}
@@ -117,11 +125,12 @@ export function InvoiceSingleView({
           marginBottom: "12px",
           paddingBottom: "10px",
           textAlign: "center",
+          fontSize: "18px",
         }}
       >
         <h2
           style={{
-            fontSize: "36px",
+            fontSize: "24px",
             fontWeight: 800,
             margin: "0 0 8px",
             textTransform: "uppercase",
@@ -132,8 +141,10 @@ export function InvoiceSingleView({
         <p style={{ margin: "0 0 3px" }}>
           <strong>Khách hàng:</strong> {customerName}
           {customerPhone ? ` · SĐT: ${customerPhone}` : ""}
-          {" · "}
-          <strong>Ngày:</strong> {formatFormalDate(order.business_date)}
+
+        </p>
+        <p style={{ margin: "0 0 3px" }}>
+          <strong>Ngày:</strong> {formatFormalDate(order.business_date).replace(/^ngày /, "")}
         </p>
         <p style={{ margin: 0 }}>
           <strong>Ngày in:</strong> {printDate}
@@ -143,6 +154,7 @@ export function InvoiceSingleView({
       <table
         style={{
           borderCollapse: "collapse",
+          fontSize: "18px",
           tableLayout: "fixed",
           width: "100%",
         }}
@@ -157,22 +169,22 @@ export function InvoiceSingleView({
           }}
         >
           <tr>
-            <th scope="col" style={{ ...numericCellStyle, width: "8%" }}>
+            <th scope="col" style={{ ...numericCellStyle, width: "7%" }}>
               STT
             </th>
-            <th scope="col" style={tableCellStyle}>
+            <th scope="col" style={{ ...tableCellStyle, width: "25%" }}>
               Tên hàng hóa
             </th>
-            <th scope="col" style={{ ...numericCellStyle, width: "8%" }}>
+            <th scope="col" style={{ ...quantityCellStyle, width: "12%" }}>
               SL
             </th>
             <th scope="col" style={{ ...tableCellStyle, width: "10%" }}>
               ĐVT
             </th>
-            <th scope="col" style={{ ...numericCellStyle, width: "24%" }}>
+            <th scope="col" style={{ ...numericCellStyle, width: "23%" }}>
               Đơn giá
             </th>
-            <th scope="col" style={{ ...numericCellStyle, width: "24%" }}>
+            <th scope="col" style={{ ...numericCellStyle, width: "23%" }}>
               Thành tiền
             </th>
           </tr>
@@ -195,7 +207,7 @@ export function InvoiceSingleView({
               >
                 <td style={numericCellStyle}>{index + 1}</td>
                 <td style={tableCellStyle}>{item.product_name_snapshot}</td>
-                <td style={numericCellStyle}>{String(item.quantity)}</td>
+                <td style={quantityCellStyle}>{String(item.quantity)}</td>
                 <td style={tableCellStyle}>{formatUnitDisplay(item.unit_snapshot) || "—"}</td>
                 <td style={numericCellStyle}>{money(item.unit_price)}</td>
                 <td style={numericCellStyle}>{money(item.line_total)}</td>
@@ -228,9 +240,9 @@ export function InvoiceSingleView({
               {money(order.total)}
             </span>
           </div>
-          <div style={{ marginTop: "6px", fontStyle: "italic", textAlign: "right" }}>
-            Bằng chữ: {vietnameseAmountInWords(order.total)}
-          </div>
+        </div>
+        <div style={{ marginTop: "6px", fontStyle: "italic", textAlign: "left", fontSize: "18px", width: "100%", overflowWrap: "normal" }}>
+          Bằng chữ: {vietnameseAmountInWords(order.total)}
         </div>
       </section>
 
@@ -239,9 +251,10 @@ export function InvoiceSingleView({
           display: "grid",
           gap: "24mm",
           gridTemplateColumns: "1fr 1fr",
-          marginTop: "18mm",
-          paddingBottom: "25mm",
+          marginTop: "10mm",
+          paddingBottom: "20mm",
           textAlign: "center",
+          fontSize: "18px",
         }}
       >
         <SignatureBlock label="NGƯỜI MUA HÀNG" />
