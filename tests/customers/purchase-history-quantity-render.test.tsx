@@ -32,7 +32,12 @@ function render(input = rows, filter: HistoryFilter = clear, summary = ordinary,
 function quantity(html: string, value: string, unit: string) {
   expect(html.match(/Tổng số lượng/g)).toHaveLength(2);
   const footer = html.split("<tfoot")[1].split("</tfoot>")[0];
-  expect(footer).toMatch(new RegExp(`colSpan="2"[^>]*>Tổng số lượng</td><td[^>]*>${value}</td><td[^>]*>${unit}</td><td colSpan="3"`));
+  expect(footer).toContain(value);
+  expect(footer).toContain(unit);
+  for (const row of footer.matchAll(/<tr>(.*?)<\/tr>/g)) {
+    const columns = [...row[1].matchAll(/<td(?:\s[^>]*)?>/g)].reduce((sum, cell) => sum + Number(cell[0].match(/colSpan="(\d+)"/)?.[1] ?? 1), 0);
+    expect(columns).toBe(7);
+  }
   expect(html).toContain(`${value} ${unit}</p>`);
 }
 
@@ -44,10 +49,25 @@ describe("PurchaseHistoryTable quantity footer", () => {
     expect(html.match(/Tổng cộng/g)).toHaveLength(2);
     expect(html.match(/2\.800\.000 đ/g)).toHaveLength(2);
     expect(html).not.toContain("= Còn nợ");
+    const footer = html.split("<tfoot")[1].split("</tfoot>")[0];
+    expect(footer.match(/<tr>/g)).toHaveLength(1);
+    const cells = [...footer.matchAll(/<td(?:\s[^>]*)?>(.*?)<\/td>/g)].map(cell => cell[1]);
+    expect(cells[0]).toBe("Tổng cộng");
+    expect(cells[1]).toContain("Tổng số lượng");
+    expect(cells[1]).toContain("3,5");
+    expect(cells[2]).toBe("m³");
+    expect(cells[4]).toContain("Tổng tiền");
+    expect(cells[4]).toContain("2.800.000 đ");
+    expect(html).toContain("divide-x divide-ledgerBorder");
+    expect(html).toContain("[&amp;&gt;div]:border-0");
   });
   it("coexists with unchanged debt payments and immediate-payment labels on both surfaces", () => {
     const html = render(rows, clear, paid);
     quantity(html, "3,5", "m³");
+    const footer = html.split("<tfoot")[1].split("</tfoot>")[0];
+    expect(footer.match(/<tr>/g)).toHaveLength(2);
+    expect(footer).toContain('colSpan="7"');
+    expect(html).not.toContain("divide-x divide-ledgerBorder");
     for (const label of ["Tổng mua", "− Trả 04/10/2026", "− Trả ngay khi mua", "= Còn nợ"]) expect(html.match(new RegExp(label, "g"))).toHaveLength(2);
     expect(html.match(/2\.000\.000 đ/g)).toHaveLength(2);
     expect(html.match(/300\.000 đ/g)).toHaveLength(2);
@@ -95,6 +115,6 @@ describe("PurchaseHistoryTable quantity footer", () => {
     const html = render(rows.map(row => ({ ...row, quantity: "999999999999.99", unit_snapshot: unit })));
     quantity(html, "1999999999999,98", unit);
     expect(html).toContain("grid-cols-[minmax(0,1fr)_minmax(0,1fr)]");
-    expect(html.match(/\[overflow-wrap:anywhere\]/g)).toHaveLength(3);
+    expect(html.match(/\[overflow-wrap:anywhere\]/g)?.length).toBeGreaterThanOrEqual(4);
   });
 });

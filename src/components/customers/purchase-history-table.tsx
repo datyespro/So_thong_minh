@@ -479,12 +479,14 @@ export function PurchaseHistoryTable({
                 })}
               </tbody>
               <tfoot className="border-t-2 border-ledgerBorder bg-paperWarm">
-                {quantityTotal ? (
+                {quantityTotal && showDebtFooter ? (
                   <tr>
-                    <td colSpan={2} className="px-3 py-3 font-display text-[18px] font-semibold text-inkDeep">Tổng số lượng</td>
-                    <td className="px-3 py-3 font-mono text-[18px] font-bold text-inkDeep [overflow-wrap:anywhere]">{quantityTotal.quantityDisplay}</td>
-                    <td className="px-3 py-3 font-semibold text-textMute [overflow-wrap:anywhere]">{quantityTotal.unitDisplay}</td>
-                    <td colSpan={3} />
+                    <td colSpan={7} className="px-3 pt-3">
+                      <div className="flex flex-wrap items-baseline justify-end gap-x-3 gap-y-1">
+                        <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-textMute">Tổng số lượng</span>
+                        <span className="min-w-0 break-words font-mono text-[18px] font-bold text-inkDeep [overflow-wrap:anywhere]">{quantityTotal.quantityDisplay} {quantityTotal.unitDisplay}</span>
+                      </div>
+                    </td>
                   </tr>
                 ) : null}
                 {showDebtFooter ? (
@@ -492,6 +494,21 @@ export function PurchaseHistoryTable({
                     <td colSpan={7} className="px-3 py-3">
                       <SettlementSummaryPanel total={total} summary={summary} payments={payments} className="ml-auto w-full max-w-md" />
                     </td>
+                  </tr>
+                ) : quantityTotal ? (
+                  <tr>
+                    <td colSpan={2} className="px-3 py-3 align-bottom font-display text-[18px] font-semibold text-inkDeep">Tổng cộng</td>
+                    <td className="px-3 py-3 align-bottom">
+                      <p className="font-mono text-[11px] uppercase tracking-[0.1em] text-textMute">Tổng số lượng</p>
+                      <p className="mt-1 break-words font-mono text-[18px] font-bold leading-tight text-inkDeep [overflow-wrap:anywhere]">{quantityTotal.quantityDisplay}</p>
+                    </td>
+                    <td className="px-3 py-3 align-bottom font-mono text-[18px] leading-tight text-textMute [overflow-wrap:anywhere]">{quantityTotal.unitDisplay}</td>
+                    <td />
+                    <td className="px-3 py-3 align-bottom text-right">
+                      <p className="font-mono text-[11px] uppercase tracking-[0.1em] text-textMute">Tổng tiền</p>
+                      <p className="mt-1 break-words font-mono text-[18px] font-bold leading-tight text-inkDeep [overflow-wrap:anywhere]">{formatMoneyValue(total)}</p>
+                    </td>
+                    <td />
                   </tr>
                 ) : (
                   <tr>
@@ -527,12 +544,32 @@ export function PurchaseHistoryTable({
               );
             })}
             {quantityTotal ? (
-              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-baseline gap-3 rounded border border-ledgerBorder bg-paperWarm px-3 py-4 shadow-[var(--shadow-card)]">
-                <p className="font-display text-[18px] font-semibold text-inkDeep">Tổng số lượng</p>
-                <p className="min-w-0 break-words text-right font-mono text-[20px] font-bold leading-tight text-inkDeep [overflow-wrap:anywhere]">{quantityTotal.quantityDisplay} {quantityTotal.unitDisplay}</p>
+              <div className="overflow-hidden rounded border border-ledgerBorder bg-paperWarm shadow-[var(--shadow-card)]">
+                {showDebtFooter ? (
+                  <>
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-ledgerBorder px-3 py-3">
+                      <p className="font-mono text-[11px] uppercase tracking-[0.1em] text-textMute">Tổng số lượng</p>
+                      <p className="min-w-0 break-words text-right font-mono text-[18px] font-bold leading-tight text-inkDeep [overflow-wrap:anywhere]">{quantityTotal.quantityDisplay} {quantityTotal.unitDisplay}</p>
+                    </div>
+                    <div className="[&>div]:rounded-none [&>div]:border-0 [&>div]:shadow-none">
+                      <MobileHistoryTotal total={total} summary={summary} payments={payments} />
+                    </div>
+                  </>
+                ) : (
+                  <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] divide-x divide-ledgerBorder">
+                    <div className="min-w-0 px-3 py-4">
+                      <p className="font-mono text-[11px] uppercase tracking-[0.1em] text-textMute">Tổng số lượng</p>
+                      <p className="mt-1 break-words font-mono text-[22px] font-bold leading-tight text-inkDeep [overflow-wrap:anywhere]">{quantityTotal.quantityDisplay} {quantityTotal.unitDisplay}</p>
+                    </div>
+                    <div className="min-w-0 [&>div]:rounded-none [&>div]:border-0 [&>div]:shadow-none [&>div>p]:[overflow-wrap:anywhere]">
+                      <MobileHistoryTotal total={total} summary={summary} payments={payments} />
+                    </div>
+                  </div>
+                )}
               </div>
-            ) : null}
-            <MobileHistoryTotal total={total} summary={summary} payments={payments} />
+            ) : (
+              <MobileHistoryTotal total={total} summary={summary} payments={payments} />
+            )}
           </div>
         </>
       )}
