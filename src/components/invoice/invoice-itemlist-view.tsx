@@ -33,7 +33,7 @@ const pageStyle = {
   background: "#ffffff",
   color: "#111111",
   fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-  fontSize: "12px",
+  fontSize: "24px",
   lineHeight: 1.45,
   margin: "0 auto",
   maxWidth: "190mm",
@@ -42,14 +42,15 @@ const pageStyle = {
 
 const tableCellStyle = {
   border: "1px solid #333333",
-  padding: "5px 6px",
+  padding: "5px 3px",
+  overflowWrap: "anywhere",
   verticalAlign: "top",
 } satisfies CSSProperties;
 
 const numericCellStyle = {
   ...tableCellStyle,
   textAlign: "right",
-  whiteSpace: "nowrap",
+  whiteSpace: "normal",
 } satisfies CSSProperties;
 
 export function InvoiceItemListView({
@@ -69,7 +70,7 @@ export function InvoiceItemListView({
     <article className="invoice-itemlist-view" style={pageStyle}>
       <header style={{ borderBottom: "2px solid #2a5a8c", marginBottom: "14px", paddingBottom: "10px" }}>
         {shopName ? (
-          <h1 style={{ fontSize: "22px", fontWeight: 800, letterSpacing: "0.03em", margin: "0 0 6px", textTransform: "uppercase" }}>
+          <h1 style={{ fontSize: "44px", fontWeight: 800, letterSpacing: "0.03em", margin: "0 0 6px", textTransform: "uppercase" }}>
             {shopName}
           </h1>
         ) : (
@@ -88,7 +89,7 @@ export function InvoiceItemListView({
       </header>
 
       <section style={{ marginBottom: "12px", paddingBottom: "10px", textAlign: "center" }}>
-        <h2 style={{ fontSize: "18px", fontWeight: 800, margin: "0 0 8px", textTransform: "uppercase" }}>
+        <h2 style={{ fontSize: "36px", fontWeight: 800, margin: "0 0 8px", textTransform: "uppercase" }}>
           BẢNG KÊ HÀNG HÓA
         </h2>
         <p style={{ margin: "0 0 3px" }}>
@@ -120,12 +121,12 @@ export function InvoiceItemListView({
       <table style={{ borderCollapse: "collapse", tableLayout: "fixed", width: "100%" }}>
         <thead style={{ backgroundColor: "#eef1f4", color: "#111111", fontWeight: 700, printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }}>
           <tr>
-            <th scope="col" style={{ ...tableCellStyle, width: "22mm" }}>Ngày</th>
+            <th scope="col" style={{ ...tableCellStyle, width: "20%" }}>Ngày</th>
             <th scope="col" style={tableCellStyle}>Tên hàng hóa</th>
-            <th scope="col" style={{ ...numericCellStyle, width: "18mm" }}>SL</th>
-            <th scope="col" style={{ ...tableCellStyle, width: "20mm" }}>ĐVT</th>
-            <th scope="col" style={{ ...numericCellStyle, width: "28mm" }}>Đơn giá</th>
-            <th scope="col" style={{ ...numericCellStyle, width: "30mm" }}>Thành tiền</th>
+            <th scope="col" style={{ ...numericCellStyle, width: "7%" }}>SL</th>
+            <th scope="col" style={{ ...tableCellStyle, width: "9%" }}>ĐVT</th>
+            <th scope="col" style={{ ...numericCellStyle, width: "24%" }}>Đơn giá</th>
+            <th scope="col" style={{ ...numericCellStyle, width: "24%" }}>Thành tiền</th>
           </tr>
         </thead>
         <tbody>

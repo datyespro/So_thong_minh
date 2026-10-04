@@ -79,7 +79,7 @@ const pageStyle = {
   background: "#ffffff",
   color: "#111111",
   fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-  fontSize: "12px",
+  fontSize: "24px",
   lineHeight: 1.45,
   margin: "0 auto",
   maxWidth: "190mm",
@@ -88,14 +88,15 @@ const pageStyle = {
 
 const tableCellStyle = {
   border: "1px solid #333333",
-  padding: "5px 6px",
+  padding: "5px 3px",
+  overflowWrap: "anywhere",
   verticalAlign: "top",
 } satisfies CSSProperties;
 
 const numericCellStyle = {
   ...tableCellStyle,
   textAlign: "right",
-  whiteSpace: "nowrap",
+  whiteSpace: "normal",
 } satisfies CSSProperties;
 
 export function InvoiceSummaryView({
@@ -127,7 +128,7 @@ export function InvoiceSummaryView({
         {shopName ? (
           <h1
             style={{
-              fontSize: "22px",
+              fontSize: "44px",
               fontWeight: 800,
               letterSpacing: "0.03em",
               margin: "0 0 6px",
@@ -168,7 +169,7 @@ export function InvoiceSummaryView({
       >
         <h2
           style={{
-            fontSize: "18px",
+            fontSize: "36px",
             fontWeight: 800,
             margin: "0 0 8px",
             textTransform: "uppercase",
@@ -207,22 +208,22 @@ export function InvoiceSummaryView({
           }}
         >
           <tr>
-            <th scope="col" style={{ ...tableCellStyle, width: "22mm" }}>
+            <th scope="col" style={{ ...tableCellStyle, width: "20%" }}>
               Ngày
             </th>
             <th scope="col" style={tableCellStyle}>
               Tên hàng hóa
             </th>
-            <th scope="col" style={{ ...numericCellStyle, width: "18mm" }}>
+            <th scope="col" style={{ ...numericCellStyle, width: "7%" }}>
               SL
             </th>
-            <th scope="col" style={{ ...tableCellStyle, width: "20mm" }}>
+            <th scope="col" style={{ ...tableCellStyle, width: "9%" }}>
               ĐVT
             </th>
-            <th scope="col" style={{ ...numericCellStyle, width: "28mm" }}>
+            <th scope="col" style={{ ...numericCellStyle, width: "24%" }}>
               Đơn giá
             </th>
-            <th scope="col" style={{ ...numericCellStyle, width: "30mm" }}>
+            <th scope="col" style={{ ...numericCellStyle, width: "24%" }}>
               Thành tiền
             </th>
           </tr>
