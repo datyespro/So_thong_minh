@@ -12,6 +12,7 @@ function makeHistoryRow(
 ): CustomerPurchaseHistoryRow {
   return {
     order_id: "order-1",
+    product_id: null,
     business_date: "2026-06-02",
     product_name_snapshot: "Item",
     quantity: 1,
@@ -25,6 +26,44 @@ function makeHistoryRow(
 }
 
 describe("flattenCustomerPurchaseHistory", () => {
+  it("carries product ID unchanged across renamed snapshots", () => {
+    const rows = flattenCustomerPurchaseHistory(
+      [{ id: "order-1", business_date: "2026-06-02" }],
+      ["Cát vàng cũ", "Cát vàng mới"].map((name, index) => ({
+        order_id: "order-1",
+        product_id: "product-1",
+        product_name_snapshot: name,
+        quantity: index + 1,
+        unit_snapshot: "m³",
+        unit_price: 100000,
+        line_total: (index + 1) * 100000,
+        sort_order: index,
+      })),
+    );
+
+    expect(rows.map((row) => row.product_id)).toEqual(["product-1", "product-1"]);
+    expect(rows.map((row) => row.product_name_snapshot)).toEqual(["Cát vàng cũ", "Cát vàng mới"]);
+  });
+
+  it("normalizes missing/null ID to null and preserves blank without guessing from name", () => {
+    const baseItem: CustomerHistoryItem = {
+      order_id: "order-1",
+      product_name_snapshot: "Cát vàng",
+      quantity: 1,
+      unit_snapshot: "m³",
+      unit_price: 100000,
+      line_total: 100000,
+      sort_order: 0,
+    };
+    const rows = flattenCustomerPurchaseHistory(
+      [{ id: "order-1", business_date: "2026-06-02" }],
+      [baseItem, { ...baseItem, product_id: null }, { ...baseItem, product_id: "" }],
+    );
+
+    expect(rows.map((row) => row.product_id)).toEqual([null, null, ""]);
+    expect(rows.every((row) => Object.hasOwn(row, "product_id"))).toBe(true);
+  });
+
   it("returns one row per item for a single order", () => {
     const rows = flattenCustomerPurchaseHistory(
       [{ id: "order-1", business_date: "2026-06-02" }],
@@ -54,6 +93,7 @@ describe("flattenCustomerPurchaseHistory", () => {
       {
         order_id: "order-1",
         business_date: "2026-06-02",
+        product_id: null,
         product_name_snapshot: "Xi măng",
         quantity: "2.5",
         unit_snapshot: "bao",
@@ -65,6 +105,7 @@ describe("flattenCustomerPurchaseHistory", () => {
       {
         order_id: "order-1",
         business_date: "2026-06-02",
+        product_id: null,
         product_name_snapshot: "Cát vàng",
         quantity: 1,
         unit_snapshot: "khối",

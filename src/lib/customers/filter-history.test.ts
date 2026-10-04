@@ -17,6 +17,7 @@ function createRow(
     unit_price: line_total,
     line_total,
     order_id: "order-1",
+    product_id: null,
     sort_order: 1,
     category_name,
   };
