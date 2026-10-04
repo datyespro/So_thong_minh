@@ -14,6 +14,7 @@ import { formatUnitDisplay } from "@/src/lib/format/unit";
 import { isProductInSelectedGroups, resolveProductChipToggle } from "@/src/lib/customers/filter-history";
 import { paymentScopeSuffix } from "@/src/lib/customers/payment-scope-label";
 import { useHistoryFilter } from "./history-filter-provider";
+import { sumCustomerPurchaseHistoryQuantity } from "@/src/lib/customers/quantity-total";
 import { Button } from "@/src/components/ui/button";
 
 export type CustomerPaymentRow = {
@@ -284,6 +285,7 @@ export function PurchaseHistoryTable({
   nextSort: CustomerPurchaseHistorySortDirection;
 }>) {
   const { filter, setFilter, filteredRows: rows, filteredTotal: total, isFiltered, productNameOptions, categoryNameOptions, productCategoryIndex } = useHistoryFilter();
+  const quantityTotal = sumCustomerPurchaseHistoryQuantity(rows);
 
   // DC-5c: bấm SP ngoài nhóm đang chọn → tự bỏ nhóm về Chung rồi lọc theo SP đó.
   const toggleProductName = (name: string) => {
@@ -477,6 +479,14 @@ export function PurchaseHistoryTable({
                 })}
               </tbody>
               <tfoot className="border-t-2 border-ledgerBorder bg-paperWarm">
+                {quantityTotal ? (
+                  <tr>
+                    <td colSpan={2} className="px-3 py-3 font-display text-[18px] font-semibold text-inkDeep">Tổng số lượng</td>
+                    <td className="px-3 py-3 font-mono text-[18px] font-bold text-inkDeep [overflow-wrap:anywhere]">{quantityTotal.quantityDisplay}</td>
+                    <td className="px-3 py-3 font-semibold text-textMute [overflow-wrap:anywhere]">{quantityTotal.unitDisplay}</td>
+                    <td colSpan={3} />
+                  </tr>
+                ) : null}
                 {showDebtFooter ? (
                   <tr>
                     <td colSpan={7} className="px-3 py-3">
@@ -516,6 +526,12 @@ export function PurchaseHistoryTable({
                 />
               );
             })}
+            {quantityTotal ? (
+              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-baseline gap-3 rounded border border-ledgerBorder bg-paperWarm px-3 py-4 shadow-[var(--shadow-card)]">
+                <p className="font-display text-[18px] font-semibold text-inkDeep">Tổng số lượng</p>
+                <p className="min-w-0 break-words text-right font-mono text-[20px] font-bold leading-tight text-inkDeep [overflow-wrap:anywhere]">{quantityTotal.quantityDisplay} {quantityTotal.unitDisplay}</p>
+              </div>
+            ) : null}
             <MobileHistoryTotal total={total} summary={summary} payments={payments} />
           </div>
         </>
