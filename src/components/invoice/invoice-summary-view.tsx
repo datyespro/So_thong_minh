@@ -79,8 +79,8 @@ const pageStyle = {
   background: "#ffffff",
   color: "#111111",
   fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-  fontSize: "20px",
-  lineHeight: 1.45,
+  fontSize: "13px",
+  lineHeight: 1.4,
   margin: "0 auto",
   maxWidth: "190mm",
   padding: "0",
@@ -88,7 +88,7 @@ const pageStyle = {
 
 const tableCellStyle = {
   border: "1px solid #333333",
-  padding: "5px 3px",
+  padding: "4px 4px",
   overflowWrap: "anywhere",
   verticalAlign: "top",
 } satisfies CSSProperties;
@@ -136,7 +136,7 @@ export function InvoiceSummaryView({
         {shopName ? (
           <h1
             style={{
-              fontSize: "28px",
+              fontSize: "22px",
               fontWeight: 800,
               letterSpacing: "0.03em",
               margin: "0 0 6px",
@@ -160,7 +160,7 @@ export function InvoiceSummaryView({
             </Link>
           </p>
         )}
-        <p style={{ margin: 0, fontSize: "16px" }}>
+        <p style={{ margin: 0, fontSize: "12px" }}>
           {phone ? `SĐT: ${phone}` : "SĐT: —"}
           {" · "}
           {address ? `Địa chỉ: ${address}` : "Địa chỉ: —"}
@@ -173,12 +173,12 @@ export function InvoiceSummaryView({
           marginBottom: "12px",
           paddingBottom: "10px",
           textAlign: "center",
-          fontSize: "18px",
+          fontSize: "13px",
         }}
       >
         <h2
           style={{
-            fontSize: "24px",
+            fontSize: "18px",
             fontWeight: 800,
             margin: "0 0 8px",
             textTransform: "uppercase",
@@ -203,7 +203,7 @@ export function InvoiceSummaryView({
       <table
         style={{
           borderCollapse: "collapse",
-          fontSize: "18px",
+          fontSize: "12px",
           tableLayout: "fixed",
           width: "100%",
         }}
@@ -218,22 +218,22 @@ export function InvoiceSummaryView({
           }}
         >
           <tr>
-            <th scope="col" style={{ ...tableCellStyle, width: "20%" }}>
+            <th scope="col" style={{ ...tableCellStyle, width: "14%" }}>
               Ngày
             </th>
-            <th scope="col" style={{ ...tableCellStyle, width: "13%" }}>
+            <th scope="col" style={{ ...tableCellStyle, width: "28%" }}>
               Tên hàng hóa
             </th>
-            <th scope="col" style={{ ...quantityCellStyle, width: "12%" }}>
+            <th scope="col" style={{ ...quantityCellStyle, width: "10%" }}>
               SL
             </th>
-            <th scope="col" style={{ ...tableCellStyle, width: "9%" }}>
+            <th scope="col" style={{ ...tableCellStyle, width: "8%" }}>
               ĐVT
             </th>
-            <th scope="col" style={{ ...numericCellStyle, width: "23%" }}>
+            <th scope="col" style={{ ...numericCellStyle, width: "20%" }}>
               Đơn giá
             </th>
-            <th scope="col" style={{ ...numericCellStyle, width: "23%" }}>
+            <th scope="col" style={{ ...numericCellStyle, width: "20%" }}>
               Thành tiền
             </th>
           </tr>
@@ -278,6 +278,7 @@ export function InvoiceSummaryView({
         style={{
           borderBottom: "1px solid #444444",
           borderTop: "2px solid #2a5a8c",
+          fontSize: "14px",
           marginTop: "12px",
           paddingBottom: "12px",
           paddingTop: "12px",
@@ -307,17 +308,17 @@ export function InvoiceSummaryView({
             />
           </div>
         </div>
-        <div style={{ marginTop: "6px", fontStyle: "italic", textAlign: "left", fontSize: "18px", width: "100%", overflowWrap: "normal" }}>
+        <div style={{ marginTop: "6px", fontStyle: "italic", textAlign: "left", fontSize: "12px", width: "100%", overflowWrap: "normal" }}>
           Bằng chữ: {finalLine.words}
         </div>
           {finalLine.note ? (
-            <div style={{ marginTop: "4px", fontStyle: "italic", textAlign: "left", fontSize: "18px", width: "100%", overflowWrap: "normal" }}>
+            <div style={{ marginTop: "4px", fontStyle: "italic", textAlign: "left", fontSize: "12px", width: "100%", overflowWrap: "normal" }}>
               {finalLine.note}
             </div>
           ) : null}
       </section>
 
-      <p style={{ marginTop: "10px", marginBottom: 0, textAlign: "left", fontSize: "18px" }}>
+      <p style={{ marginTop: "10px", marginBottom: 0, textAlign: "left", fontSize: "12px" }}>
         Hai bên thống nhất số liệu công nợ nêu trên là đúng và đầy đủ.
       </p>
 
@@ -329,7 +330,7 @@ export function InvoiceSummaryView({
           marginTop: "10mm",
           paddingBottom: "20mm",
           textAlign: "center",
-          fontSize: "18px",
+          fontSize: "12px",
         }}
       >
         <SignatureBlock label="XÁC NHẬN CỦA KHÁCH HÀNG" />
