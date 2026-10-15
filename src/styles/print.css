@@ -93,3 +93,17 @@
     gap: 12mm !important;
   }
 }
+
+/* A4 reconciliation sheet: keep a margin at the top and bottom of every printed page. */
+@media print and (min-width: 151mm) {
+  .print-area:has(.invoice-summary-view) {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+  }
+  .print-area .invoice-summary-view {
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+    box-sizing: border-box;
+    padding: 14mm 0 !important;
+  }
+}
