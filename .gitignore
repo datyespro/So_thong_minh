@@ -52,4 +52,8 @@ Thumbs.db
 /docs/ai-memory/
 /docs/adr/
 /docs/archive/
+/specs/
 .gemini/
+
+.understand-anything/
+/slide-thuyet-trinh/
