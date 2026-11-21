@@ -19,6 +19,10 @@ const rows: CustomerPurchaseHistoryRow[] = [
   { order_id: "o1", product_id: "p1", business_date: "2026-10-01", product_name_snapshot: "Cát vàng", quantity: "1.50", unit_snapshot: "m3", unit_price: 800_000, line_total: 1_200_000, sort_order: 0, category_name: "Cát" },
   { order_id: "o2", product_id: "p1", business_date: "2026-10-03", product_name_snapshot: "Cát vàng", quantity: 2, unit_snapshot: "m³", unit_price: 800_000, line_total: 1_600_000, sort_order: 0, category_name: "Cát" },
 ];
+const orders = [
+  { business_date: "2026-10-01", total_amount: 1_200_000, paid_amount: 0 },
+  { business_date: "2026-10-03", total_amount: 1_600_000, paid_amount: 0 },
+];
 const ordinary: CustomerDebtSummary = { totalPurchase: 2_800_000, paidImmediate: 0, paidLater: 0, paidTotal: 0, debtTotal: 2_800_000, reconciles: true };
 const paid: CustomerDebtSummary = { ...ordinary, paidImmediate: 300_000, paidLater: 500_000, paidTotal: 800_000, debtTotal: 2_000_000 };
 
@@ -26,7 +30,7 @@ function render(input = rows, filter: HistoryFilter = clear, summary = ordinary,
   const result = filterHistoryRows(input, filter);
   mock.context.mockReturnValue({ filter, setFilter: vi.fn(), filteredRows: result.rows, filteredTotal: result.total,
     isFiltered: isHistoryFiltered(filter), productNameOptions: distinctProductNames(input), categoryNameOptions: distinctCategoryNames(input), productCategoryIndex: buildProductCategoryIndex(input) });
-  return renderToStaticMarkup(<PurchaseHistoryTable summary={summary} payments={[{ id: "pay1", amount: 500_000, paid_at: "2026-10-04" }]} customerId="fixture" sort={sort} nextSort={sort === "date_asc" ? "date_desc" : "date_asc"} />);
+  return renderToStaticMarkup(<PurchaseHistoryTable summary={summary} orders={orders} payments={[{ id: "pay1", amount: 500_000, paid_at: "2026-10-04" }]} customerId="fixture" sort={sort} nextSort={sort === "date_asc" ? "date_desc" : "date_asc"} />);
 }
 
 function quantity(html: string, value: string, unit: string) {
@@ -116,5 +120,26 @@ describe("PurchaseHistoryTable quantity footer", () => {
     quantity(html, "1999999999999,98", unit);
     expect(html).toContain("grid-cols-[minmax(0,1fr)_minmax(0,1fr)]");
     expect(html.match(/\[overflow-wrap:anywhere\]/g)?.length).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe("PurchaseHistoryTable — nợ cũ khi lọc từ ngày (spec period-opening-debt)", () => {
+  it("lọc từ 02/10 hiện nợ cũ, tiền hàng trong kỳ, lần trả trong kỳ và còn nợ", () => {
+    const html = render(rows, { ...clear, fromDate: "2026-10-02" });
+    const footer = html.split("<tfoot")[1].split("</tfoot>")[0];
+
+    expect(footer).toContain("Nợ cũ (trước 02/10/2026)");
+    expect(footer).toContain("1.200.000 đ");
+    expect(footer).toContain("+ Tiền hàng trong kỳ");
+    expect(footer).toContain("1.600.000 đ");
+    expect(footer).toContain("− Trả 04/10/2026");
+    expect(footer).toContain("= Còn nợ");
+    expect(footer).toContain("2.300.000 đ");
+  });
+
+  it("lọc ngày kèm nhóm hàng → không có nợ cũ", () => {
+    const html = render(rows, { ...clear, fromDate: "2026-10-02", categoryNames: ["Cát"] });
+
+    expect(html).not.toContain("Nợ cũ (trước");
   });
 });
