@@ -7,12 +7,22 @@ import { vietnameseAmountInWords } from "@/src/lib/format/number-to-words-vi";
 import { formatUnitDisplay } from "@/src/lib/format/unit";
 import type { ShopSettings } from "@/src/lib/shop/get-shop-settings";
 import type { HistoryFilter } from "@/src/lib/customers/filter-history";
+import {
+  buildPeriodLedger,
+  paymentBusinessDate,
+  type PeriodLedgerOrder,
+  type PeriodLedgerPayment,
+} from "@/src/lib/customers/reconciliation-period";
+import { reconciliationPrintFinalLine } from "@/src/lib/customers/debt-standing";
+import { paymentScopeSuffix } from "@/src/lib/customers/payment-scope-label";
 
 type InvoiceItemListViewProps = Readonly<{
   shopSettings: ShopSettings;
   customerName: string;
   customerPhone: string | null;
   rows: CustomerPurchaseHistoryRow[];
+  orders: PeriodLedgerOrder[];
+  payments: (PeriodLedgerPayment & { id: string; scope_label?: string | null })[];
   total: number;
   printDate: string;
   filter: HistoryFilter;
@@ -61,11 +71,18 @@ const numericCellStyle = {
   overflowWrap: "normal",
 } satisfies CSSProperties;
 
+const summaryLineStyle = {
+  display: "grid", fontWeight: 800, gap: "10px",
+  gridTemplateColumns: "1fr auto", marginTop: "4px",
+} satisfies CSSProperties;
+
 export function InvoiceItemListView({
   shopSettings,
   customerName,
   customerPhone,
   rows,
+  orders,
+  payments,
   total,
   printDate,
   filter,
@@ -73,6 +90,35 @@ export function InvoiceItemListView({
   const shopName = shopSettings.shop_name.trim();
   const phone = shopSettings.phone.trim();
   const address = shopSettings.address.trim();
+  const ledger = buildPeriodLedger({
+    orders, payments, fromDate: filter.fromDate, toDate: filter.toDate,
+  });
+  const showPeriodLedger = Boolean(
+    filter.fromDate && !filter.productNames?.length && !filter.categoryNames?.length &&
+    (ledger.openingDebt !== 0 || ledger.periodPayments.length > 0 || ledger.periodPaidImmediate > 0),
+  );
+
+  if (showPeriodLedger && ledger.periodPurchase !== total) {
+    throw new Error(`Tiền hàng trong kỳ theo đơn (${ledger.periodPurchase}) khác tổng các dòng in (${total}). Cần đối chiếu dữ liệu.`);
+  }
+
+  const finalLine = reconciliationPrintFinalLine(ledger.closingDebt);
+  const orderedPayments = [...ledger.periodPayments].sort((left, right) => {
+    const leftTime = paymentBusinessDate(left.paid_at) ? dayjs(left.paid_at).valueOf() : Infinity;
+    const rightTime = paymentBusinessDate(right.paid_at) ? dayjs(right.paid_at).valueOf() : Infinity;
+    return leftTime - rightTime || left.id.localeCompare(right.id);
+  });
+  const periodLines = [
+    { label: "Tiền hàng trong kỳ", amount: ledger.periodPurchase },
+    ...orderedPayments.map((payment) => ({
+      label: `− Đã trả ${formatDate(paymentBusinessDate(payment.paid_at))}${paymentScopeSuffix(payment.scope_label)}`,
+      amount: payment.amount,
+    })),
+    ...(ledger.periodPaidImmediate > 0
+      ? [{ label: "− Trả ngay khi mua", amount: ledger.periodPaidImmediate }]
+      : []),
+    { label: ledger.closingDebt < 0 ? finalLine.label : "TỔNG PHẢI THANH TOÁN", amount: finalLine.amount },
+  ];
 
   return (
     <article className="invoice-document invoice-itemlist-view" style={pageStyle}>
@@ -126,6 +172,20 @@ export function InvoiceItemListView({
         </p>
       </section>
 
+      {showPeriodLedger ? (
+        <div className="invoice-summary" style={{ marginBottom: "12px" }}>
+          <div style={summaryLineStyle}>
+            <span>
+              Nợ cũ đến {dayjs(filter.fromDate).subtract(1, "day").format("DD/MM/YYYY")}
+              {ledger.openingDebt < 0 ? " (Khách trả trước)" : ""}
+            </span>
+            <span style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+              {money(reconciliationPrintFinalLine(ledger.openingDebt).amount)}
+            </span>
+          </div>
+        </div>
+      ) : null}
+
       <table style={{ borderCollapse: "collapse",
           fontSize: "18px", tableLayout: "fixed", width: "100%" }}>
         <thead style={{ backgroundColor: "#eef1f4", color: "#111111", fontWeight: 700, printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }}>
@@ -167,16 +227,26 @@ export function InvoiceItemListView({
         </tbody>
       </table>
 
-      <section className="invoice-summary" style={{ marginTop: "12px", paddingBottom: "12px", paddingTop: "12px" }}>
+      <section className="invoice-summary" style={{ marginTop: "12px", paddingBottom: "12px", paddingTop: "12px", breakInside: "avoid", pageBreakInside: "avoid" }}>
         <div style={{ marginLeft: "auto", maxWidth: "82mm" }}>
-          <div style={{ display: "grid", fontWeight: 800, gap: "10px", gridTemplateColumns: "1fr auto", marginTop: "4px" }}>
-            <span>Tổng cộng</span>
-            <span style={{ textAlign: "right", whiteSpace: "nowrap" }}>{money(total)}</span>
-          </div>
+          {showPeriodLedger ? periodLines.map((line, index) => (
+            <div key={index} style={summaryLineStyle}>
+              <span>{line.label}</span>
+              <span style={{ textAlign: "right", whiteSpace: "nowrap" }}>{money(line.amount)}</span>
+            </div>
+          )) : (
+            <div style={summaryLineStyle}>
+              <span>Tổng cộng</span>
+              <span style={{ textAlign: "right", whiteSpace: "nowrap" }}>{money(total)}</span>
+            </div>
+          )}
         </div>
         <div style={{ marginTop: "6px", fontStyle: "italic", textAlign: "left", fontSize: "18px", width: "100%", overflowWrap: "normal" }}>
-          Bằng chữ: {vietnameseAmountInWords(total)}
+          Bằng chữ: {showPeriodLedger ? finalLine.words : vietnameseAmountInWords(total)}
         </div>
+        {showPeriodLedger && finalLine.note ? (
+          <div style={{ marginTop: "4px", fontStyle: "italic", fontSize: "18px" }}>{finalLine.note}</div>
+        ) : null}
       </section>
 
       <footer style={{ display: "grid", gap: "24mm", gridTemplateColumns: "1fr 1fr", marginTop: "10mm", paddingBottom: "20mm", textAlign: "center", fontSize: "18px" }}>

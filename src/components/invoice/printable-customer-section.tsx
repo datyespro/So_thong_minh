@@ -417,6 +417,8 @@ export function PrintableCustomerSection({
             customerName={customerName}
             customerPhone={customerPhone}
             rows={filteredRows}
+            orders={orders}
+            payments={payments}
             total={filteredTotal}
             printDate={printDate}
             filter={filter}

@@ -1,11 +1,72 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { useHistoryFilter } from "@/src/components/customers/history-filter-provider";
+import { filterHistoryRows, type HistoryFilter } from "@/src/lib/customers/filter-history";
 import {
   InvoiceActionMenuItems,
+  PrintableCustomerSection,
   POPOVER_GAP,
   resolvePopoverVerticalPlacement,
 } from "@/src/components/invoice/printable-customer-section";
+
+vi.mock("@/src/components/customers/history-filter-provider", () => ({
+  useHistoryFilter: vi.fn(),
+}));
+
+describe("PrintableCustomerSection — nối dữ liệu bảng kê nhóm 3", () => {
+  const orders = [
+    { business_date: "2026-11-01", total_amount: 1000, paid_amount: 0 },
+    { business_date: "2026-11-08", total_amount: 2000, paid_amount: 0 },
+  ];
+  const rows = orders.map((order, index) => ({
+    order_id: `o${index}`, product_id: null, business_date: order.business_date,
+    product_name_snapshot: "Xi măng", quantity: 1, unit_snapshot: "bao",
+    unit_price: order.total_amount, line_total: order.total_amount, sort_order: 0, category_name: "VLXD",
+  }));
+
+  function renderSection(filter: HistoryFilter, isFiltered = true) {
+    const filtered = filterHistoryRows(rows, filter);
+    vi.mocked(useHistoryFilter).mockReturnValue({
+      filter, setFilter: vi.fn(), filteredRows: filtered.rows, filteredTotal: filtered.total,
+      isFiltered, productNameOptions: [], categoryNameOptions: [], productCategoryIndex: new Map(),
+    });
+    return renderToStaticMarkup(<PrintableCustomerSection
+      shopSettings={{ shop_name: "Cửa hàng", phone: "", address: "" }}
+      customerName="Khách" customerPhone={null} rows={rows} orders={orders}
+      payments={[{ id: "p", amount: 500, paid_at: "2026-11-08T03:00:00Z", scope_label: "Xi măng" }]}
+      debtSummary={{
+        totalPurchase: 3000, paidImmediate: 0, paidLater: 500, paidTotal: 500,
+        debtTotal: 2500, reconciles: true,
+      }}
+      groupedOrders={[]}
+    >Trang khách</PrintableCustomerSection>);
+  }
+
+  it("truyền đủ đơn/trả và tổng dòng đã lọc vào bảng kê", () => {
+    const html = renderSection({
+      fromDate: "2026-11-08", toDate: "2026-11-21", productNames: null, categoryNames: null,
+    });
+    expect(html).toContain("invoice-itemlist-view");
+    expect(html).not.toContain("invoice-summary-view");
+    expect(html).toContain("Nợ cũ đến 07/11/2026");
+    expect(html).toContain("1.000 đ");
+    expect(html).toContain("2.000 đ");
+    expect(html).toContain("− Đã trả 08/11/2026 (Xi măng)");
+    expect(html).toContain("2.500 đ");
+  });
+
+  it("lọc nhóm vẫn dùng bảng kê cũ; bỏ lọc vẫn dùng bảng đối chiếu", () => {
+    const filter = { fromDate: null, toDate: null, productNames: null, categoryNames: null };
+    const grouped = renderSection({ ...filter, categoryNames: ["VLXD"] });
+    expect(grouped).toContain("invoice-itemlist-view");
+    expect(grouped).toContain("Tổng cộng");
+    expect(grouped).not.toContain("Nợ cũ đến");
+    const unfiltered = renderSection(filter, false);
+    expect(unfiltered).toContain("invoice-summary-view");
+    expect(unfiltered).not.toContain("invoice-itemlist-view");
+  });
+});
 
 describe("resolvePopoverVerticalPlacement — TIP-UI7 (AC3)", () => {
   it("đủ chỗ dưới -> mở xuống, top = triggerBottom + gap", () => {
