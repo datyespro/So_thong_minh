@@ -50,7 +50,7 @@ describe("PrintableCustomerSection — nối dữ liệu bảng kê nhóm 3", ()
     });
     expect(html).toContain("invoice-itemlist-view");
     expect(html).not.toContain("invoice-summary-view");
-    expect(html).toContain("Nợ cũ đến 07/11/2026");
+    expect(html).toContain("Nợ cũ (trước 08/11/2026)");
     expect(html).toContain("1.000 đ");
     expect(html).toContain("2.000 đ");
     expect(html).toContain("− Đã trả 08/11/2026 (Xi măng)");
@@ -72,7 +72,7 @@ describe("PrintableCustomerSection — nối dữ liệu bảng kê nhóm 3", ()
     const printArea = html.slice(html.indexOf('class="print-area print-only"'));
     expect(printArea).not.toContain('role="alert"');
     expect(printArea).not.toContain("2.100 đ");
-    expect(printArea).not.toContain("Nợ cũ đến");
+    expect(printArea).not.toContain("Nợ cũ (trước");
     expect(printArea).toContain("Tổng cộng");
     expect(printArea).toContain("Bằng chữ: Hai nghìn đồng");
   });
@@ -92,7 +92,7 @@ describe("PrintableCustomerSection — nối dữ liệu bảng kê nhóm 3", ()
     const grouped = renderSection({ ...filter, categoryNames: ["VLXD"] });
     expect(grouped).toContain("invoice-itemlist-view");
     expect(grouped).toContain("Tổng cộng");
-    expect(grouped).not.toContain("Nợ cũ đến");
+    expect(grouped).not.toContain("Nợ cũ (trước");
     const unfiltered = renderSection(filter, false);
     expect(unfiltered).toContain("invoice-summary-view");
     expect(unfiltered).not.toContain("invoice-itemlist-view");

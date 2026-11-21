@@ -8,7 +8,7 @@ import { formatUnitDisplay } from "@/src/lib/format/unit";
 import type { ShopSettings } from "@/src/lib/shop/get-shop-settings";
 import type { HistoryFilter } from "@/src/lib/customers/filter-history";
 import {
-  buildPeriodLedger,
+  filteredPeriodLedger,
   paymentBusinessDate,
   type PeriodLedgerOrder,
   type PeriodLedgerPayment,
@@ -76,6 +76,15 @@ const summaryLineStyle = {
   gridTemplateColumns: "1fr auto", marginTop: "4px",
 } satisfies CSSProperties;
 
+const ledgerLineStyle = { ...summaryLineStyle, fontWeight: 400 } satisfies CSSProperties;
+
+const ledgerTotalStyle = {
+  ...summaryLineStyle,
+  borderTop: "1px solid #111111",
+  marginTop: "6px",
+  paddingTop: "6px",
+} satisfies CSSProperties;
+
 export function InvoiceItemListView({
   shopSettings,
   customerName,
@@ -90,23 +99,21 @@ export function InvoiceItemListView({
   const shopName = shopSettings.shop_name.trim();
   const phone = shopSettings.phone.trim();
   const address = shopSettings.address.trim();
-  const ledger = buildPeriodLedger({
-    orders, payments, fromDate: filter.fromDate, toDate: filter.toDate,
+  const { ledger, show: showPeriodLedger } = filteredPeriodLedger({
+    orders, payments, filter, linesTotal: total,
   });
-  const showPeriodLedger = Boolean(
-    filter.fromDate && !filter.productNames?.length && !filter.categoryNames?.length &&
-    ledger.periodPurchase === total &&
-    (ledger.openingDebt !== 0 || ledger.periodPayments.length > 0 || ledger.periodPaidImmediate > 0),
-  );
 
   const finalLine = reconciliationPrintFinalLine(ledger.closingDebt);
+  const openingLine = reconciliationPrintFinalLine(ledger.openingDebt);
+  const openingLabel = `${ledger.openingDebt < 0 ? "Khách trả trước" : "Nợ cũ"} (trước ${formatDate(filter.fromDate)})`;
   const orderedPayments = [...ledger.periodPayments].sort((left, right) => {
     const leftTime = paymentBusinessDate(left.paid_at) ? dayjs(left.paid_at).valueOf() : Infinity;
     const rightTime = paymentBusinessDate(right.paid_at) ? dayjs(right.paid_at).valueOf() : Infinity;
     return leftTime - rightTime || left.id.localeCompare(right.id);
   });
   const periodLines = [
-    { label: "Tiền hàng trong kỳ", amount: ledger.periodPurchase },
+    { label: `${ledger.openingDebt < 0 ? "− " : ""}${openingLabel}`, amount: openingLine.amount },
+    { label: "+ Tiền hàng trong kỳ", amount: ledger.periodPurchase },
     ...orderedPayments.map((payment) => ({
       label: `− Đã trả ${formatDate(paymentBusinessDate(payment.paid_at))}${paymentScopeSuffix(payment.scope_label)}`,
       amount: payment.amount,
@@ -114,8 +121,8 @@ export function InvoiceItemListView({
     ...(ledger.periodPaidImmediate > 0
       ? [{ label: "− Trả ngay khi mua", amount: ledger.periodPaidImmediate }]
       : []),
-    { label: ledger.closingDebt < 0 ? finalLine.label : "TỔNG PHẢI THANH TOÁN", amount: finalLine.amount },
   ];
+  const totalLabel = ledger.closingDebt < 0 ? finalLine.label : "TỔNG PHẢI THANH TOÁN";
 
   return (
     <article className="invoice-document invoice-itemlist-view" style={pageStyle}>
@@ -172,12 +179,9 @@ export function InvoiceItemListView({
       {showPeriodLedger ? (
         <div className="invoice-summary" style={{ marginBottom: "12px" }}>
           <div style={summaryLineStyle}>
-            <span>
-              Nợ cũ đến {dayjs(filter.fromDate).subtract(1, "day").format("DD/MM/YYYY")}
-              {ledger.openingDebt < 0 ? " (Khách trả trước)" : ""}
-            </span>
+            <span>{openingLabel}</span>
             <span style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-              {money(reconciliationPrintFinalLine(ledger.openingDebt).amount)}
+              {money(openingLine.amount)}
             </span>
           </div>
         </div>
@@ -225,13 +229,21 @@ export function InvoiceItemListView({
       </table>
 
       <section className="invoice-summary" style={{ marginTop: "12px", paddingBottom: "12px", paddingTop: "12px", breakInside: "avoid", pageBreakInside: "avoid" }}>
-        <div style={{ marginLeft: "auto", maxWidth: "82mm" }}>
-          {showPeriodLedger ? periodLines.map((line, index) => (
-            <div key={index} style={summaryLineStyle}>
-              <span>{line.label}</span>
-              <span style={{ textAlign: "right", whiteSpace: "nowrap" }}>{money(line.amount)}</span>
-            </div>
-          )) : (
+        <div style={{ marginLeft: "auto", maxWidth: showPeriodLedger ? "130mm" : "82mm" }}>
+          {showPeriodLedger ? (
+            <>
+              {periodLines.map((line, index) => (
+                <div key={index} style={ledgerLineStyle}>
+                  <span>{line.label}</span>
+                  <span style={{ textAlign: "right", whiteSpace: "nowrap" }}>{money(line.amount)}</span>
+                </div>
+              ))}
+              <div style={ledgerTotalStyle}>
+                <span>{totalLabel}</span>
+                <span style={{ textAlign: "right", whiteSpace: "nowrap" }}>{money(finalLine.amount)}</span>
+              </div>
+            </>
+          ) : (
             <div style={summaryLineStyle}>
               <span>Tổng cộng</span>
               <span style={{ textAlign: "right", whiteSpace: "nowrap" }}>{money(total)}</span>

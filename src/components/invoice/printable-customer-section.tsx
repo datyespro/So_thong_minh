@@ -21,7 +21,11 @@ import { InvoiceItemListView } from "@/src/components/invoice/invoice-itemlist-v
 import { useHistoryFilter } from "@/src/components/customers/history-filter-provider";
 import { Button } from "@/src/components/ui/button";
 import type { CustomerDebtSummary } from "@/src/lib/customers/debt-summary";
-import { buildPeriodLedger, type PeriodLedgerOrder } from "@/src/lib/customers/reconciliation-period";
+import {
+  buildPeriodLedger,
+  filteredPeriodLedger,
+  type PeriodLedgerOrder,
+} from "@/src/lib/customers/reconciliation-period";
 import { formatVietnameseMoney } from "@/src/lib/format/money";
 import type { GroupedOrder } from "@/src/lib/customers/group-orders";
 import type { CustomerPurchaseHistoryRow } from "@/src/lib/customers/purchase-history";
@@ -142,8 +146,8 @@ export function PrintableCustomerSection({
     : null;
   const { filteredRows, filteredTotal, isFiltered, filter } = useHistoryFilter();
   const ledger = buildPeriodLedger({ orders, payments, fromDate: null, toDate: null });
-  const periodLedger = buildPeriodLedger({
-    orders, payments, fromDate: filter.fromDate, toDate: filter.toDate,
+  const { ledger: periodLedger, mismatch: periodMismatch } = filteredPeriodLedger({
+    orders, payments, filter, linesTotal: filteredTotal,
   });
 
   const printOrder = useCallback((orderId: string) => {
@@ -403,8 +407,7 @@ export function PrintableCustomerSection({
         </p>
       ) : null}
 
-      {filter.fromDate && !filter.productNames?.length && !filter.categoryNames?.length &&
-        periodLedger.periodPurchase !== filteredTotal ? (
+      {periodMismatch ? (
         <p role="alert" className="no-print mx-auto max-w-6xl text-red-700" data-html2canvas-ignore="true">
           Cảnh báo: Tiền hàng trong kỳ theo đơn ({formatVietnameseMoney(periodLedger.periodPurchase)})
           {" khác tổng các dòng hàng ("}{formatVietnameseMoney(filteredTotal)}

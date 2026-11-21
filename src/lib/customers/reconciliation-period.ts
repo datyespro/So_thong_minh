@@ -1,4 +1,5 @@
 import { APP_TIME_ZONE, dayjs } from "@/src/lib/dayjs";
+import type { HistoryFilter } from "@/src/lib/customers/filter-history";
 
 export function earliestTransactionDate(
   orders: { business_date: string | null }[],
@@ -105,5 +106,40 @@ export function buildPeriodLedger<P extends PeriodLedgerPayment>({
     periodPaidImmediate,
     periodPayments,
     closingDebt: openingDebt + periodPurchase - periodPaidImmediate - periodPaid,
+  };
+}
+
+/**
+ * Sổ theo bộ lọc lịch sử. Chỉ hiện nợ cũ khi lọc "từ ngày", không lọc món/nhóm,
+ * và tiền hàng theo đơn khớp tổng các dòng đang hiện (lệch → mismatch, không hiện).
+ */
+export function filteredPeriodLedger<P extends PeriodLedgerPayment>({
+  orders,
+  payments,
+  filter,
+  linesTotal,
+}: Readonly<{
+  orders: PeriodLedgerOrder[];
+  payments: P[];
+  filter: Pick<HistoryFilter, "fromDate" | "toDate" | "productNames" | "categoryNames">;
+  linesTotal: number;
+}>) {
+  const ledger = buildPeriodLedger({
+    orders,
+    payments,
+    fromDate: filter.fromDate,
+    toDate: filter.toDate,
+  });
+  const dateOnly =
+    filter.fromDate !== null && !filter.productNames?.length && !filter.categoryNames?.length;
+  const matches = ledger.periodPurchase === linesTotal;
+
+  return {
+    ledger,
+    mismatch: dateOnly && !matches,
+    show:
+      dateOnly &&
+      matches &&
+      (ledger.openingDebt !== 0 || ledger.periodPayments.length > 0 || ledger.periodPaidImmediate > 0),
   };
 }

@@ -566,6 +566,7 @@ export default async function CustomerDetailPage({
 
           <PurchaseHistoryTable
             summary={debtSummary}
+            orders={orders}
             payments={paymentsWithScope}
             customerId={customer.id}
             sort={sort}

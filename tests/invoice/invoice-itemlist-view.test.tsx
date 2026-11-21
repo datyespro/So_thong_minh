@@ -86,10 +86,15 @@ function periodProps(filter = period) {
 describe("InvoiceItemListView — nợ cũ theo kỳ (nhóm 3)", () => {
   it("V13: F1 in nợ cũ trên bảng, tiền hàng/trả/tổng và bằng chữ đúng", () => {
     const html = renderToStaticMarkup(<InvoiceItemListView {...periodProps()} />);
-    expect(html).toContain("Nợ cũ đến 07/11/2026");
+    expect(html).toContain("Nợ cũ (trước 08/11/2026)");
     expect(html).toContain("82.887.700 đ");
-    expect(html.indexOf("Nợ cũ đến")).toBeLessThan(html.indexOf("<table"));
-    expect(html).toContain("Tiền hàng trong kỳ");
+    expect(html.indexOf("Nợ cũ (trước")).toBeLessThan(html.indexOf("<table"));
+    // Khối tổng lặp lại nợ cũ để phép cộng trừ đọc liền: nợ cũ + hàng − trả = tổng.
+    const summary = html.split("</table>")[1];
+    expect(summary.indexOf("Nợ cũ (trước 08/11/2026)")).toBeLessThan(summary.indexOf("+ Tiền hàng trong kỳ"));
+    expect(summary.indexOf("+ Tiền hàng trong kỳ")).toBeLessThan(summary.indexOf("TỔNG PHẢI THANH TOÁN"));
+    expect(summary).toContain("border-top:1px solid #111111");
+    expect(html).toContain("+ Tiền hàng trong kỳ");
     expect(html).toContain("76.530.000 đ");
     expect(html).toContain("− Đã trả 08/11/2026 (Xi măng)");
     expect(html).toContain("62.887.700 đ");
@@ -110,7 +115,7 @@ describe("InvoiceItemListView — nợ cũ theo kỳ (nhóm 3)", () => {
     const props = periodProps(filter);
     const html = renderToStaticMarkup(<InvoiceItemListView {...props} />);
     expect(html).toContain("Tổng cộng");
-    expect(html).not.toContain("Nợ cũ đến");
+    expect(html).not.toContain("Nợ cũ (trước");
     expect(html).not.toContain("Tiền hàng trong kỳ");
     expect(html).not.toContain("− Đã trả");
     expect(html).not.toContain("TỔNG PHẢI THANH TOÁN");
@@ -126,7 +131,7 @@ describe("InvoiceItemListView — nợ cũ theo kỳ (nhóm 3)", () => {
       orders={[]} rows={[]} total={0}
       payments={[{ id: "p", amount: 200_000, paid_at: "2026-11-01T03:00:00Z" }]}
     />);
-    expect(html).toContain("Nợ cũ đến 07/11/2026 (Khách trả trước)");
+    expect(html).toContain("Khách trả trước (trước 08/11/2026)");
     expect(html).toContain("= Khách trả trước");
     expect(html).toContain("200.000 đ");
     expect(html).toContain("Bằng chữ: Hai trăm nghìn đồng");
@@ -139,7 +144,7 @@ describe("InvoiceItemListView — nợ cũ theo kỳ (nhóm 3)", () => {
       orders={orders.slice(2)} payments={[]}
     />);
     expect(html).toContain("Tổng cộng");
-    expect(html).not.toContain("Nợ cũ đến");
+    expect(html).not.toContain("Nợ cũ (trước");
   });
 
   it("nợ cũ bằng 0 nhưng trả trong kỳ thì vẫn hiện, sắp ngày tăng và đổi UTC→VN", () => {
@@ -151,7 +156,7 @@ describe("InvoiceItemListView — nợ cũ theo kỳ (nhóm 3)", () => {
         { id: "c", amount: 999, paid_at: "2026-11-22T03:00:00Z" },
       ]}
     />);
-    expect(html).toContain("Nợ cũ đến 07/11/2026");
+    expect(html).toContain("Nợ cũ (trước 08/11/2026)");
     expect(html.indexOf("− Đã trả 08/11/2026")).toBeLessThan(html.indexOf("− Đã trả 09/11/2026 (Xi măng)"));
     expect(html).not.toContain("− Đã trả 22/11/2026");
     expect(html).toContain("76.529.970 đ");
@@ -172,7 +177,7 @@ describe("InvoiceItemListView — nợ cũ theo kỳ (nhóm 3)", () => {
     const html = renderToStaticMarkup(<InvoiceItemListView {...periodProps()} total={1} />);
     expect(html).toContain("Tổng cộng");
     expect(html).toContain("Bằng chữ: Một đồng");
-    expect(html).not.toContain("Nợ cũ đến");
+    expect(html).not.toContain("Nợ cũ (trước");
     expect(html).not.toContain("Tiền hàng trong kỳ");
     expect(html).not.toContain("TỔNG PHẢI THANH TOÁN");
   });

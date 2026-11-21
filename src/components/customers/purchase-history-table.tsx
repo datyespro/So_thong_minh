@@ -13,6 +13,7 @@ import { formatVietnameseMoney } from "@/src/lib/format/money";
 import { formatUnitDisplay } from "@/src/lib/format/unit";
 import { isProductInSelectedGroups, resolveProductChipToggle } from "@/src/lib/customers/filter-history";
 import { paymentScopeSuffix } from "@/src/lib/customers/payment-scope-label";
+import { filteredPeriodLedger, type PeriodLedgerOrder } from "@/src/lib/customers/reconciliation-period";
 import { useHistoryFilter } from "./history-filter-provider";
 import { sumCustomerPurchaseHistoryQuantity } from "@/src/lib/customers/quantity-total";
 import { Button } from "@/src/components/ui/button";
@@ -98,25 +99,44 @@ function PurchaseHistoryEmptyState() {
   );
 }
 
+// Khi lọc "từ ngày": khối tổng thêm dòng nợ cũ và tính theo kỳ (spec period-opening-debt).
+export type SettlementPeriod = {
+  fromDate: string;
+  openingDebt: number;
+  paidImmediate: number;
+  closingDebt: number;
+};
+
 export function SettlementSummaryPanel({
   total,
   summary,
   payments,
+  period,
   className = "",
 }: Readonly<{
   total: number;
   summary: CustomerDebtSummary;
   payments: CustomerPaymentRow[];
+  period?: SettlementPeriod;
   className?: string;
 }>) {
   const orderedPayments = sortedPaymentsByPaidAt(payments);
-  const finalLine = reconciliationFinalLine(summary.debtTotal);
+  const finalLine = reconciliationFinalLine(period ? period.closingDebt : summary.debtTotal);
+  const paidImmediate = period ? period.paidImmediate : summary.paidImmediate;
   const panelClassName = ["rounded border border-ledgerBorder bg-paperWarm px-4 py-3", className].filter(Boolean).join(" ");
 
   return (
     <div className={panelClassName}>
+      {period ? (
+        <div className="mb-2 grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-4">
+          <p className="font-display text-[18px] font-semibold text-inkDeep">
+            {period.openingDebt < 0 ? "− Khách trả trước" : "Nợ cũ"} (trước {formatBusinessDate(period.fromDate)})
+          </p>
+          <p className="break-words text-right font-mono text-[20px] font-bold leading-tight text-inkDeep">{formatMoneyValue(Math.abs(period.openingDebt))}</p>
+        </div>
+      ) : null}
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-4">
-        <p className="font-display text-[18px] font-semibold text-inkDeep">Tổng mua</p>
+        <p className="font-display text-[18px] font-semibold text-inkDeep">{period ? "+ Tiền hàng trong kỳ" : "Tổng mua"}</p>
         <p className="break-words text-right font-mono text-[20px] font-bold leading-tight text-inkDeep">{formatMoneyValue(total)}</p>
       </div>
       <div className="mt-2 space-y-2">
@@ -126,10 +146,10 @@ export function SettlementSummaryPanel({
             <p className="break-words text-right font-mono text-[18px] font-bold leading-tight text-paid">{formatMoneyValue(payment.amount)}</p>
           </div>
         ))}
-        {summary.paidImmediate > 0 ? (
+        {paidImmediate > 0 ? (
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-4">
             <p className="font-display text-[17px] font-semibold text-paid">− Trả ngay khi mua</p>
-            <p className="break-words text-right font-mono text-[18px] font-bold leading-tight text-paid">{formatMoneyValue(summary.paidImmediate)}</p>
+            <p className="break-words text-right font-mono text-[18px] font-bold leading-tight text-paid">{formatMoneyValue(paidImmediate)}</p>
           </div>
         ) : null}
       </div>
@@ -145,13 +165,15 @@ function MobileHistoryTotal({
   total,
   summary,
   payments,
+  period,
 }: Readonly<{
   total: number;
   summary: CustomerDebtSummary;
   payments: CustomerPaymentRow[];
+  period?: SettlementPeriod;
 }>) {
-  if (shouldShowDebtFooter(total, summary)) {
-    return <SettlementSummaryPanel total={total} summary={summary} payments={payments} className="shadow-[var(--shadow-card)]" />;
+  if (period || shouldShowDebtFooter(total, summary)) {
+    return <SettlementSummaryPanel total={total} summary={summary} payments={payments} period={period} className="shadow-[var(--shadow-card)]" />;
   }
 
   return (
@@ -273,12 +295,14 @@ function MobileGroupedHistoryCard({
 
 export function PurchaseHistoryTable({
   summary,
+  orders,
   payments,
   customerId,
   sort,
   nextSort,
 }: Readonly<{
   summary: CustomerDebtSummary;
+  orders: PeriodLedgerOrder[];
   payments: CustomerPaymentRow[];
   customerId: string;
   sort: CustomerPurchaseHistorySortDirection;
@@ -304,7 +328,18 @@ export function PurchaseHistoryTable({
     setFilter({ ...filter, fromDate: null, toDate: null, productNames: null, categoryNames: null });
   };
 
-  const showDebtFooter = shouldShowDebtFooter(total, summary);
+  const periodView = filteredPeriodLedger({ orders, payments, filter, linesTotal: total });
+  const period: SettlementPeriod | undefined =
+    periodView.show && filter.fromDate
+      ? {
+          fromDate: filter.fromDate,
+          openingDebt: periodView.ledger.openingDebt,
+          paidImmediate: periodView.ledger.periodPaidImmediate,
+          closingDebt: periodView.ledger.closingDebt,
+        }
+      : undefined;
+  const footerPayments = period ? periodView.ledger.periodPayments : payments;
+  const showDebtFooter = Boolean(period) || shouldShowDebtFooter(total, summary);
   const orderRowCounts = new Map<string, number>();
 
   rows.forEach((row) => {
@@ -492,7 +527,7 @@ export function PurchaseHistoryTable({
                 {showDebtFooter ? (
                   <tr>
                     <td colSpan={7} className="px-3 py-3">
-                      <SettlementSummaryPanel total={total} summary={summary} payments={payments} className="ml-auto w-full max-w-md" />
+                      <SettlementSummaryPanel total={total} summary={summary} payments={footerPayments} period={period} className="ml-auto w-full max-w-md" />
                     </td>
                   </tr>
                 ) : quantityTotal ? (
@@ -552,7 +587,7 @@ export function PurchaseHistoryTable({
                       <p className="min-w-0 break-words text-right font-mono text-[18px] font-bold leading-tight text-inkDeep [overflow-wrap:anywhere]">{quantityTotal.quantityDisplay} {quantityTotal.unitDisplay}</p>
                     </div>
                     <div className="[&>div]:rounded-none [&>div]:border-0 [&>div]:shadow-none">
-                      <MobileHistoryTotal total={total} summary={summary} payments={payments} />
+                      <MobileHistoryTotal total={total} summary={summary} payments={footerPayments} period={period} />
                     </div>
                   </>
                 ) : (
@@ -562,13 +597,13 @@ export function PurchaseHistoryTable({
                       <p className="mt-1 break-words font-mono text-[22px] font-bold leading-tight text-inkDeep [overflow-wrap:anywhere]">{quantityTotal.quantityDisplay} {quantityTotal.unitDisplay}</p>
                     </div>
                     <div className="min-w-0 [&>div]:rounded-none [&>div]:border-0 [&>div]:shadow-none [&>div>p]:[overflow-wrap:anywhere]">
-                      <MobileHistoryTotal total={total} summary={summary} payments={payments} />
+                      <MobileHistoryTotal total={total} summary={summary} payments={footerPayments} period={period} />
                     </div>
                   </div>
                 )}
               </div>
             ) : (
-              <MobileHistoryTotal total={total} summary={summary} payments={payments} />
+              <MobileHistoryTotal total={total} summary={summary} payments={footerPayments} period={period} />
             )}
           </div>
         </>
