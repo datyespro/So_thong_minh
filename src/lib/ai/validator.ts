@@ -188,6 +188,22 @@ function validateItem(
     item.resolution.status === "resolved" ? item.resolution.resolved_id : null;
   const master = productId ? masters.products.get(productId) : undefined;
   const name = itemDisplayName(item, master);
+  const normalizedName = normalizeVi(item.product_name ?? name);
+
+  if (
+    intent === "create_order" &&
+    /\b(no cu|cong no)\b/.test(normalizedName)
+  ) {
+    itemIssues.push(
+      issue({
+        code: "old_debt_as_item",
+        severity: "warning",
+        message: "Nợ cũ đã được tự tính khi lọc bảng kê theo ngày. Không cần ghi nợ cũ thành hoá đơn.",
+        field_path: `items[${itemIndex}].product_name`,
+        item_index: itemIndex,
+      }),
+    );
+  }
 
   if (item.resolution.status !== "resolved") {
     const raw = item.resolution.raw ?? item.product_name ?? item.raw;

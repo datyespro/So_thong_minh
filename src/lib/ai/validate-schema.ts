@@ -28,6 +28,7 @@ export const ValidationCodeSchema = z.enum([
   "total_not_divisible",
   "total_with_multiple_items",
   "unit_mismatch",
+  "old_debt_as_item",
   "missing_amount",
   "invalid_amount",
   "overpayment",

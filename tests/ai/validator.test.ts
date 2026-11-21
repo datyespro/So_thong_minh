@@ -5,6 +5,9 @@ import {
   type ValidationMasters,
 } from "@/src/lib/ai/validator";
 import type { ValidationCode } from "@/src/lib/ai/validate-schema";
+import { ValidatedIntentSchema } from "@/src/lib/ai/validate-schema";
+import { getPatchedPreviewState } from "@/src/components/chat/preview-card/preview-state";
+import { createEmptyPreviewCardPatch } from "@/src/components/chat/preview-card/types";
 
 const customerResolved: ResolvedEntity = {
   raw: "c\u00f4 Lan",
@@ -164,6 +167,82 @@ function hasIssue(
 ) {
   return issueCodes(result).includes(code);
 }
+
+describe("cảnh báo nợ cũ thành món — nhóm 4", () => {
+  const message = "Nợ cũ đã được tự tính khi lọc bảng kê theo ngày. Không cần ghi nợ cũ thành hoá đơn.";
+
+  it.each(["công nợ cũ", "Cong no", "nợ cũ tháng 10", "  NỢ   CŨ  "])(
+    "V17: %s có đúng 1 warning, không thêm blocker", (name) => {
+      const result = validateResolvedIntent(baseResolved({
+        items: [productItem({ product_name: name })],
+      }), masters);
+      expect(result.items[0].issues).toEqual([{
+        code: "old_debt_as_item", severity: "warning", message,
+        field_path: "items[0].product_name", item_index: 0,
+      }]);
+      expect(result.warning_count).toBe(1);
+      expect(result.blocking_count).toBe(0);
+      expect(result.ready_for_preview).toBe(true);
+      expect(ValidatedIntentSchema.safeParse(result).success).toBe(true);
+    },
+  );
+
+  it.each(["xi măng", "cát vàng", "cước công nông", "xe công nông"])(
+    "V18 + S1: %s không có warning nợ cũ", (name) => {
+      const result = validateResolvedIntent(baseResolved({
+        items: [productItem({ product_name: name })],
+      }), masters);
+      expect(issueCodes(result)).not.toContain("old_debt_as_item");
+      expect(result.warning_count).toBe(0);
+      expect(result.blocking_count).toBe(0);
+    },
+  );
+
+  it("mỗi món khớp có 1 issue với index đúng, dù chứa cả hai cụm", () => {
+    const result = validateResolvedIntent(baseResolved({
+      items: ["xi măng", "công nợ cũ", "Cong no"].map((name) => productItem({ product_name: name })),
+    }), masters);
+    expect(result.items[0].issues).toEqual([]);
+    expect(result.items[1].issues).toEqual([{
+      code: "old_debt_as_item", severity: "warning", message,
+      field_path: "items[1].product_name", item_index: 1,
+    }]);
+    expect(result.items[2].issues).toEqual([{
+      code: "old_debt_as_item", severity: "warning", message,
+      field_path: "items[2].product_name", item_index: 2,
+    }]);
+    expect(result.warning_count).toBe(2);
+    expect(result.blocking_count).toBe(0);
+  });
+
+  it("tên extract null thì dùng tên đã resolve", () => {
+    const result = validateResolvedIntent(baseResolved({
+      items: [productItem({ product_name: null, resolution: { resolved_name: "Nợ cũ" } })],
+    }), masters);
+    expect(issueCodes(result)).toEqual(["old_debt_as_item"]);
+  });
+
+  it.each(["create_purchase", "edit_order"] as const)("không áp cho %s", (intent) => {
+    const result = validateResolvedIntent(baseResolved({
+      intent, supplier: supplierResolved,
+      items: [productItem({ product_name: "công nợ cũ" })],
+    }), masters);
+    expect(issueCodes(result)).not.toContain("old_debt_as_item");
+  });
+
+  it("warning đi qua preview và không chặn canConfirm của đơn hợp lệ", () => {
+    const result = validateResolvedIntent(baseResolved({
+      items: [productItem({ product_name: "công nợ cũ" })],
+    }), masters);
+    const state = getPatchedPreviewState(result, createEmptyPreviewCardPatch());
+    expect(state.canConfirm).toBe(true);
+    expect(state.blockingCount).toBe(0);
+    expect(state.warningCount).toBe(1);
+    expect(state.issues).toEqual([expect.objectContaining({
+      code: "old_debt_as_item", severity: "warning", message,
+    })]);
+  });
+});
 
 describe("validateResolvedIntent create_order", () => {
   it("marks a complete order ready for preview and computes line total", () => {
