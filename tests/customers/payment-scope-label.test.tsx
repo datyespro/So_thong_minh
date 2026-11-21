@@ -96,8 +96,7 @@ describe("InvoiceSummaryView — nhãn nhóm trên dòng '− Trả' (DC-5d, b�
         customerName="anh Hùng"
         customerPhone={null}
         rows={[]}
-        historyTotal={1000000}
-        debtSummary={summary()}
+        orders={[{ business_date: "2026-04-16", total_amount: 1000000, paid_amount: 0 }]}
         payments={[{ id: "p1", amount: 200000, paid_at: PAID_AT, scope_label: "Xi măng" }]}
         printDate="20/06/2026"
       />,
@@ -114,8 +113,7 @@ describe("InvoiceSummaryView — nhãn nhóm trên dòng '− Trả' (DC-5d, b�
         customerName="anh Hùng"
         customerPhone={null}
         rows={[]}
-        historyTotal={1000000}
-        debtSummary={summary()}
+        orders={[{ business_date: "2026-04-16", total_amount: 1000000, paid_amount: 0 }]}
         payments={[{ id: "p1", amount: 200000, paid_at: PAID_AT, scope_label: null }]}
         printDate="20/06/2026"
       />,
@@ -132,8 +130,7 @@ describe("InvoiceSummaryView — nhãn nhóm trên dòng '− Trả' (DC-5d, b�
         customerName="anh Hùng"
         customerPhone={null}
         rows={[]}
-        historyTotal={1000000}
-        debtSummary={summary({ paidImmediate: 300000 })}
+        orders={[{ business_date: "2026-04-16", total_amount: 1000000, paid_amount: 300000 }]}
         payments={[{ id: "p1", amount: 200000, paid_at: PAID_AT, scope_label: "Xi măng" }]}
         printDate="20/06/2026"
       />,

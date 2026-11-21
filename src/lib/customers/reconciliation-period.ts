@@ -1,9 +1,13 @@
 import { APP_TIME_ZONE, dayjs } from "@/src/lib/dayjs";
 
-export function earliestBusinessDate(rows: { business_date: string | null }[]): string | null {
-  const dates = rows
-    .map((r) => r.business_date)
-    .filter((d): d is string => d !== null && d.trim() !== "");
+export function earliestTransactionDate(
+  orders: { business_date: string | null }[],
+  payments: { paid_at: string | null }[],
+): string | null {
+  const dates = [
+    ...orders.map((order) => order.business_date),
+    ...payments.map((payment) => paymentBusinessDate(payment.paid_at)),
+  ].filter((date): date is string => date !== null && date.trim() !== "");
 
   if (dates.length === 0) {
     return null;

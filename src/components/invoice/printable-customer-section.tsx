@@ -21,6 +21,8 @@ import { InvoiceItemListView } from "@/src/components/invoice/invoice-itemlist-v
 import { useHistoryFilter } from "@/src/components/customers/history-filter-provider";
 import { Button } from "@/src/components/ui/button";
 import type { CustomerDebtSummary } from "@/src/lib/customers/debt-summary";
+import { buildPeriodLedger, type PeriodLedgerOrder } from "@/src/lib/customers/reconciliation-period";
+import { formatVietnameseMoney } from "@/src/lib/format/money";
 import type { GroupedOrder } from "@/src/lib/customers/group-orders";
 import type { CustomerPurchaseHistoryRow } from "@/src/lib/customers/purchase-history";
 import { APP_TIME_ZONE, dayjs } from "@/src/lib/dayjs";
@@ -43,7 +45,7 @@ type PrintableCustomerSectionProps = Readonly<{
   customerName: string;
   customerPhone: string | null;
   rows: CustomerPurchaseHistoryRow[];
-  historyTotal: number;
+  orders: PeriodLedgerOrder[];
   debtSummary: CustomerDebtSummary;
   payments: CustomerPaymentRow[];
   groupedOrders: GroupedOrder[];
@@ -123,7 +125,7 @@ export function PrintableCustomerSection({
   customerName,
   customerPhone,
   rows,
-  historyTotal,
+  orders,
   debtSummary,
   payments,
   groupedOrders,
@@ -139,6 +141,7 @@ export function PrintableCustomerSection({
     ? groupedOrders.find((order) => order.order_id === printOrderId) ?? null
     : null;
   const { filteredRows, filteredTotal, isFiltered, filter } = useHistoryFilter();
+  const ledger = buildPeriodLedger({ orders, payments, fromDate: null, toDate: null });
 
   const printOrder = useCallback((orderId: string) => {
     setPendingSingleAction({ mode: "print", orderId });
@@ -389,6 +392,14 @@ export function PrintableCustomerSection({
 
   return (
     <PrintOrderContext.Provider value={contextValue}>
+      {!isFiltered && !selectedOrder && ledger.closingDebt !== debtSummary.debtTotal ? (
+        <p role="alert" className="no-print mx-auto max-w-6xl text-red-700" data-html2canvas-ignore="true">
+          Cảnh báo: Tổng tính từ lịch sử ({formatVietnameseMoney(ledger.closingDebt)})
+          {" khác số nợ đang lưu ("}{formatVietnameseMoney(debtSummary.debtTotal)}
+          {"). Cần đối chiếu dữ liệu công nợ."}
+        </p>
+      ) : null}
+
       {children}
 
       <div ref={printAreaRef} className="print-area print-only">
@@ -416,8 +427,7 @@ export function PrintableCustomerSection({
             customerName={customerName}
             customerPhone={customerPhone}
             rows={rows}
-            historyTotal={historyTotal}
-            debtSummary={debtSummary}
+            orders={orders}
             payments={payments}
             printDate={printDate}
           />

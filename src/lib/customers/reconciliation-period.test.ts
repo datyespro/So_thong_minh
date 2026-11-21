@@ -1,30 +1,43 @@
 import { describe, expect, it } from "vitest";
-import { buildPeriodLedger, earliestBusinessDate } from "./reconciliation-period";
+import { buildPeriodLedger, earliestTransactionDate } from "./reconciliation-period";
 
-describe("earliestBusinessDate", () => {
+describe("earliestTransactionDate", () => {
   it("returns null for empty array or no dates", () => {
-    expect(earliestBusinessDate([])).toBeNull();
-    expect(earliestBusinessDate([{ business_date: null }])).toBeNull();
+    expect(earliestTransactionDate([], [])).toBeNull();
+    expect(earliestTransactionDate([{ business_date: null }], [])).toBeNull();
   });
 
   it("returns earliest date", () => {
     expect(
-      earliestBusinessDate([
+      earliestTransactionDate([
         { business_date: "2026-06-16" },
         { business_date: "2026-06-15" },
         { business_date: "2026-06-17" },
-      ])
+      ], [])
     ).toBe("2026-06-15");
   });
 
   it("ignores null dates", () => {
     expect(
-      earliestBusinessDate([
+      earliestTransactionDate([
         { business_date: null },
         { business_date: "2026-06-10" },
-      ])
+      ], [])
     ).toBe("2026-06-10");
   });
+  it("includes payment-only history and ignores invalid payment dates", () => {
+    expect(earliestTransactionDate([], [
+      { paid_at: null }, { paid_at: "invalid" }, { paid_at: "2026-11-07T17:30:00Z" },
+    ])).toBe("2026-11-08");
+    expect(earliestTransactionDate([{ business_date: "2026-09-21" }], [
+      { paid_at: "2026-09-14T03:00:00Z" },
+    ])).toBe("2026-09-14");
+    expect(earliestTransactionDate([{ business_date: "2026-06-10" }], [
+      { paid_at: "2026-09-14T03:00:00Z" },
+    ])).toBe("2026-06-10");
+    expect(earliestTransactionDate([{ business_date: "" }], [{ paid_at: null }])).toBeNull();
+  });
+
 });
 
 // F1: khách Vinh+giang nghĩa sau khi xoá đơn "công nợ cũ" 20tr (spec 2026-11-21-period-opening-debt).

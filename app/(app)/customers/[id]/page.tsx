@@ -12,7 +12,6 @@ import { PaymentScopeEditButton } from "@/src/components/customers/payment-scope
 import { Button } from "@/src/components/ui/button";
 import {
   flattenCustomerPurchaseHistory,
-  sumCustomerPurchaseHistoryTotal,
   type CustomerHistoryItem,
   type CustomerHistoryOrder,
   type CustomerPurchaseHistorySortDirection,
@@ -376,7 +375,6 @@ export default async function CustomerDetailPage({
 
   const historyRows = flattenCustomerPurchaseHistory(orders, items, sort);
   const groupedOrders = groupRowsByOrder(historyRows);
-  const historyTotal = sumCustomerPurchaseHistoryTotal(historyRows);
   const debtSummary = buildCustomerDebtSummary({
     orders,
     payments,
@@ -407,7 +405,7 @@ export default async function CustomerDetailPage({
           customerName={customer.name}
           customerPhone={customer.phone}
           rows={historyRows}
-          historyTotal={historyTotal}
+          orders={orders}
           debtSummary={debtSummary}
           payments={paymentsWithScope}
           groupedOrders={groupedOrders}

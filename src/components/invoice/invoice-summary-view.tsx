@@ -1,13 +1,16 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
-import type { CustomerDebtSummary } from "@/src/lib/customers/debt-summary";
 import type { CustomerPurchaseHistoryRow } from "@/src/lib/customers/purchase-history";
 import { APP_TIME_ZONE, dayjs } from "@/src/lib/dayjs";
 import { formatVietnameseMoney } from "@/src/lib/format/money";
 import { formatUnitDisplay } from "@/src/lib/format/unit";
 import { reconciliationPrintFinalLine } from "@/src/lib/customers/debt-standing";
 import type { ShopSettings } from "@/src/lib/shop/get-shop-settings";
-import { earliestBusinessDate } from "@/src/lib/customers/reconciliation-period";
+import {
+  buildPeriodLedger,
+  earliestTransactionDate,
+  type PeriodLedgerOrder,
+} from "@/src/lib/customers/reconciliation-period";
 import { paymentScopeSuffix } from "@/src/lib/customers/payment-scope-label";
 
 type CustomerPaymentRow = {
@@ -22,8 +25,7 @@ type InvoiceSummaryViewProps = Readonly<{
   customerName: string;
   customerPhone: string | null;
   rows: CustomerPurchaseHistoryRow[];
-  historyTotal: number;
-  debtSummary: CustomerDebtSummary;
+  orders: PeriodLedgerOrder[];
   payments: CustomerPaymentRow[];
   printDate: string;
 }>;
@@ -112,17 +114,17 @@ export function InvoiceSummaryView({
   customerName,
   customerPhone,
   rows,
-  historyTotal,
-  debtSummary,
+  orders,
   payments,
   printDate,
 }: InvoiceSummaryViewProps) {
   const shopName = shopSettings.shop_name.trim();
   const phone = shopSettings.phone.trim();
   const address = shopSettings.address.trim();
-  const orderedPayments = sortedPaymentsByPaidAt(payments);
-  const fromDate = earliestBusinessDate(rows);
-  const finalLine = reconciliationPrintFinalLine(debtSummary.debtTotal);
+  const ledger = buildPeriodLedger({ orders, payments, fromDate: null, toDate: null });
+  const orderedPayments = sortedPaymentsByPaidAt(ledger.periodPayments);
+  const fromDate = earliestTransactionDate(orders, payments);
+  const finalLine = reconciliationPrintFinalLine(ledger.closingDebt);
 
   return (
     <article className="invoice-document invoice-summary-view" style={pageStyle}>
@@ -285,8 +287,8 @@ export function InvoiceSummaryView({
         }}
       >
         <div style={{ marginLeft: "auto", maxWidth: "82mm" }}>
-          <SummaryLine label="Nợ đầu kỳ" value="0 đ" />
-          <SummaryLine label="Tổng mua trong kỳ" value={money(historyTotal)} />
+          <SummaryLine label="Nợ đầu kỳ" value={money(ledger.openingDebt)} />
+          <SummaryLine label="Tổng mua trong kỳ" value={money(ledger.periodPurchase)} />
           {orderedPayments.map((payment) => (
             <SummaryLine
               key={payment.id}
@@ -294,10 +296,10 @@ export function InvoiceSummaryView({
               value={money(payment.amount)}
             />
           ))}
-          {debtSummary.paidImmediate > 0 ? (
+          {ledger.periodPaidImmediate > 0 ? (
             <SummaryLine
               label="− Trả ngay khi mua"
-              value={money(debtSummary.paidImmediate)}
+              value={money(ledger.periodPaidImmediate)}
             />
           ) : null}
           <div style={{ borderTop: "1px solid #111111", marginTop: "6px", paddingTop: "6px" }}>
