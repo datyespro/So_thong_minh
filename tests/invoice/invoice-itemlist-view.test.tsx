@@ -168,8 +168,12 @@ describe("InvoiceItemListView — nợ cũ theo kỳ (nhóm 3)", () => {
     expect(html).toContain("76.230.000 đ");
   });
 
-  it("dừng render khi tiền hàng theo đơn lệch tổng các dòng in", () => {
-    expect(() => renderToStaticMarkup(<InvoiceItemListView {...periodProps()} total={1} />))
-      .toThrow(/Tiền hàng trong kỳ.*76530000.*1/);
+  it("F1: lệch tiền hàng vẫn render Tổng cộng/bằng chữ cũ, bỏ khối nợ cũ", () => {
+    const html = renderToStaticMarkup(<InvoiceItemListView {...periodProps()} total={1} />);
+    expect(html).toContain("Tổng cộng");
+    expect(html).toContain("Bằng chữ: Một đồng");
+    expect(html).not.toContain("Nợ cũ đến");
+    expect(html).not.toContain("Tiền hàng trong kỳ");
+    expect(html).not.toContain("TỔNG PHẢI THANH TOÁN");
   });
 });

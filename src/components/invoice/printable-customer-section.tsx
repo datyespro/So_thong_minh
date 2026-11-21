@@ -142,6 +142,9 @@ export function PrintableCustomerSection({
     : null;
   const { filteredRows, filteredTotal, isFiltered, filter } = useHistoryFilter();
   const ledger = buildPeriodLedger({ orders, payments, fromDate: null, toDate: null });
+  const periodLedger = buildPeriodLedger({
+    orders, payments, fromDate: filter.fromDate, toDate: filter.toDate,
+  });
 
   const printOrder = useCallback((orderId: string) => {
     setPendingSingleAction({ mode: "print", orderId });
@@ -397,6 +400,15 @@ export function PrintableCustomerSection({
           Cảnh báo: Tổng tính từ lịch sử ({formatVietnameseMoney(ledger.closingDebt)})
           {" khác số nợ đang lưu ("}{formatVietnameseMoney(debtSummary.debtTotal)}
           {"). Cần đối chiếu dữ liệu công nợ."}
+        </p>
+      ) : null}
+
+      {filter.fromDate && !filter.productNames?.length && !filter.categoryNames?.length &&
+        periodLedger.periodPurchase !== filteredTotal ? (
+        <p role="alert" className="no-print mx-auto max-w-6xl text-red-700" data-html2canvas-ignore="true">
+          Cảnh báo: Tiền hàng trong kỳ theo đơn ({formatVietnameseMoney(periodLedger.periodPurchase)})
+          {" khác tổng các dòng hàng ("}{formatVietnameseMoney(filteredTotal)}
+          {"). Bảng kê sẽ không hiện nợ cũ cho đến khi đối chiếu dữ liệu."}
         </p>
       ) : null}
 

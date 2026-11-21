@@ -95,12 +95,9 @@ export function InvoiceItemListView({
   });
   const showPeriodLedger = Boolean(
     filter.fromDate && !filter.productNames?.length && !filter.categoryNames?.length &&
+    ledger.periodPurchase === total &&
     (ledger.openingDebt !== 0 || ledger.periodPayments.length > 0 || ledger.periodPaidImmediate > 0),
   );
-
-  if (showPeriodLedger && ledger.periodPurchase !== total) {
-    throw new Error(`Tiền hàng trong kỳ theo đơn (${ledger.periodPurchase}) khác tổng các dòng in (${total}). Cần đối chiếu dữ liệu.`);
-  }
 
   const finalLine = reconciliationPrintFinalLine(ledger.closingDebt);
   const orderedPayments = [...ledger.periodPayments].sort((left, right) => {
