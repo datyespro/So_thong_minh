@@ -43,8 +43,8 @@ const pageStyle = {
   background: "#ffffff",
   color: "#111111",
   fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-  fontSize: "20px",
-  lineHeight: 1.45,
+  fontSize: "13px",
+  lineHeight: 1.3,
   margin: "0 auto",
   maxWidth: "190mm",
   padding: "0",
@@ -52,20 +52,32 @@ const pageStyle = {
 
 const tableCellStyle = {
   border: "1px solid #333333",
-  padding: "5px 3px",
+  padding: "3px 4px",
   overflowWrap: "anywhere",
   verticalAlign: "top",
 } satisfies CSSProperties;
 
+const centerCellStyle = {
+  ...tableCellStyle,
+  textAlign: "center",
+} satisfies CSSProperties;
+
+const nameCellStyle = {
+  ...tableCellStyle,
+  paddingLeft: "6px",
+  textAlign: "left",
+} satisfies CSSProperties;
+
 const quantityCellStyle = {
   ...tableCellStyle,
-  textAlign: "right",
+  textAlign: "center",
   whiteSpace: "nowrap",
   overflowWrap: "normal",
 } satisfies CSSProperties;
 
 const numericCellStyle = {
   ...tableCellStyle,
+  paddingRight: "8px",
   textAlign: "right",
   whiteSpace: "nowrap",
   overflowWrap: "normal",
@@ -128,7 +140,7 @@ export function InvoiceItemListView({
     <article className="invoice-document invoice-itemlist-view" style={pageStyle}>
       <header style={{ borderBottom: "2px solid #2a5a8c", marginBottom: "14px", paddingBottom: "10px" }}>
         {shopName ? (
-          <h1 style={{ fontSize: "28px", fontWeight: 800, letterSpacing: "0.03em", margin: "0 0 6px", textTransform: "uppercase" }}>
+          <h1 style={{ fontSize: "20px", fontWeight: 800, letterSpacing: "0.03em", margin: "0 0 6px", textTransform: "uppercase", textWrap: "balance" }}>
             {shopName}
           </h1>
         ) : (
@@ -139,20 +151,22 @@ export function InvoiceItemListView({
             </Link>
           </p>
         )}
-        <p style={{ margin: 0, fontSize: "16px" }}>
+        <p style={{ margin: 0, fontSize: "12px" }}>
           {phone ? `SĐT: ${phone}` : "SĐT: —"}
           {" · "}
           {address ? `Địa chỉ: ${address}` : "Địa chỉ: —"}
         </p>
       </header>
 
-      <section className="invoice-metadata" style={{ marginBottom: "12px", paddingBottom: "10px", textAlign: "center", fontSize: "18px" }}>
-        <h2 style={{ fontSize: "24px", fontWeight: 800, margin: "0 0 8px", textTransform: "uppercase" }}>
+      <section className="invoice-metadata" style={{ marginBottom: "12px", paddingBottom: "10px", textAlign: "center", fontSize: "13px" }}>
+        <h2 style={{ fontSize: "16px", fontWeight: 800, margin: "0 0 8px", textTransform: "uppercase" }}>
           BẢNG KÊ HÀNG HÓA
         </h2>
         <p style={{ margin: "0 0 3px" }}>
           <strong>Khách hàng:</strong> {customerName}
           {customerPhone ? ` · SĐT: ${customerPhone}` : ""}
+          {" · "}
+          <strong>Ngày in:</strong> {printDate}
         </p>
 
         {(filter.fromDate || filter.toDate) && (
@@ -171,9 +185,6 @@ export function InvoiceItemListView({
           </p>
         )}
 
-        <p style={{ margin: 0 }}>
-          <strong>Ngày in:</strong> {printDate}
-        </p>
       </section>
 
       {showPeriodLedger ? (
@@ -188,15 +199,15 @@ export function InvoiceItemListView({
       ) : null}
 
       <table style={{ borderCollapse: "collapse",
-          fontSize: "18px", tableLayout: "fixed", width: "100%" }}>
+          fontSize: "10.5px", tableLayout: "fixed", width: "100%" }}>
         <thead style={{ backgroundColor: "#eef1f4", color: "#111111", fontWeight: 700, printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }}>
           <tr>
-            <th scope="col" style={{ ...tableCellStyle, width: "20%" }}>Ngày</th>
-            <th scope="col" style={{ ...tableCellStyle, width: "13%" }}>Tên hàng hóa</th>
-            <th scope="col" style={{ ...quantityCellStyle, width: "12%" }}>SL</th>
-            <th scope="col" style={{ ...tableCellStyle, width: "9%" }}>ĐVT</th>
-            <th scope="col" style={{ ...numericCellStyle, width: "23%" }}>Đơn giá</th>
-            <th scope="col" style={{ ...numericCellStyle, width: "23%" }}>Thành tiền</th>
+            <th scope="col" style={{ ...centerCellStyle, width: "13%" }}>Ngày</th>
+            <th scope="col" style={{ ...nameCellStyle, width: "30%" }}>Tên hàng hóa</th>
+            <th scope="col" style={{ ...quantityCellStyle, width: "10%" }}>SL</th>
+            <th scope="col" style={{ ...centerCellStyle, width: "9%" }}>ĐVT</th>
+            <th scope="col" style={{ ...numericCellStyle, width: "19%" }}>Đơn giá</th>
+            <th scope="col" style={{ ...numericCellStyle, width: "19%" }}>Thành tiền</th>
           </tr>
         </thead>
         <tbody>
@@ -209,10 +220,10 @@ export function InvoiceItemListView({
 
               return (
                 <tr key={`${row.order_id}-${row.sort_order ?? "null"}-${index}`} style={rowStyle}>
-                  <td style={tableCellStyle}>{formatDate(row.business_date)}</td>
-                  <td style={tableCellStyle}>{row.product_name_snapshot}</td>
+                  <td style={centerCellStyle}>{formatDate(row.business_date)}</td>
+                  <td style={nameCellStyle}>{row.product_name_snapshot}</td>
                   <td style={quantityCellStyle}>{String(row.quantity)}</td>
-                  <td style={tableCellStyle}>{formatUnitDisplay(row.unit_snapshot) || "—"}</td>
+                  <td style={centerCellStyle}>{formatUnitDisplay(row.unit_snapshot) || "—"}</td>
                   <td style={numericCellStyle}>{money(row.unit_price)}</td>
                   <td style={numericCellStyle}>{money(row.line_total)}</td>
                 </tr>
@@ -228,7 +239,7 @@ export function InvoiceItemListView({
         </tbody>
       </table>
 
-      <section className="invoice-summary" style={{ marginTop: "12px", paddingBottom: "12px", paddingTop: "12px", breakInside: "avoid", pageBreakInside: "avoid" }}>
+      <section className="invoice-summary" style={{ fontSize: "14px", marginTop: "12px", paddingBottom: "12px", paddingTop: "12px", breakInside: "avoid", pageBreakInside: "avoid" }}>
         <div style={{ marginLeft: "auto", maxWidth: showPeriodLedger ? "130mm" : "82mm" }}>
           {showPeriodLedger ? (
             <>
@@ -250,15 +261,15 @@ export function InvoiceItemListView({
             </div>
           )}
         </div>
-        <div style={{ marginTop: "6px", fontStyle: "italic", textAlign: "left", fontSize: "18px", width: "100%", overflowWrap: "normal" }}>
+        <div style={{ marginTop: "6px", fontStyle: "italic", textAlign: "left", fontSize: "12px", width: "100%", overflowWrap: "normal" }}>
           Bằng chữ: {showPeriodLedger ? finalLine.words : vietnameseAmountInWords(total)}
         </div>
         {showPeriodLedger && finalLine.note ? (
-          <div style={{ marginTop: "4px", fontStyle: "italic", fontSize: "18px" }}>{finalLine.note}</div>
+          <div style={{ marginTop: "4px", fontStyle: "italic", fontSize: "12px" }}>{finalLine.note}</div>
         ) : null}
       </section>
 
-      <footer style={{ display: "grid", gap: "24mm", gridTemplateColumns: "1fr 1fr", marginTop: "10mm", paddingBottom: "20mm", textAlign: "center", fontSize: "18px" }}>
+      <footer style={{ display: "grid", gap: "24mm", gridTemplateColumns: "1fr 1fr", marginTop: "10mm", paddingBottom: "20mm", textAlign: "center", fontSize: "12px" }}>
         <SignatureBlock label="XÁC NHẬN CỦA KHÁCH HÀNG" />
         <SignatureBlock label="ĐẠI DIỆN CỬA HÀNG" />
       </footer>
