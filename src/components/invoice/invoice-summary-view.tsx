@@ -141,6 +141,7 @@ export function InvoiceSummaryView({
               fontSize: "20px",
               fontWeight: 800,
               letterSpacing: "0.03em",
+              textWrap: "balance",
               margin: "0 0 6px",
               textTransform: "uppercase",
             }}
@@ -205,7 +206,7 @@ export function InvoiceSummaryView({
       <table
         style={{
           borderCollapse: "collapse",
-          fontSize: "12px",
+          fontSize: "11.5px",
           tableLayout: "fixed",
           width: "100%",
         }}
