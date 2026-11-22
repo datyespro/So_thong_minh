@@ -82,7 +82,7 @@ const pageStyle = {
   color: "#111111",
   fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
   fontSize: "13px",
-  lineHeight: 1.4,
+  lineHeight: 1.3,
   margin: "0 auto",
   maxWidth: "190mm",
   padding: "0",
@@ -90,7 +90,7 @@ const pageStyle = {
 
 const tableCellStyle = {
   border: "1px solid #333333",
-  padding: "4px 4px",
+  padding: "3px 4px",
   overflowWrap: "anywhere",
   verticalAlign: "top",
 } satisfies CSSProperties;
@@ -138,7 +138,7 @@ export function InvoiceSummaryView({
         {shopName ? (
           <h1
             style={{
-              fontSize: "22px",
+              fontSize: "20px",
               fontWeight: 800,
               letterSpacing: "0.03em",
               margin: "0 0 6px",
@@ -180,7 +180,7 @@ export function InvoiceSummaryView({
       >
         <h2
           style={{
-            fontSize: "18px",
+            fontSize: "16px",
             fontWeight: 800,
             margin: "0 0 8px",
             textTransform: "uppercase",
