@@ -95,15 +95,27 @@ const tableCellStyle = {
   verticalAlign: "top",
 } satisfies CSSProperties;
 
+const centerCellStyle = {
+  ...tableCellStyle,
+  textAlign: "center",
+} satisfies CSSProperties;
+
+const nameCellStyle = {
+  ...tableCellStyle,
+  paddingLeft: "6px",
+  textAlign: "left",
+} satisfies CSSProperties;
+
 const quantityCellStyle = {
   ...tableCellStyle,
-  textAlign: "right",
+  textAlign: "center",
   whiteSpace: "nowrap",
   overflowWrap: "normal",
 } satisfies CSSProperties;
 
 const numericCellStyle = {
   ...tableCellStyle,
+  paddingRight: "8px",
   textAlign: "right",
   whiteSpace: "nowrap",
   overflowWrap: "normal",
@@ -192,14 +204,13 @@ export function InvoiceSummaryView({
         <p style={{ margin: "0 0 3px" }}>
           <strong>Khách hàng:</strong> {customerName}
           {customerPhone ? ` · SĐT: ${customerPhone}` : ""}
+          {" · "}
+          <strong>Ngày in:</strong> {printDate}
         </p>
         <p style={{ margin: "0 0 3px" }}>
           {fromDate
             ? `Kỳ đối chiếu: từ ${formatDate(fromDate)} đến ${printDate}`
             : `Kỳ đối chiếu: đến ${printDate}`}
-        </p>
-        <p style={{ margin: 0 }}>
-          <strong>Ngày in:</strong> {printDate}
         </p>
       </section>
 
@@ -221,22 +232,22 @@ export function InvoiceSummaryView({
           }}
         >
           <tr>
-            <th scope="col" style={{ ...tableCellStyle, width: "14%" }}>
+            <th scope="col" style={{ ...centerCellStyle, width: "13%" }}>
               Ngày
             </th>
-            <th scope="col" style={{ ...tableCellStyle, width: "28%" }}>
+            <th scope="col" style={{ ...nameCellStyle, width: "30%" }}>
               Tên hàng hóa
             </th>
             <th scope="col" style={{ ...quantityCellStyle, width: "10%" }}>
               SL
             </th>
-            <th scope="col" style={{ ...tableCellStyle, width: "8%" }}>
+            <th scope="col" style={{ ...centerCellStyle, width: "9%" }}>
               ĐVT
             </th>
-            <th scope="col" style={{ ...numericCellStyle, width: "20%" }}>
+            <th scope="col" style={{ ...numericCellStyle, width: "19%" }}>
               Đơn giá
             </th>
-            <th scope="col" style={{ ...numericCellStyle, width: "20%" }}>
+            <th scope="col" style={{ ...numericCellStyle, width: "19%" }}>
               Thành tiền
             </th>
           </tr>
@@ -258,10 +269,10 @@ export function InvoiceSummaryView({
                   key={`${row.order_id}-${row.sort_order ?? "null"}-${index}`}
                   style={rowStyle}
                 >
-                  <td style={tableCellStyle}>{formatDate(row.business_date)}</td>
-                  <td style={tableCellStyle}>{row.product_name_snapshot}</td>
+                  <td style={centerCellStyle}>{formatDate(row.business_date)}</td>
+                  <td style={nameCellStyle}>{row.product_name_snapshot}</td>
                   <td style={quantityCellStyle}>{String(row.quantity)}</td>
-                  <td style={tableCellStyle}>{formatUnitDisplay(row.unit_snapshot) || "—"}</td>
+                  <td style={centerCellStyle}>{formatUnitDisplay(row.unit_snapshot) || "—"}</td>
                   <td style={numericCellStyle}>{money(row.unit_price)}</td>
                   <td style={numericCellStyle}>{money(row.line_total)}</td>
                 </tr>
